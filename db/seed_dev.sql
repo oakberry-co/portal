@@ -4,11 +4,12 @@
 
 BEGIN;
 
+-- Los 3 correos con acceso = admin (todos hacen todo). Diferenciar aqui si algun
+-- dia se quieren roles separados (conciliador / pagador / causador).
 INSERT INTO usuarios (email, nombre, rol) VALUES
-  ('dzuluaga@manelfoods.com',  'Daniel Zuluaga', 'admin'),
-  ('fabian@centillion.com.co', 'Fabian',         'conciliador'),
-  ('compras@manelfoods.com',   'Compras',        'conciliador'),
-  ('paula@manelfoods.com',     'Paula',          'pagador')
+  ('dzuluaga@manelfoods.com', 'Daniel Zuluaga', 'admin'),
+  ('compras@manelfoods.com',  'Compras',        'admin'),
+  ('paula@manelfoods.com',    'Paula',          'admin')
 ON CONFLICT (email) DO NOTHING;
 
 INSERT INTO maestro_conceptos (nombre, cuenta_puc, creado_por) VALUES

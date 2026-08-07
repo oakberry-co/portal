@@ -99,3 +99,81 @@ export async function guardarClasificacion(formData: FormData) {
 
   revalidatePath("/contabilidad/conciliacion");
 }
+
+/** Confirma las retenciones (ReteFuente/ReteIVA/ReteICA) de una factura ya
+ *  clasificada: guarda los montos + total + valor a pagar, avanza a
+ *  'retenciones_ok' y deja el evento. Atómico (estado + bitácora en la misma tx). */
+export async function confirmarRetenciones(formData: FormData) {
+  const user = await getCurrentUser();
+  // Transición clasificada -> retenciones_ok (ROL_REQUERIDO["clasificada"] = conciliador).
+  if (!tienePermiso(user.rol, "conciliador")) {
+    throw new Error("No autorizado: se requiere rol conciliador.");
+  }
+
+  const cufe = String(formData.get("cufe") ?? "").trim();
+  if (!cufe) throw new Error("Falta cufe.");
+
+  const monto = (k: string): number => {
+    const raw = String(formData.get(k) ?? "").trim().replace(/[^\d.-]/g, "");
+    if (raw === "") return 0;
+    const n = Number(raw);
+    if (Number.isNaN(n) || n < 0) throw new Error(`Valor inválido en ${k}.`);
+    return n;
+  };
+  const retefuente = monto("retefuente");
+  const reteiva = monto("reteiva");
+  const reteica = monto("reteica");
+  const retenTotal = retefuente + reteiva + reteica;
+
+  await withTx(async (c) => {
+    const cur = await c.query<{
+      estado: string; retefuente: string | null; reteiva: string | null;
+      reteica: string | null; reten_total: string | null; total: string | null;
+    }>(
+      `SELECT e.estado, e.retefuente, e.reteiva, e.reteica, e.reten_total, f.total
+         FROM factura_estado e JOIN facturas f USING (cufe)
+        WHERE e.cufe = $1 FOR UPDATE`,
+      [cufe]
+    );
+    if (cur.rowCount === 0) throw new Error("Factura no encontrada: " + cufe);
+    const antes = cur.rows[0];
+
+    if (antes.estado === "capturada") {
+      throw new Error("Clasifica la factura (concepto · destino · plazo) antes de confirmar retenciones.");
+    }
+    if (antes.estado !== "clasificada" && antes.estado !== "retenciones_ok") {
+      throw new Error("Las retenciones ya no se pueden editar en este estado.");
+    }
+
+    const total = antes.total != null ? Number(antes.total) : 0;
+    const valorAPagar = total - retenTotal;
+
+    await c.query(
+      `UPDATE factura_estado
+          SET retefuente = $2, reteiva = $3, reteica = $4,
+              reten_total = $5, valor_a_pagar = $6,
+              retencion_ok = TRUE, estado = 'retenciones_ok', actualizado_en = now()
+        WHERE cufe = $1`,
+      [cufe, retefuente, reteiva, reteica, retenTotal, valorAPagar]
+    );
+
+    await registrarEvento(c, {
+      cufe,
+      tipo: "valida_retencion",
+      campo: "retenciones",
+      valorAnterior: {
+        retefuente: antes.retefuente, reteiva: antes.reteiva, reteica: antes.reteica,
+        reten_total: antes.reten_total, estado: antes.estado,
+      },
+      valorNuevo: {
+        retefuente, reteiva, reteica, reten_total: retenTotal,
+        valor_a_pagar: valorAPagar, estado: "retenciones_ok",
+      },
+      actor: user.email,
+      actorRol: user.rol,
+      origen: "web",
+    });
+  });
+
+  revalidatePath("/contabilidad/conciliacion");
+}

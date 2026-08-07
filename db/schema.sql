@@ -70,6 +70,9 @@ CREATE TABLE IF NOT EXISTS factura_estado (
   fecha_vencimiento        DATE,
   retencion_ok             BOOLEAN NOT NULL DEFAULT FALSE,
   reten_total              NUMERIC(16,2),
+  retefuente               NUMERIC(16,2),
+  reteiva                  NUMERIC(16,2),
+  reteica                  NUMERIC(16,2),
   valor_a_pagar            NUMERIC(16,2),
   pago_estado              TEXT NOT NULL DEFAULT 'pendiente',   -- pendiente | parcial | pagado
   pago_tipo                TEXT,                               -- adelanto | completo | abono
@@ -86,6 +89,12 @@ CREATE TABLE IF NOT EXISTS factura_estado (
   CONSTRAINT ck_pago_estado CHECK (pago_estado IN ('pendiente','parcial','pagado'))
 );
 CREATE INDEX IF NOT EXISTS ix_estado_estado ON factura_estado (estado);
+
+-- Migración idempotente: columnas de retenciones confirmadas (individuales).
+ALTER TABLE factura_estado
+  ADD COLUMN IF NOT EXISTS retefuente NUMERIC(16,2),
+  ADD COLUMN IF NOT EXISTS reteiva    NUMERIC(16,2),
+  ADD COLUMN IF NOT EXISTS reteica    NUMERIC(16,2);
 
 -- -----------------------------------------------------------------------------
 -- 4) EVENTOS — LA BITÁCORA. Append-only, encadenada por hash. Verdad de auditoría.
