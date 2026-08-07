@@ -33,7 +33,7 @@ export default async function LoginPage() {
         </form>
 
         <p className="login-foot">
-          Dominio autorizado: <strong>@manelfoods.com</strong>
+          Acceso restringido al <strong>equipo autorizado</strong>.
         </p>
       </div>
     </main>

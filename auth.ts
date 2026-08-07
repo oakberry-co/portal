@@ -15,18 +15,21 @@
 import NextAuth from "next-auth";
 import Google from "next-auth/providers/google";
 
-const ALLOWED_DOMAIN = (process.env.AUTH_ALLOWED_DOMAIN ?? "manelfoods.com").toLowerCase();
+// Allowlist de correos EXACTOS (coma-separados). Es la compuerta principal.
 const ALLOWED_EMAILS = (process.env.AUTH_ALLOWED_EMAILS ?? "")
   .split(",")
   .map((s) => s.trim().toLowerCase())
   .filter(Boolean);
+// Dominio corporativo OPCIONAL: vacío por defecto = solo manda la allowlist.
+const ALLOWED_DOMAIN = (process.env.AUTH_ALLOWED_DOMAIN ?? "").trim().toLowerCase();
 
-/** ¿Este correo puede autenticar? Dominio corporativo O allowlist explícita. */
+/** ¿Este correo puede autenticar? Allowlist de correos (+ dominio si se define). */
 function emailPermitido(email?: string | null): boolean {
   if (!email) return false;
   const e = email.toLowerCase();
   if (ALLOWED_EMAILS.includes(e)) return true;
-  return e.endsWith("@" + ALLOWED_DOMAIN);
+  if (ALLOWED_DOMAIN && e.endsWith("@" + ALLOWED_DOMAIN)) return true;
+  return false;
 }
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
@@ -40,8 +43,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     },
     // Middleware: protege TODO menos /login. Sin sesión -> Auth.js redirige a /login.
     authorized({ auth, request: { nextUrl } }) {
-      // Local (AUTH_MODE=dev): sin compuerta, para desarrollar sin Google.
-      if ((process.env.AUTH_MODE ?? "dev") === "dev") return true;
+      // Fail-closed: en Vercel (prod) el default es 'google' (protegido); solo
+      // local (sin VERCEL) cae a 'dev' = sin compuerta. Explícito siempre gana.
+      if ((process.env.AUTH_MODE ?? (process.env.VERCEL ? "google" : "dev")) === "dev") return true;
       const logueado = !!auth?.user;
       const enLogin = nextUrl.pathname.startsWith("/login");
       if (enLogin) return logueado ? Response.redirect(new URL("/", nextUrl)) : true;

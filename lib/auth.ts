@@ -24,7 +24,8 @@ export async function getCurrentUser(): Promise<Usuario> {
 
 /** Como getCurrentUser pero devuelve null sin sesión (para el layout / login). */
 export async function getCurrentUserOrNull(): Promise<Usuario | null> {
-  const mode = process.env.AUTH_MODE ?? "dev";
+  // Fail-closed: en Vercel (prod) el default es 'google'; solo local cae a 'dev'.
+  const mode = process.env.AUTH_MODE ?? (process.env.VERCEL ? "google" : "dev");
 
   if (mode === "dev") {
     return {
