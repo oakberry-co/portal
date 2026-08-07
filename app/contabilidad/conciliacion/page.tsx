@@ -1,10 +1,11 @@
-import { pool } from "@/lib/db";
-import { ETIQUETA, type Estado } from "@/lib/estados";
+import { getPool } from "@/lib/db";
+import { ETIQUETA } from "@/lib/estados";
 import { FilaFactura, type FacturaRow } from "./FilaFactura";
 
 export const dynamic = "force-dynamic"; // siempre lee el estado vivo
 
 async function cargar(): Promise<{ filas: FacturaRow[]; conceptos: string[]; destinos: string[] }> {
+  const pool = getPool();
   const filas = await pool.query<FacturaRow>(
     `SELECT f.cufe, f.nombre_proveedor, f.nit_proveedor, f.numero, f.fecha_emision,
             f.total, f.responsabilidad_dian,
@@ -25,7 +26,28 @@ async function cargar(): Promise<{ filas: FacturaRow[]; conceptos: string[]; des
 }
 
 export default async function ConciliacionPage() {
-  const { filas, conceptos, destinos } = await cargar();
+  let data: Awaited<ReturnType<typeof cargar>>;
+  try {
+    data = await cargar();
+  } catch (e) {
+    // El deploy funciona; solo falta la base (o el esquema). Mensaje amable, no un 500.
+    return (
+      <div className="container">
+        <h1>🧾 Conciliación de pagos</h1>
+        <p className="sub">La app está desplegada ✅, pero falta conectar la base de datos.</p>
+        <div className="card" style={{ maxWidth: 680 }}>
+          <h3>Falta la base de datos</h3>
+          <p>
+            Conecta Neon en Vercel (Storage → Create Database → Neon) y aplica{" "}
+            <code>db/schema.sql</code>. Luego esta pantalla se llena sola.
+          </p>
+          <p className="hint" style={{ marginTop: 10 }}>Detalle: {(e as Error).message}</p>
+        </div>
+      </div>
+    );
+  }
+
+  const { filas, conceptos, destinos } = data;
   const porClasificar = filas.filter((f) => f.estado === "capturada").length;
 
   return (
@@ -64,7 +86,7 @@ export default async function ConciliacionPage() {
         es append-only y encadenada por hash (imposible editar o borrar sin romper la cadena).
       </p>
       <p className="chain-note">
-        Estados: {Object.entries(ETIQUETA).map(([k, v]) => `${v}`).join(" → ")}
+        Estados: {Object.values(ETIQUETA).join(" → ")}
       </p>
     </div>
   );
