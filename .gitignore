@@ -1,0 +1,27 @@
+# dependencias
+/node_modules
+/.pnp
+.pnp.*
+
+# next
+/.next/
+/out/
+next-env.d.ts
+
+# produccion
+/build
+
+# entorno y secretos — NUNCA subir
+.env
+.env.local
+.env*.local
+*-key.json
+*creds*.json
+
+# logs / os
+*.log
+.DS_Store
+npm-debug.log*
+
+# typescript
+*.tsbuildinfo

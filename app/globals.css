@@ -1,0 +1,78 @@
+:root {
+  --bg: #f7f7fb;
+  --card: #ffffff;
+  --border: #e6e6ef;
+  --text: #1c1b22;
+  --muted: #6b6a78;
+  --accent: #6b4de6;      /* morado Oakberry */
+  --accent-soft: #efeaff;
+  --ok: #157347;
+  --warn: #b7791f;
+  --danger: #b42318;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 14px;
+}
+
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+.topbar {
+  display: flex; align-items: center; gap: 12px;
+  padding: 12px 24px; background: var(--card); border-bottom: 1px solid var(--border);
+}
+.topbar .brand { font-weight: 700; color: var(--accent); }
+.topbar .who { margin-left: auto; color: var(--muted); font-size: 13px; }
+
+.container { max-width: 1200px; margin: 0 auto; padding: 24px; }
+
+h1 { font-size: 20px; margin: 0 0 4px; }
+h2 { font-size: 16px; margin: 24px 0 12px; }
+.sub { color: var(--muted); margin: 0 0 20px; }
+
+.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 16px; }
+.card {
+  background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+  padding: 18px; display: block;
+}
+.card h3 { margin: 0 0 6px; font-size: 15px; }
+.card p { margin: 0; color: var(--muted); font-size: 13px; }
+.card.disabled { opacity: .5; pointer-events: none; }
+
+.table-wrap { overflow-x: auto; background: var(--card); border: 1px solid var(--border); border-radius: 12px; }
+table { width: 100%; border-collapse: collapse; min-width: 900px; }
+th, td { padding: 10px 12px; text-align: left; border-bottom: 1px solid var(--border); vertical-align: top; }
+th { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); background: #fafafd; }
+td .prov { font-weight: 600; }
+td .muted { color: var(--muted); font-size: 12px; }
+.num { text-align: right; font-variant-numeric: tabular-nums; }
+
+.badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+.badge.capturada { background: #fff4e5; color: var(--warn); }
+.badge.clasificada { background: var(--accent-soft); color: var(--accent); }
+.badge.retenciones_ok, .badge.aprobada_pago { background: #e6f4ea; color: var(--ok); }
+.badge.pagada, .badge.causada { background: #e8eefc; color: #1b4fd6; }
+
+input, select {
+  font: inherit; padding: 6px 8px; border: 1px solid var(--border);
+  border-radius: 8px; background: #fff; color: var(--text); width: 100%;
+}
+input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color: var(--accent); }
+
+button {
+  font: inherit; font-weight: 600; cursor: pointer;
+  padding: 7px 14px; border: 1px solid var(--accent); border-radius: 8px;
+  background: var(--accent); color: #fff;
+}
+button:disabled { opacity: .5; cursor: default; }
+button.ghost { background: #fff; color: var(--accent); }
+
+.hint { font-size: 12px; color: var(--muted); margin-top: 4px; }
+.chain-note { margin-top: 20px; font-size: 12px; color: var(--muted); }
