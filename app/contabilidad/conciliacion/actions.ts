@@ -100,6 +100,105 @@ export async function guardarClasificacion(formData: FormData) {
   revalidatePath("/contabilidad/conciliacion");
 }
 
+/** Acción combinada (rápida, 1 clic por fila): guarda clasificación
+ *  (concepto·destino·plazo) + retenciones (RF/IVA/ICA) en una sola transacción.
+ *  Avanza a 'retenciones_ok' cuando la clasificación está completa; si va parcial,
+ *  guarda lo que haya sin forzar el avance. Todo con su evento en la bitácora. */
+export async function validarFactura(formData: FormData) {
+  const user = await getCurrentUser();
+  if (!tienePermiso(user.rol, "conciliador")) {
+    throw new Error("No autorizado: se requiere rol conciliador.");
+  }
+
+  const cufe = String(formData.get("cufe") ?? "").trim();
+  if (!cufe) throw new Error("Falta cufe.");
+  const concepto = String(formData.get("concepto") ?? "").trim() || null;
+  const destino = String(formData.get("destino") ?? "").trim() || null;
+  const plazoRaw = String(formData.get("plazo_dias") ?? "").trim();
+  const plazoDias = plazoRaw === "" ? null : Number.parseInt(plazoRaw, 10);
+  if (plazoDias !== null && (Number.isNaN(plazoDias) || plazoDias < 0)) throw new Error("Plazo inválido.");
+
+  const monto = (k: string): number => {
+    const raw = String(formData.get(k) ?? "").trim().replace(/[^\d.-]/g, "");
+    if (raw === "") return 0;
+    const n = Number(raw);
+    if (Number.isNaN(n) || n < 0) throw new Error(`Valor inválido en ${k}.`);
+    return n;
+  };
+  const retefuente = monto("retefuente");
+  const reteiva = monto("reteiva");
+  const reteica = monto("reteica");
+  const retenTotal = retefuente + reteiva + reteica;
+
+  await withTx(async (c) => {
+    const cur = await c.query<{
+      estado: string; concepto: string | null; destino: string | null; plazo_dias: number | null;
+      retefuente: string | null; reteiva: string | null; reteica: string | null;
+      fecha_emision: Date; total: string | null;
+    }>(
+      `SELECT e.estado, e.concepto, e.destino, e.plazo_dias, e.retefuente, e.reteiva, e.reteica,
+              f.fecha_emision, f.total
+         FROM factura_estado e JOIN facturas f USING (cufe)
+        WHERE e.cufe = $1 FOR UPDATE`,
+      [cufe]
+    );
+    if (cur.rowCount === 0) throw new Error("Factura no encontrada: " + cufe);
+    const antes = cur.rows[0];
+    if (!["capturada", "clasificada", "retenciones_ok"].includes(antes.estado)) {
+      throw new Error("La factura ya no es editable en este estado.");
+    }
+
+    if (concepto) await asegurarConcepto(c, concepto, user.email);
+    if (destino) await asegurarDestino(c, destino, user.email);
+
+    // Merge: no borrar lo que ya había si el form vino parcial.
+    const nConcepto = concepto ?? antes.concepto;
+    const nDestino = destino ?? antes.destino;
+    const nPlazo = plazoDias ?? antes.plazo_dias;
+
+    let vencimiento: string | null = null;
+    if (nPlazo != null) {
+      const d = new Date(antes.fecha_emision);
+      d.setDate(d.getDate() + nPlazo);
+      vencimiento = d.toISOString().slice(0, 10);
+    }
+
+    const total = antes.total != null ? Number(antes.total) : 0;
+    const valorAPagar = total - retenTotal;
+    const completa = !!nConcepto && !!nDestino && nPlazo != null;
+    const nuevoEstado = completa ? "retenciones_ok" : (nConcepto || nDestino || nPlazo != null) ? "clasificada" : "capturada";
+
+    await c.query(
+      `UPDATE factura_estado
+          SET concepto = $2, concepto_fuente = 'humano',
+              destino = $3, destino_fuente = 'humano',
+              plazo_dias = $4, fecha_vencimiento = $5,
+              retefuente = $6, reteiva = $7, reteica = $8,
+              reten_total = $9, valor_a_pagar = $10, retencion_ok = $11,
+              estado = $12, actualizado_en = now()
+        WHERE cufe = $1`,
+      [cufe, nConcepto, nDestino, nPlazo, vencimiento, retefuente, reteiva, reteica, retenTotal, valorAPagar, completa, nuevoEstado]
+    );
+
+    await registrarEvento(c, {
+      cufe,
+      tipo: "valida_factura",
+      campo: "clasificacion+retenciones",
+      valorAnterior: {
+        concepto: antes.concepto, destino: antes.destino, plazo_dias: antes.plazo_dias,
+        retefuente: antes.retefuente, reteiva: antes.reteiva, reteica: antes.reteica, estado: antes.estado,
+      },
+      valorNuevo: {
+        concepto: nConcepto, destino: nDestino, plazo_dias: nPlazo,
+        retefuente, reteiva, reteica, reten_total: retenTotal, valor_a_pagar: valorAPagar, estado: nuevoEstado,
+      },
+      actor: user.email, actorRol: user.rol, origen: "web",
+    });
+  });
+
+  revalidatePath("/contabilidad/conciliacion");
+}
+
 /** Confirma las retenciones (ReteFuente/ReteIVA/ReteICA) de una factura ya
  *  clasificada: guarda los montos + total + valor a pagar, avanza a
  *  'retenciones_ok' y deja el evento. Atómico (estado + bitácora en la misma tx). */

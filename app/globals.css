@@ -263,55 +263,81 @@ button.ghost { background: #fff; color: var(--purple); }
 }
 .filtro-clear:hover { border-color: var(--purple); background: var(--lav-soft); filter: none; }
 
-/* --- Conciliación: tarjetas ----------------------------------------------- */
-.fcards { display: flex; flex-direction: column; gap: 16px; margin-top: 8px; }
-.fcard {
-  background: var(--card); border: 1px solid var(--border); border-radius: 16px;
-  box-shadow: var(--shadow); overflow: hidden;
+/* Toggle "solo pendientes" */
+.filtro-toggle {
+  background: #fff; color: var(--purple-deep) !important; border: 1.5px solid var(--border-lav);
+  border-radius: 999px; padding: 7px 14px; font-size: 12px; font-weight: 700; cursor: pointer;
 }
-.fcard.pend { border-left: 3px solid var(--coral); }
-.fcard-head {
-  display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
-  padding: 16px 20px;
-}
-.fcard-prov { flex: 1 1 200px; min-width: 160px; }
-.fcard-prov .prov { font-size: 14.5px; }
-.fcard-fac { font-size: 13px; text-align: right; }
-.fcard-total { text-align: right; }
-.fcard-total .num.big { font-size: 18px; color: var(--purple-deep); font-weight: 800; }
-.fcard-total .muted { text-transform: uppercase; letter-spacing: .05em; font-size: 9.5px; font-family: var(--mono); }
-.fcard-sug {
-  padding: 8px 20px; font-family: var(--mono); font-size: 11px; color: var(--lav);
-  background: var(--cream-2); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border);
-}
-.fcard-sug b { color: var(--purple); font-weight: 600; }
-.fcard-body {
-  display: grid; grid-template-columns: 1.2fr 1fr; gap: 0;
-}
-@media (max-width: 760px) { .fcard-body { grid-template-columns: 1fr; } .fcard-fac, .fcard-total { text-align: left; } }
+.filtro-toggle:hover { border-color: var(--purple); background: var(--lav-soft); filter: none; }
+.filtro-toggle.on { background: var(--purple); color: #fff !important; border-color: var(--purple); }
 
-/* bloques clasificación / retenciones */
-.blk { padding: 16px 20px; }
-.blk + .blk { border-left: 1px solid var(--border); }
-@media (max-width: 760px) { .blk + .blk { border-left: none; border-top: 1px solid var(--border); } }
-.blk.off { opacity: .55; }
-.blk-title {
-  font-family: var(--mono); font-size: 10.5px; text-transform: uppercase; letter-spacing: .1em;
-  color: var(--purple); margin-bottom: 12px; font-weight: 500;
+/* --- Conciliación: grilla densa (una línea por factura) ------------------- */
+.tabla { margin-top: 8px; border: 1px solid var(--border); border-radius: 14px; background: var(--card); box-shadow: var(--shadow); }
+.fila-head, .fila {
+  display: grid;
+  grid-template-columns:
+    100px minmax(132px, 1.2fr) 90px minmax(106px, 0.95fr) minmax(106px, 0.95fr)
+    46px 60px 80px 80px 80px 104px 60px;
+  align-items: center; gap: 8px; padding: 7px 14px;
 }
-.blk-grid { display: grid; grid-template-columns: 1fr 1fr 90px; gap: 10px; align-items: end; }
-.blk-grid.ret { grid-template-columns: 1fr 1fr 1fr; }
-@media (max-width: 520px) { .blk-grid, .blk-grid.ret { grid-template-columns: 1fr 1fr; } }
-.blk label { display: flex; flex-direction: column; gap: 4px; font-size: 11px; color: var(--lav); font-weight: 600; }
-.blk label.sm { max-width: 100%; }
-.blk-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 12px; }
-.ret-calc {
-  display: flex; flex-wrap: wrap; gap: 6px 20px; margin-top: 12px;
-  font-size: 12px; color: var(--lav);
+.fila-head {
+  font-family: var(--mono); font-size: 9.5px; text-transform: uppercase; letter-spacing: .04em;
+  color: var(--lav); background: var(--cream-2); border-bottom: 1px solid var(--border);
+  border-radius: 14px 14px 0 0; position: sticky; top: 60px; z-index: 5; font-weight: 500;
 }
-.ret-calc b { margin-left: 6px; color: var(--ink); font-size: 13.5px; }
-.ret-calc b.accent { color: var(--coral); }
-.hint.ok { color: var(--ok); font-weight: 600; }
+.fila-head .c-valor, .fila-head .c-pagar, .fila-head .c-ret { text-align: right; }
+.fila { border-bottom: 1px solid var(--border); }
+.fila:last-child { border-bottom: none; border-radius: 0 0 14px 14px; }
+.fila:hover { background: #fdfbf6; }
+.fila:focus-within { position: relative; z-index: 20; }
+.fila.pend { box-shadow: inset 3px 0 0 var(--coral); background: #fff9f4; }
+.fila.pend:hover { background: #fff5ec; }
+.fila.locked { opacity: .6; }
+
+.c-estado .badge { font-size: 9.5px; padding: 2px 7px; }
+.c-prov { min-width: 0; }
+.c-prov .prov { font-size: 12.5px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.c-prov .muted { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mini { font-size: 10px; }
+.c-valor { text-align: right; font-weight: 700; font-size: 12.5px; color: var(--purple-deep); }
+.c-field { position: relative; min-width: 0; }
+.c-field .dot { position: absolute; top: -3px; left: -3px; z-index: 4; box-shadow: 0 0 0 2px #fff; }
+.dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
+.dot.ok { background: var(--ok); }
+.dot.warn { background: var(--yellow); }
+.c-plazo { text-align: center; }
+.c-ret { text-align: right; }
+.c-pagar { text-align: right; line-height: 1.15; }
+.c-pagar .num.accent { color: var(--coral); font-weight: 800; font-size: 12.5px; }
+.c-pagar .mini { font-size: 9.5px; }
+.tabla-vacia { padding: 40px; text-align: center; }
+
+/* densidad de los controles dentro de la fila */
+.fila input, .fila .cbx-input { font-size: 12px; padding: 6px 8px; border-radius: 8px; }
+.fila .cbx-input { padding-left: 25px; }
+.fila .cbx-ico { left: 8px; }
+.fila .c-ret { font-variant-numeric: tabular-nums; }
+.fila .c-btn {
+  font-size: 11px; font-weight: 700; padding: 7px 4px; border-radius: 8px; width: 100%;
+}
+.fila .c-btn.ghost { background: #fff; color: var(--purple); border: 1px solid var(--border-lav); }
+.fila .c-btn.ghost:hover:not(:disabled) { border-color: var(--purple); background: var(--lav-soft); filter: none; }
+
+/* Responsive: en angosto se apila sin scroll horizontal */
+@media (max-width: 1060px) {
+  .fila-head { display: none; }
+  .fila {
+    grid-template-columns: repeat(4, 1fr); gap: 8px 10px; padding: 12px 14px;
+    border-radius: 0 !important;
+  }
+  .fila .c-estado { grid-column: 1 / 2; }
+  .fila .c-prov { grid-column: 2 / 5; }
+  .fila .c-valor { grid-column: 1 / 3; text-align: left; }
+  .fila .c-pagar { grid-column: 3 / 5; text-align: right; }
+  .fila .c-field { grid-column: span 2; }
+  .fila .c-plazo { grid-column: span 1; }
+  .fila .c-ret { grid-column: span 1; }
+}
 
 /* --- Combobox ------------------------------------------------------------- */
 .cbx { position: relative; }

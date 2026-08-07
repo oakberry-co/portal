@@ -27,6 +27,7 @@ export function ConciliacionView({
   const [concepto, setConcepto] = useState("");
   const [destino, setDestino] = useState("");
   const [prov, setProv] = useState("");
+  const [soloPend, setSoloPend] = useState(false);
 
   const opts = useMemo(() => {
     const anios = new Set<string>(), meses = new Set<string>(), sems = new Set<string>(), provs = new Set<string>();
@@ -50,6 +51,7 @@ export function ConciliacionView({
   const filtradas = useMemo(() => {
     const qq = q.trim().toLowerCase();
     return filas.filter((f) => {
+      if (soloPend && f.estado !== "capturada") return false;
       const d = fechaDe(f);
       const y = d.getFullYear(), m = d.getMonth() + 1;
       if (anio && String(y) !== anio) return false;
@@ -65,11 +67,11 @@ export function ConciliacionView({
       }
       return true;
     });
-  }, [filas, q, anio, mes, sem, concepto, destino, prov]);
+  }, [filas, q, anio, mes, sem, concepto, destino, prov, soloPend]);
 
   const porClasificar = filas.filter((f) => f.estado === "capturada").length;
-  const activos = !!(q || anio || mes || sem || concepto || destino || prov);
-  const limpiar = () => { setQ(""); setAnio(""); setMes(""); setSem(""); setConcepto(""); setDestino(""); setProv(""); };
+  const activos = !!(q || anio || mes || sem || concepto || destino || prov || soloPend);
+  const limpiar = () => { setQ(""); setAnio(""); setMes(""); setSem(""); setConcepto(""); setDestino(""); setProv(""); setSoloPend(false); };
 
   return (
     <>
@@ -78,7 +80,7 @@ export function ConciliacionView({
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
             <circle cx="11" cy="11" r="7" /><path d="m21 21-4.3-4.3" />
           </svg>
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar proveedor, factura, NIT, concepto…" />
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar proveedor, factura, NIT…" />
         </div>
         <select value={anio} onChange={(e) => setAnio(e.target.value)}>
           <option value="">Año</option>
@@ -104,23 +106,39 @@ export function ConciliacionView({
           <option value="">Proveedor</option>
           {opts.provs.map((p) => <option key={p} value={p}>{p}</option>)}
         </select>
+        <button type="button" className={"filtro-toggle" + (soloPend ? " on" : "")} onClick={() => setSoloPend((v) => !v)}>
+          Solo pendientes
+        </button>
         {activos ? <button type="button" className="filtro-clear" onClick={limpiar}>Limpiar</button> : null}
       </div>
 
       <p className="sub">
         {activos ? <><strong>{filtradas.length}</strong> de {filas.length} facturas</> : <>{filas.length} facturas</>}
-        {" · "}<strong>{porClasificar}</strong> por clasificar. El humano revisa concepto · destino · plazo · retenciones; cada cambio queda en la bitácora.
+        {" · "}<strong>{porClasificar}</strong> por clasificar. Revisa la sugerencia de la máquina, ajusta y confirma; cada cambio queda en la bitácora.
       </p>
 
-      {filtradas.length === 0 ? (
-        <div className="card" style={{ textAlign: "center", padding: 40 }}>
-          <p className="muted">Ninguna factura coincide con los filtros.</p>
+      <div className="tabla">
+        <div className="fila-head">
+          <div className="c-estado">Estado</div>
+          <div className="c-prov">Proveedor</div>
+          <div className="c-valor">Valor</div>
+          <div>Concepto</div>
+          <div>Destino</div>
+          <div className="c-plazo">Plazo</div>
+          <div className="c-btn" />
+          <div className="c-ret">R.Fte</div>
+          <div className="c-ret">R.IVA</div>
+          <div className="c-ret">R.ICA</div>
+          <div className="c-pagar">A pagar</div>
+          <div className="c-btn" />
         </div>
-      ) : (
-        <div className="fcards">
-          {filtradas.map((f) => <FacturaCard key={f.cufe} f={f} conceptos={conceptos} destinos={destinos} />)}
-        </div>
-      )}
+
+        {filtradas.length === 0 ? (
+          <div className="tabla-vacia muted">Ninguna factura coincide con los filtros.</div>
+        ) : (
+          filtradas.map((f) => <FacturaCard key={f.cufe} f={f} conceptos={conceptos} destinos={destinos} />)
+        )}
+      </div>
     </>
   );
 }
