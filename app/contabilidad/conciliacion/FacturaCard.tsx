@@ -97,6 +97,19 @@ export function FacturaCard({
         </div>
         <button type="submit" className="c-btn ghost" disabled={!retEditable} title={clasificada ? "Confirmar retenciones" : "Clasifica primero"}>Reten.</button>
       </form>
+
+      <div className="c-docs">
+        <span className="ic off" title="Descargar factura del proveedor — adjunto no disponible todavía">📄</span>
+        <a
+          className="ic dian"
+          href={`https://catalogo-vpfe.dian.gov.co/document/searchqr?documentkey=${encodeURIComponent(f.cufe)}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          title="Ver el documento oficial en la DIAN (por CUFE) — guía para clasificar"
+        >
+          DIAN
+        </a>
+      </div>
     </div>
   );
 }

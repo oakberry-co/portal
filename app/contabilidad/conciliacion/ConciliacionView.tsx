@@ -28,6 +28,16 @@ export function ConciliacionView({
   const [destino, setDestino] = useState("");
   const [prov, setProv] = useState("");
   const [soloPend, setSoloPend] = useState(false);
+  const [desde, setDesde] = useState("");
+  const [hasta, setHasta] = useState("");
+
+  const exportHref = (() => {
+    const p = new URLSearchParams();
+    if (desde) p.set("desde", desde);
+    if (hasta) p.set("hasta", hasta);
+    const qs = p.toString();
+    return "/contabilidad/conciliacion/export" + (qs ? "?" + qs : "");
+  })();
 
   const opts = useMemo(() => {
     const anios = new Set<string>(), meses = new Set<string>(), sems = new Set<string>(), provs = new Set<string>();
@@ -112,6 +122,15 @@ export function ConciliacionView({
         {activos ? <button type="button" className="filtro-clear" onClick={limpiar}>Limpiar</button> : null}
       </div>
 
+      <div className="export-bar">
+        <span className="muted mini">Exportar Excel del</span>
+        <input type="date" value={desde} onChange={(e) => setDesde(e.target.value)} title="Desde (fecha de emisión)" />
+        <span className="muted">→</span>
+        <input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} title="Hasta (fecha de emisión)" />
+        <a className="export-btn" href={exportHref} title="Descargar informe en Excel">⬇ Excel</a>
+        <span className="muted mini">(vacío = todas)</span>
+      </div>
+
       <p className="sub">
         {activos ? <><strong>{filtradas.length}</strong> de {filas.length} facturas</> : <>{filas.length} facturas</>}
         {" · "}<strong>{porClasificar}</strong> por clasificar. Revisa la sugerencia de la máquina, ajusta y confirma; cada cambio queda en la bitácora.
@@ -131,6 +150,7 @@ export function ConciliacionView({
           <div className="c-ret">R.ICA</div>
           <div className="c-pagar">A pagar</div>
           <div className="c-btn" />
+          <div className="c-docs">Docs</div>
         </div>
 
         {filtradas.length === 0 ? (

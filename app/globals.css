@@ -276,8 +276,8 @@ button.ghost { background: #fff; color: var(--purple); }
 .fila-head, .fila {
   display: grid;
   grid-template-columns:
-    100px minmax(132px, 1.2fr) 90px minmax(106px, 0.95fr) minmax(106px, 0.95fr)
-    46px 60px 80px 80px 80px 104px 60px;
+    94px minmax(124px, 1.1fr) 84px minmax(100px, 0.9fr) minmax(100px, 0.9fr)
+    44px 58px 76px 76px 76px 96px 56px 64px;
   align-items: center; gap: 8px; padding: 7px 14px;
 }
 .fila-head {
@@ -312,6 +312,29 @@ button.ghost { background: #fff; color: var(--purple); }
 .c-pagar .mini { font-size: 9.5px; }
 .tabla-vacia { padding: 40px; text-align: center; }
 
+/* documentos por fila (factura / DIAN) */
+.c-docs { display: flex; align-items: center; justify-content: flex-end; gap: 4px; }
+.ic {
+  display: inline-flex; align-items: center; justify-content: center; line-height: 1;
+  font-size: 12px; font-weight: 700; padding: 5px 6px; border-radius: 7px;
+  border: 1px solid var(--border-lav); background: #fff; color: var(--purple) !important;
+  text-decoration: none !important; cursor: pointer;
+}
+.ic:hover { border-color: var(--purple); background: var(--lav-soft); }
+.ic.off { opacity: .38; cursor: not-allowed; }
+.ic.dian { font-size: 9.5px; letter-spacing: .02em; }
+
+/* exportar a Excel por rango de fechas */
+.export-bar { display: flex; align-items: center; gap: 8px; margin: 2px 0 4px; flex-wrap: wrap; }
+.export-bar input[type="date"] { width: auto; font-size: 12px; padding: 6px 9px; }
+.export-btn {
+  display: inline-flex; align-items: center; gap: 4px; cursor: pointer;
+  background: var(--purple); color: #fff !important; border: 1px solid var(--purple);
+  border-radius: 999px; padding: 7px 14px; font-size: 12px; font-weight: 700;
+  text-decoration: none !important;
+}
+.export-btn:hover { filter: brightness(1.07); }
+
 /* densidad de los controles dentro de la fila */
 .fila input, .fila .cbx-input { font-size: 12px; padding: 6px 8px; border-radius: 8px; }
 .fila .cbx-input { padding-left: 25px; }
@@ -337,6 +360,7 @@ button.ghost { background: #fff; color: var(--purple); }
   .fila .c-field { grid-column: span 2; }
   .fila .c-plazo { grid-column: span 1; }
   .fila .c-ret { grid-column: span 1; }
+  .fila .c-docs { grid-column: 1 / 5; justify-content: flex-start; margin-top: 2px; }
 }
 
 /* --- Combobox ------------------------------------------------------------- */
