@@ -165,8 +165,12 @@ def fetch_source(tenant: str, since: str | None) -> list[dict]:
 
 
 def fetch_maestros(tenant: str):
-    """La NOMENCLATURA oficial (igual que la hoja "Maestros" del Sheet):
-    conceptos de maestro_conceptos, destinos de maestro_centros_costo."""
+    """Los maestros oficiales (igual que el Sheet + lo aprendido de Siigo):
+    - conceptos  ← maestro_conceptos
+    - destinos   ← maestro_centros_costo
+    - proveedores← maestro_proveedores (concepto/destino) + aprendizaje_causacion
+                   (cuenta PUC) + aprendizaje_retenciones (retención típica). Es el
+                   CEREBRO: proveedor → sus defaults, base del auto-clasificado."""
     bq = bigquery.Client(project=PROJECT)
     conceptos = [r["concepto"] for r in bq.query(
         f"SELECT concepto FROM `{PROJECT}.facturacion.maestro_conceptos` "
@@ -175,13 +179,75 @@ def fetch_maestros(tenant: str):
         f"SELECT codigo, nombre FROM `{PROJECT}.facturacion.maestro_centros_costo` "
         f"WHERE tenant = '{tenant}' AND nombre IS NOT NULL ORDER BY codigo").result()]
     destinos.append(("Todas las tiendas", "TRANSVERSAL"))  # gasto corporativo sin sede
-    return conceptos, destinos
+    # Registro por NIT (= la llave que trae cada factura). El maestro de BQ tiene
+    # el NIT casi siempre vacío, así que el registro se deriva de las facturas:
+    # por cada NIT su concepto/destino MÁS FRECUENTE + cuenta PUC/retención de Siigo
+    # (join normalizando el NIT: solo dígitos, para absorber DV/guiones).
+    proveedores = [dict(r) for r in bq.query(f"""
+        WITH cl AS (
+          SELECT proveedor_nit AS nit, proveedor,
+                 REGEXP_REPLACE(proveedor_nit, r'\\D', '') AS nit_norm,
+                 concepto, destino_nombre AS destino
+          FROM `{PROJECT}.facturacion.v_facturas_clasificadas`
+          WHERE proveedor_nit IS NOT NULL AND proveedor_nit != ''
+        ),
+        top_c AS (SELECT nit, concepto FROM (
+          SELECT nit, concepto, ROW_NUMBER() OVER (PARTITION BY nit ORDER BY COUNT(*) DESC) rn
+          FROM cl WHERE concepto IS NOT NULL GROUP BY nit, concepto) WHERE rn = 1),
+        top_d AS (SELECT nit, destino FROM (
+          SELECT nit, destino, ROW_NUMBER() OVER (PARTITION BY nit ORDER BY COUNT(*) DESC) rn
+          FROM cl WHERE destino IS NOT NULL GROUP BY nit, destino) WHERE rn = 1),
+        ac AS (SELECT REGEXP_REPLACE(nit, r'\\D','') nit_norm, cuenta
+               FROM `{PROJECT}.facturacion.aprendizaje_causacion`
+               QUALIFY ROW_NUMBER() OVER (PARTITION BY REGEXP_REPLACE(nit, r'\\D','') ORDER BY n_facturas DESC) = 1),
+        ar AS (SELECT REGEXP_REPLACE(nit, r'\\D','') nit_norm, retencion
+               FROM `{PROJECT}.facturacion.aprendizaje_retenciones`
+               QUALIFY ROW_NUMBER() OVER (PARTITION BY REGEXP_REPLACE(nit, r'\\D','') ORDER BY veces DESC) = 1)
+        SELECT cl.nit,
+               ANY_VALUE(cl.proveedor) AS nombre,
+               ANY_VALUE(tc.concepto)  AS concepto_default,
+               ANY_VALUE(td.destino)   AS destino_default,
+               ANY_VALUE(ac.cuenta)    AS cuenta_puc_default,
+               ANY_VALUE(ar.retencion) AS retencion_hint
+        FROM cl
+        LEFT JOIN top_c tc ON tc.nit = cl.nit
+        LEFT JOIN top_d td ON td.nit = cl.nit
+        LEFT JOIN ac ON ac.nit_norm = cl.nit_norm
+        LEFT JOIN ar ON ar.nit_norm = cl.nit_norm
+        GROUP BY cl.nit
+    """).result()]
+    return conceptos, destinos, proveedores
 
 
-def sembrar_maestros_oficiales(cur, conceptos, destinos):
-    """Deja los comboboxes del portal EXACTOS a la nomenclatura del Sheet.
-    Reactiva/inserta los oficiales y DESACTIVA (no borra) el ruido de sync/seed
-    que no esté en la lista. Lo humano (creado_por = correo) queda intacto."""
+def sembrar_proveedores(cur, proveedores):
+    """Siembra el CEREBRO (maestro_proveedores) sin pisar lo curado a mano
+    (fuente='humano'). Cada proveedor trae sus defaults aprendidos."""
+    if not proveedores:
+        return 0
+    rows = [(p["nit"], p["nombre"], p["concepto_default"], p["destino_default"],
+             p["cuenta_puc_default"], p["retencion_hint"], "sync") for p in proveedores]
+    new = execute_values(cur, """
+        INSERT INTO maestro_proveedores
+          (nit, nombre, concepto_default, destino_default, cuenta_puc_default,
+           retencion_hint, fuente)
+        VALUES %s
+        ON CONFLICT (nit) DO UPDATE SET
+          nombre             = EXCLUDED.nombre,
+          concepto_default   = EXCLUDED.concepto_default,
+          destino_default    = EXCLUDED.destino_default,
+          cuenta_puc_default = EXCLUDED.cuenta_puc_default,
+          retencion_hint     = EXCLUDED.retencion_hint,
+          actualizado_en     = now()
+        WHERE maestro_proveedores.fuente <> 'humano'
+        RETURNING (xmax = 0)
+    """, rows, template="(%s,%s,%s,%s,%s,%s,%s)", page_size=1000, fetch=True)
+    return sum(1 for r in new if r[0])
+
+
+def sembrar_maestros_oficiales(cur, conceptos, destinos, proveedores):
+    """Deja los comboboxes del portal EXACTOS a la nomenclatura del Sheet + siembra
+    el cerebro de proveedores. Reactiva/inserta los oficiales y DESACTIVA (no borra)
+    el ruido de sync/seed que no esté en la lista. Lo humano queda intacto."""
     # Oficiales → creado_por='maestro' (los reclasifica aunque existieran como
     # 'sync'), así el barrido de abajo no los toca y no quedan duplicados por caso.
     c_new = execute_values(cur,
@@ -199,7 +265,8 @@ def sembrar_maestros_oficiales(cur, conceptos, destinos):
     # Lo humano (creado_por = correo) y lo oficial ('maestro') quedan intactos.
     cur.execute("UPDATE maestro_conceptos SET activo = FALSE WHERE creado_por IN ('sync','seed') AND activo")
     cur.execute("UPDATE maestro_destinos SET activo = FALSE WHERE creado_por IN ('sync','seed') AND activo")
-    return sum(1 for r in c_new if r[0]), sum(1 for r in d_new if r[0])
+    n_prov = sembrar_proveedores(cur, proveedores)
+    return sum(1 for r in c_new if r[0]), sum(1 for r in d_new if r[0]), n_prov
 
 
 def run_sync(conn, filas, *, purge_demo=False, actor="sistema", origen="sync",
@@ -273,9 +340,9 @@ def run_sync(conn, filas, *, purge_demo=False, actor="sistema", origen="sync",
 
     # maestros — la NOMENCLATURA oficial del Sheet (hoja "Maestros"). Solo si se
     # pasó (el ciclo frecuente puede omitirla; cambia poco). Nunca texto libre.
-    n_conceptos = n_destinos = 0
+    n_conceptos = n_destinos = n_proveedores = 0
     if maestros is not None:
-        n_conceptos, n_destinos = sembrar_maestros_oficiales(cur, *maestros)
+        n_conceptos, n_destinos, n_proveedores = sembrar_maestros_oficiales(cur, *maestros)
 
     resumen = {
         "facturas_vista": len(filas),
@@ -284,12 +351,13 @@ def run_sync(conn, filas, *, purge_demo=False, actor="sistema", origen="sync",
         "propuestas_refrescadas": len(filas),
         "conceptos_nuevos": n_conceptos,
         "destinos_nuevos": n_destinos,
+        "proveedores_nuevos": n_proveedores,
         "demo_purgadas": purgadas,
     }
 
     # eventos — solo si hubo cambio real (o si se fuerza, p.ej. botón manual).
     # Evita 96 eventos/día de ruido cuando el cron corre y no entra nada nuevo.
-    cambio = (n_facturas or purgadas or n_conceptos or n_destinos or n_enlaces)
+    cambio = (n_facturas or purgadas or n_conceptos or n_destinos or n_enlaces or n_proveedores)
     resumen["evento"] = None
     if always_event or cambio:
         resumen["evento"] = registrar_evento(

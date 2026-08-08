@@ -176,6 +176,25 @@ CREATE TABLE IF NOT EXISTS maestro_destinos (           -- tiendas / centros de 
   creado_en    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- EL CEREBRO del aprendizaje: cada proveedor acumula sus defaults. Se siembra de
+-- lo que hay (Sheet→maestro_proveedores, Siigo→aprendizaje_*) y CRECE cada vez que
+-- un humano clasifica una factura de ese proveedor. Con defaults ricos, la próxima
+-- factura del proveedor se auto-clasifica → sube el % automático (meta del sistema).
+-- El sync nunca pisa lo que un humano curó (fuente='humano').
+CREATE TABLE IF NOT EXISTS maestro_proveedores (
+  nit                TEXT PRIMARY KEY,
+  nombre             TEXT,
+  concepto_default   TEXT,                              -- proveedor → concepto
+  destino_default    TEXT,                              -- proveedor → destino
+  cuenta_puc_default TEXT,                              -- proveedor → cuenta PUC (Siigo)
+  retencion_hint     TEXT,                              -- retención que suele aplicar (Siigo)
+  plazo_dias         INT,                               -- gracia de pago negociada
+  fuente             TEXT NOT NULL DEFAULT 'sync',      -- sheet | siigo | humano | sync
+  activo             BOOLEAN NOT NULL DEFAULT TRUE,
+  creado_por         TEXT,
+  actualizado_en     TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 CREATE TABLE IF NOT EXISTS maestro_plazos (             -- plazo de pago por proveedor
   nit_proveedor TEXT PRIMARY KEY,
   plazo_dias    INT NOT NULL,
