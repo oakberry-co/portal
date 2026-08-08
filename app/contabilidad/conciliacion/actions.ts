@@ -62,8 +62,10 @@ export async function guardarClasificacion(formData: FormData) {
     const cur = await c.query<{
       estado: string; concepto: string | null; destino: string | null; plazo_dias: number | null;
       fecha_emision: Date; sincronizado_en: Date | null;
+      nit_proveedor: string; nombre_proveedor: string | null;
     }>(
-      `SELECT e.estado, e.concepto, e.destino, e.plazo_dias, f.fecha_emision, f.sincronizado_en
+      `SELECT e.estado, e.concepto, e.destino, e.plazo_dias, f.fecha_emision, f.sincronizado_en,
+              f.nit_proveedor, f.nombre_proveedor
          FROM factura_estado e JOIN facturas f USING (cufe)
         WHERE e.cufe = $1 FOR UPDATE`,
       [cufe]
@@ -103,6 +105,23 @@ export async function guardarClasificacion(formData: FormData) {
         WHERE cufe = $1`,
       [cufe, nConcepto, nDestino, nPlazo, vencimiento, nuevoEstado]
     );
+
+    // APRENDIZAJE: el proveedor aprende de esta clasificación humana → la próxima
+    // factura de este NIT se pre-llena sola. fuente='humano' (el sync no lo pisa).
+    if (antes.nit_proveedor && antes.nit_proveedor !== "ND" && (nConcepto || nDestino || nPlazo != null)) {
+      await c.query(
+        `INSERT INTO maestro_proveedores
+           (nit, nombre, concepto_default, destino_default, plazo_dias, fuente, creado_por)
+         VALUES ($1,$2,$3,$4,$5,'humano',$6)
+         ON CONFLICT (nit) DO UPDATE SET
+           nombre = COALESCE(maestro_proveedores.nombre, EXCLUDED.nombre),
+           concepto_default = COALESCE(EXCLUDED.concepto_default, maestro_proveedores.concepto_default),
+           destino_default = COALESCE(EXCLUDED.destino_default, maestro_proveedores.destino_default),
+           plazo_dias = COALESCE(EXCLUDED.plazo_dias, maestro_proveedores.plazo_dias),
+           fuente = 'humano', actualizado_en = now()`,
+        [antes.nit_proveedor, antes.nombre_proveedor, nConcepto, nDestino, nPlazo, user.email]
+      );
+    }
 
     await registrarEvento(c, {
       cufe,

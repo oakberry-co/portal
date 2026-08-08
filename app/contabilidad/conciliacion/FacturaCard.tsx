@@ -32,6 +32,7 @@ export type FacturaRow = {
   concepto_sug: string | null;
   destino_sug: string | null;
   confianza: string | null;
+  plazo_sug: number | null;
   retefuente_sug: string | null;
   reteiva_sug: string | null;
   reteica_sug: string | null;
@@ -117,7 +118,7 @@ export function FacturaCard({
           <Combobox name="destino" label="destino" options={destinos} defaultValue={f.destino ?? f.destino_sug ?? ""} placeholder="Destino" />
         </div>
         <div className="c-plazo">
-          <input name="plazo_dias" type="number" min={0} defaultValue={f.plazo_dias ?? ""} placeholder="días" disabled={locked} title="Plazo (días)" />
+          <input name="plazo_dias" type="number" min={0} defaultValue={f.plazo_dias ?? f.plazo_sug ?? ""} placeholder="días" disabled={locked} title={f.plazo_sug != null && f.plazo_dias == null ? `Plazo sugerido del proveedor: ${f.plazo_sug} días` : "Plazo (días)"} />
           {venc && <span className={"venc" + (paraPago ? " due" : "")} title={paraPago ? "Ya vencido — para pago" : "Día de pago (recepción + plazo)"}>{paraPago ? "⏰ " : "→ "}{ddmm(venc)}</span>}
         </div>
         <button type="submit" className="c-btn" disabled={locked} title="Confirmar clasificación">Clasif.</button>

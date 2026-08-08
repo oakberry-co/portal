@@ -19,7 +19,7 @@ const MENU: { label: string; href?: string }[] = [
   { label: "Pagos" },
   { label: "Causación" },
   { label: "Bancos" },
-  { label: "Maestros" },
+  { label: "Maestros", href: "/contabilidad/maestros" },
   { label: "Dashboard" },
 ];
 

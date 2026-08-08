@@ -27,11 +27,14 @@ async function cargar(): Promise<{ filas: FacturaRow[]; conceptos: string[]; des
             f.subtotal, f.iva, f.total, f.responsabilidad_dian, f.link_drive, f.sincronizado_en,
             e.estado, e.concepto, e.destino, e.plazo_dias, e.fecha_vencimiento,
             e.retencion_ok, e.reten_total, e.retefuente, e.reteiva, e.reteica, e.valor_a_pagar,
-            p.concepto_sug, p.destino_sug, p.confianza,
+            COALESCE(p.concepto_sug, mp.concepto_default) AS concepto_sug,
+            COALESCE(p.destino_sug, mp.destino_default) AS destino_sug,
+            p.confianza, mp.plazo_dias AS plazo_sug,
             p.retefuente_sug, p.reteiva_sug, p.reteica_sug
        FROM facturas f
        JOIN factura_estado e USING (cufe)
        LEFT JOIN factura_propuesta p USING (cufe)
+       LEFT JOIN maestro_proveedores mp ON mp.nit = f.nit_proveedor
       ORDER BY (e.estado = 'capturada') DESC, f.fecha_emision DESC`
   );
   const c = await pool.query<{ nombre: string }>("SELECT nombre FROM maestro_conceptos WHERE activo ORDER BY nombre");

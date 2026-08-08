@@ -476,3 +476,46 @@ button.ghost { background: #fff; color: var(--purple); }
   .sync-panel { flex-direction: column; align-items: stretch; gap: 10px; }
   .sync-actions .sync-btn, .sync-pill.wait { width: 100%; text-align: center; }
 }
+
+/* Pestaña Maestros ----------------------------------------------------------- */
+.maestros { margin-top: 8px; }
+.mst-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+.mst-tab {
+  background: var(--card); border: 1px solid var(--border); color: var(--lav);
+  border-radius: 999px; padding: 7px 14px; font-size: 12.5px; font-weight: 600;
+  cursor: pointer; display: inline-flex; align-items: center; gap: 6px; transition: all .12s;
+}
+.mst-tab:hover { border-color: var(--border-lav); color: var(--purple); }
+.mst-tab.on { background: var(--purple); color: #fff; border-color: var(--purple); }
+.mst-tab i { font-style: normal; font-size: 10.5px; opacity: .7; background: rgba(0,0,0,.08); padding: 0 6px; border-radius: 999px; }
+.mst-tab.on i { background: rgba(255,255,255,.25); opacity: .95; }
+.mst-fuente { font-size: 12px; color: var(--lav); margin-bottom: 8px; }
+.mst-fuente b { color: var(--purple); }
+.mst-search { width: 100%; max-width: 320px; margin-bottom: 12px; padding: 8px 12px;
+  border: 1px solid var(--border-lav); border-radius: 9px; font-size: 13px; }
+.mst-add { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px;
+  padding: 12px; background: var(--lav-soft); border: 1px solid var(--border-lav); border-radius: 10px; }
+.mst-add input { flex: 1; min-width: 130px; padding: 8px 11px; border: 1px solid var(--border-lav);
+  border-radius: 8px; font-size: 13px; background: #fff; }
+.mst-add.wide input { min-width: 100px; }
+.mst-add button { background: var(--purple); color: #fff; border: none; border-radius: 8px;
+  padding: 8px 18px; font-weight: 700; font-size: 12.5px; cursor: pointer; }
+.mst-add button:hover { background: var(--purple-deep); }
+.mst-tabla { width: 100%; border-collapse: collapse; font-size: 12.5px;
+  background: var(--card); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+.mst-tabla th { text-align: left; padding: 9px 12px; background: var(--lav-soft);
+  color: var(--purple-deep); font-weight: 700; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; border-bottom: 1px solid var(--border); }
+.mst-tabla td { padding: 8px 12px; border-bottom: 1px solid var(--border); color: var(--ink); vertical-align: middle; }
+.mst-tabla tr:last-child td { border-bottom: none; }
+.mst-tabla tr.off td { opacity: .42; }
+.mst-tabla .mono { font-family: var(--font-mono, monospace); font-size: 11.5px; color: var(--lav); }
+.mst-tabla .muted { color: var(--lav); }
+.mst-toggle { border: 1px solid var(--border-lav); background: #fff; color: var(--lav);
+  border-radius: 999px; padding: 2px 10px; font-size: 10.5px; font-weight: 600; cursor: pointer; }
+.mst-toggle.on { color: var(--ok); border-color: rgba(39,174,96,.35); background: rgba(39,174,96,.08); }
+.ft { font-size: 10px; font-weight: 700; padding: 1px 7px; border-radius: 999px; text-transform: uppercase; letter-spacing: .03em; }
+.ft.hum { background: rgba(95,75,139,.12); color: var(--purple); }
+.ft.sii { background: rgba(232,89,60,.12); color: var(--coral); }
+.ft.off { background: rgba(0,0,0,.05); color: var(--lav); }
+.mst-empty { color: var(--lav); font-size: 13px; padding: 14px; background: var(--lav-soft);
+  border: 1px dashed var(--border-lav); border-radius: 10px; margin-bottom: 12px; }
