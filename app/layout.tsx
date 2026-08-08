@@ -21,6 +21,7 @@ const MENU: { label: string; href?: string }[] = [
   { label: "Bancos" },
   { label: "Maestros", href: "/contabilidad/maestros" },
   { label: "Dashboard", href: "/contabilidad/dashboard" },
+  { label: "Asistente", href: "/contabilidad/asistente" },
 ];
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
