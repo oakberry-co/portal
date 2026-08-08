@@ -587,3 +587,42 @@ button.ghost { background: #fff; color: var(--purple); }
 .chat-input input { flex: 1; padding: 10px 14px; border: 1px solid var(--border-lav); border-radius: 10px; font-size: 13.5px; background: #fff; }
 .chat-input button { background: var(--purple); color: #fff; border: none; border-radius: 10px; padding: 10px 20px; font-weight: 700; font-size: 13px; cursor: pointer; }
 .chat-input button:disabled { opacity: .5; cursor: default; }
+
+/* Pagos (tablero semanal) --------------------------------------------------- */
+.pg-empty { padding: 28px; text-align: center; color: var(--lav); font-size: 13.5px;
+  background: var(--card); border: 1px dashed var(--border-lav); border-radius: 14px; }
+.pagos { display: flex; flex-direction: column; gap: 18px; }
+.pg-sem { border: 1px solid var(--border); border-radius: 14px; overflow: hidden; background: var(--card); box-shadow: var(--shadow); }
+.pg-sem.hoy { border-color: var(--purple); }
+.pg-sem.vencida { border-color: rgba(192,57,43,.4); }
+.pg-sem-head { display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 11px 16px; background: var(--lav-soft); border-bottom: 1px solid var(--border); }
+.pg-sem.vencida .pg-sem-head { background: rgba(192,57,43,.06); }
+.pg-sem-tag { font-weight: 700; color: var(--purple-deep); font-size: 13px; }
+.pg-sem-tag i { font-style: normal; font-weight: 500; color: var(--lav); font-size: 11.5px; margin-left: 4px; }
+.pg-sem-tot { font-size: 13px; color: var(--lav); }
+.pg-sem-tot b { color: var(--coral); font-size: 15px; }
+.pg-prov { border-bottom: 1px solid var(--border); }
+.pg-prov:last-child { border-bottom: none; }
+.pg-prov-head { display: flex; align-items: center; gap: 10px; padding: 10px 16px; cursor: pointer; }
+.pg-prov-head:hover { background: #fdfbf6; }
+.pg-caret { color: var(--lav); font-size: 11px; width: 12px; }
+.pg-prov-nom { font-weight: 700; color: var(--ink); font-size: 13.5px; flex: 1; }
+.pg-prov-n { font-size: 11.5px; color: var(--lav); }
+.pg-prov-tot { font-weight: 800; color: var(--purple-deep); font-size: 14px; min-width: 110px; text-align: right; }
+.pg-prov-acc { display: flex; gap: 6px; }
+.pg-btn { background: var(--purple); color: #fff; border: none; border-radius: 8px; padding: 6px 12px; font-weight: 700; font-size: 11.5px; cursor: pointer; }
+.pg-btn:hover { background: var(--purple-deep); }
+.pg-btn.ghost { background: #fff; color: var(--purple); border: 1px solid var(--border-lav); }
+.pg-tabla { width: 100%; border-collapse: collapse; font-size: 12.5px; background: var(--cream); }
+.pg-tabla td { padding: 7px 12px; border-top: 1px solid var(--border); vertical-align: middle; }
+.pg-tabla td.num { text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; }
+.pg-tabla td.pg-chk { width: 30px; padding-left: 16px; }
+.pg-tabla .mono { font-family: var(--mono); font-size: 11px; color: var(--purple); }
+.pg-abono { color: var(--warn); font-size: 10px; font-weight: 700; }
+.pg-form { display: flex; flex-direction: column; gap: 12px; margin: 16px 0; }
+.pg-form label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; font-weight: 700; color: var(--purple-deep); }
+.pg-form input { padding: 8px 11px; border: 1px solid var(--border-lav); border-radius: 8px; font-size: 13.5px; font-weight: 400; }
+.pg-form label i { font-weight: 500; font-size: 11px; }
+.pg-abono-tag { color: var(--warn); }
+.pct-wrap2 { display: block; }

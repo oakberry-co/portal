@@ -276,4 +276,33 @@ CREATE TABLE IF NOT EXISTS dashboard_semana (
   actualizado_en TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- -----------------------------------------------------------------------------
+-- 9) PAGOS — un pago (transferencia) puede cubrir VARIAS facturas de un proveedor
+--    (una sola vez); una factura admite VARIOS abonos hasta saldarse. El
+--    comprobante es por pago (opcional por ahora, pensado para volverse obligatorio).
+--    Entran a pagos las facturas en 'retenciones_ok' (clasificadas + retenidas).
+-- -----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS pagos (
+  id              BIGSERIAL PRIMARY KEY,
+  nit_proveedor   TEXT        NOT NULL,
+  fecha_pago      DATE        NOT NULL,
+  monto           NUMERIC(16,2) NOT NULL,
+  tipo            TEXT        NOT NULL DEFAULT 'completo',  -- completo | abono
+  comprobante_url TEXT,                                     -- link al soporte (opcional)
+  nota            TEXT,
+  pagado_por      TEXT        NOT NULL,
+  creado_en       TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS pago_facturas (            -- qué facturas cubrió el pago y cuánto
+  pago_id        BIGINT       NOT NULL REFERENCES pagos(id) ON DELETE CASCADE,
+  cufe           TEXT         NOT NULL REFERENCES facturas(cufe),
+  monto_aplicado NUMERIC(16,2) NOT NULL,
+  PRIMARY KEY (pago_id, cufe)
+);
+CREATE INDEX IF NOT EXISTS ix_pagofact_cufe ON pago_facturas (cufe);
+
+-- Semana de pago PROGRAMADA (reprogramable). Default = vencimiento; "pasar a otra
+-- semana" la cambia sin tocar la fecha de vencimiento real.
+ALTER TABLE factura_estado ADD COLUMN IF NOT EXISTS fecha_pago_prog DATE;
+
 COMMIT;

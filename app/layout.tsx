@@ -16,7 +16,7 @@ export const metadata: Metadata = {
 // La cáscara: cada entrada es un módulo. Sin href = aún no disponible ("pronto").
 const MENU: { label: string; href?: string }[] = [
   { label: "Conciliación", href: "/contabilidad/conciliacion" },
-  { label: "Pagos" },
+  { label: "Pagos", href: "/contabilidad/pagos" },
   { label: "Causación" },
   { label: "Bancos" },
   { label: "Maestros", href: "/contabilidad/maestros" },
