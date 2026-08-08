@@ -191,8 +191,10 @@ def fetch_maestros(tenant: str):
           FROM `{PROJECT}.facturacion.v_facturas_clasificadas`
           WHERE proveedor_nit IS NOT NULL AND proveedor_nit != ''
         ),
-        top_c AS (SELECT nit, concepto FROM (
-          SELECT nit, concepto, ROW_NUMBER() OVER (PARTITION BY nit ORDER BY COUNT(*) DESC) rn
+        cnt AS (SELECT nit, COUNT(*) n_facturas FROM cl GROUP BY nit),
+        top_c AS (SELECT nit, concepto, ROUND(SAFE_DIVIDE(n, tot), 3) AS conf FROM (
+          SELECT nit, concepto, COUNT(*) n, SUM(COUNT(*)) OVER (PARTITION BY nit) tot,
+                 ROW_NUMBER() OVER (PARTITION BY nit ORDER BY COUNT(*) DESC) rn
           FROM cl WHERE concepto IS NOT NULL GROUP BY nit, concepto) WHERE rn = 1),
         top_d AS (SELECT nit, destino FROM (
           SELECT nit, destino, ROW_NUMBER() OVER (PARTITION BY nit ORDER BY COUNT(*) DESC) rn
@@ -208,15 +210,38 @@ def fetch_maestros(tenant: str):
                ANY_VALUE(tc.concepto)  AS concepto_default,
                ANY_VALUE(td.destino)   AS destino_default,
                ANY_VALUE(ac.cuenta)    AS cuenta_puc_default,
-               ANY_VALUE(ar.retencion) AS retencion_hint
+               ANY_VALUE(ar.retencion) AS retencion_hint,
+               ANY_VALUE(cnt.n_facturas) AS n_facturas,
+               ANY_VALUE(tc.conf)      AS confianza
         FROM cl
         LEFT JOIN top_c tc ON tc.nit = cl.nit
         LEFT JOIN top_d td ON td.nit = cl.nit
+        LEFT JOIN cnt ON cnt.nit = cl.nit
         LEFT JOIN ac ON ac.nit_norm = cl.nit_norm
         LEFT JOIN ar ON ar.nit_norm = cl.nit_norm
         GROUP BY cl.nit
     """).result()]
     return conceptos, destinos, proveedores
+
+
+def fetch_dashboard_semana(tenant: str):
+    """Snapshot semanal para el Dashboard: universo DIAN vs capturado + causadas
+    en Siigo, por semana ISO de emisión. La app NO se monta sobre BQ → esto lo
+    computa la VM y lo deja en Postgres."""
+    bq = bigquery.Client(project=PROJECT)
+    return [dict(r) for r in bq.query(f"""
+        WITH cap  AS (SELECT DISTINCT cufe FROM `{PROJECT}.facturacion.facturas` WHERE tenant = '{tenant}'),
+             caus AS (SELECT DISTINCT cufe FROM `{PROJECT}.facturacion.causacion_log`)
+        SELECT FORMAT_DATE('%G-S%V', d.fecha_emision) AS semana,
+               COUNT(*) AS dian,
+               COUNTIF(c.cufe IS NOT NULL) AS capturadas,
+               COUNTIF(cz.cufe IS NOT NULL) AS causadas
+        FROM `{PROJECT}.facturacion.dian_recibidos` d
+        LEFT JOIN cap  c  ON c.cufe = d.cufe
+        LEFT JOIN caus cz ON cz.cufe = d.cufe
+        WHERE d.tenant = '{tenant}' AND d.fecha_emision IS NOT NULL
+        GROUP BY 1
+    """).result()]
 
 
 def sembrar_proveedores(cur, proveedores):
@@ -241,7 +266,34 @@ def sembrar_proveedores(cur, proveedores):
         WHERE maestro_proveedores.fuente <> 'humano'
         RETURNING (xmax = 0)
     """, rows, template="(%s,%s,%s,%s,%s,%s,%s)", page_size=1000, fetch=True)
+    # Stats (n_facturas + confianza) se refrescan para TODAS las filas —también las
+    # humano—: son medición, no decisión. La confianza mide qué tan consistente es
+    # la historia del proveedor (share del concepto top).
+    execute_values(cur, """
+        UPDATE maestro_proveedores AS m SET n_facturas = v.n, confianza = v.c
+        FROM (VALUES %s) AS v(nit, n, c) WHERE m.nit = v.nit
+    """, [(p["nit"], p["n_facturas"], p["confianza"]) for p in proveedores],
+        template="(%s,%s,%s)", page_size=1000)
     return sum(1 for r in new if r[0])
+
+
+def sync_dashboard_semana(cur, semanas):
+    """Upsert del snapshot semanal (fuga + causadas) que consume el Dashboard."""
+    if not semanas:
+        return 0
+    execute_values(cur, """
+        INSERT INTO dashboard_semana (semana, dian, capturadas, causadas, actualizado_en)
+        VALUES %s
+        ON CONFLICT (semana) DO UPDATE SET
+          dian = EXCLUDED.dian, capturadas = EXCLUDED.capturadas,
+          causadas = EXCLUDED.causadas, actualizado_en = now()
+    """, [(s["semana"], s["dian"], s["capturadas"], s["causadas"], _now_sql()) for s in semanas],
+        template="(%s,%s,%s,%s,%s)", page_size=1000)
+    return len(semanas)
+
+
+def _now_sql():
+    return ahora_ms()[0]
 
 
 def sembrar_maestros_oficiales(cur, conceptos, destinos, proveedores):
@@ -270,7 +322,7 @@ def sembrar_maestros_oficiales(cur, conceptos, destinos, proveedores):
 
 
 def run_sync(conn, filas, *, purge_demo=False, actor="sistema", origen="sync",
-             always_event=False, maestros=None) -> dict:
+             always_event=False, maestros=None, dash_semanas=None) -> dict:
     """Escribe las filas en Postgres en UNA transacción. Devuelve el resumen.
 
     NO hace commit/rollback: el llamador decide (permite dry-run y reuso).
@@ -343,6 +395,8 @@ def run_sync(conn, filas, *, purge_demo=False, actor="sistema", origen="sync",
     n_conceptos = n_destinos = n_proveedores = 0
     if maestros is not None:
         n_conceptos, n_destinos, n_proveedores = sembrar_maestros_oficiales(cur, *maestros)
+    if dash_semanas is not None:
+        sync_dashboard_semana(cur, dash_semanas)
 
     resumen = {
         "facturas_vista": len(filas),
@@ -397,7 +451,8 @@ def main() -> int:
     try:
         r = run_sync(conn, filas, purge_demo=args.purge_demo, actor=args.actor,
                      origen="web" if args.always_event else "sync",
-                     always_event=args.always_event, maestros=fetch_maestros(args.tenant))
+                     always_event=args.always_event, maestros=fetch_maestros(args.tenant),
+                     dash_semanas=fetch_dashboard_semana(args.tenant))
         if args.dry_run:
             conn.rollback(); print("\n[DRY-RUN] ROLLBACK — no se persistió nada.")
         else:

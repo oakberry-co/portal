@@ -553,3 +553,11 @@ button.ghost { background: #fff; color: var(--purple); }
 .dsh-val { font-size: 11px; color: var(--ink); }
 .dsh-bar { height: 4px; background: var(--cream-2); border-radius: 3px; margin-top: 2px; min-width: 70px; }
 .dsh-bar span { display: block; height: 100%; border-radius: 3px; background: linear-gradient(90deg, var(--purple), var(--coral)); }
+
+/* Confianza por proveedor (medición de fiabilidad) */
+.conf { font-weight: 700; font-size: 11px; display: inline-flex; align-items: baseline; gap: 4px; padding: 1px 7px; border-radius: 999px; }
+.conf i { font-style: normal; font-size: 9px; opacity: .55; font-weight: 600; }
+.conf.hi  { color: #1e7d47;       background: rgba(39,174,96,.13); }
+.conf.mid { color: var(--warn);   background: rgba(183,121,31,.12); }
+.conf.lo  { color: var(--danger); background: rgba(192,57,43,.10); }
+.dsh-card.hl { border-color: var(--purple); box-shadow: 0 0 0 1.5px rgba(95,75,139,.35), var(--shadow); }

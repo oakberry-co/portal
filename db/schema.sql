@@ -256,4 +256,24 @@ CREATE TABLE IF NOT EXISTS sync_solicitudes (
 CREATE INDEX IF NOT EXISTS ix_sol_pendiente ON sync_solicitudes (estado)
   WHERE estado = 'pendiente';
 
+-- -----------------------------------------------------------------------------
+-- 8) CONFIANZA por proveedor + snapshot del Dashboard. Miden "qué tan fidedigna
+--    es la info que se pone en automático" y completan el Dashboard (fuga+causadas).
+-- -----------------------------------------------------------------------------
+-- Confianza = consistencia histórica del proveedor: si sus facturas casi siempre
+-- reciben el mismo concepto, la sugerencia es confiable. La VM la calcula del histórico.
+ALTER TABLE maestro_proveedores
+  ADD COLUMN IF NOT EXISTS n_facturas INT,
+  ADD COLUMN IF NOT EXISTS confianza  NUMERIC(4,3);   -- 0..1 (share del concepto top)
+
+-- Snapshot semanal desde BQ (universo DIAN vs capturado, causadas en Siigo). La VM
+-- lo computa en cada --full; el Dashboard lo lee para Fuga % y Causadas %.
+CREATE TABLE IF NOT EXISTS dashboard_semana (
+  semana         TEXT PRIMARY KEY,                    -- 'YYYY-Sww' (ISO)
+  dian           INT,                                 -- universo DIAN (recibidas)
+  capturadas     INT,                                 -- de esas, con XML propio
+  causadas       INT,                                 -- causadas en Siigo
+  actualizado_en TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 COMMIT;

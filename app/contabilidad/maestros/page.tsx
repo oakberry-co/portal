@@ -8,7 +8,7 @@ async function cargar(): Promise<MaestrosData> {
   const [conceptos, destinos, proveedores, cuentas, retenciones] = await Promise.all([
     pool.query("SELECT nombre, cuenta_puc, activo, creado_por FROM maestro_conceptos ORDER BY activo DESC, nombre"),
     pool.query("SELECT nombre, short_code, activo, creado_por FROM maestro_destinos ORDER BY activo DESC, nombre"),
-    pool.query("SELECT nit, nombre, concepto_default, destino_default, cuenta_puc_default, retencion_hint, plazo_dias, fuente FROM maestro_proveedores ORDER BY nombre NULLS LAST"),
+    pool.query("SELECT nit, nombre, concepto_default, destino_default, cuenta_puc_default, retencion_hint, plazo_dias, fuente, n_facturas, confianza::text FROM maestro_proveedores ORDER BY nombre NULLS LAST"),
     pool.query("SELECT codigo, nombre, activo FROM maestro_cuentas_puc ORDER BY codigo"),
     pool.query(`SELECT r.nit_proveedor AS nit, mp.nombre,
                   max(CASE WHEN r.tipo='ReteFuente' THEN r.tarifa END)::text AS retefuente,

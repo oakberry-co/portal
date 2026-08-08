@@ -9,7 +9,7 @@ import {
 export type MaestrosData = {
   conceptos: { nombre: string; cuenta_puc: string | null; activo: boolean; creado_por: string | null }[];
   destinos: { nombre: string; short_code: string | null; activo: boolean; creado_por: string | null }[];
-  proveedores: { nit: string; nombre: string | null; concepto_default: string | null; destino_default: string | null; cuenta_puc_default: string | null; retencion_hint: string | null; plazo_dias: number | null; fuente: string }[];
+  proveedores: { nit: string; nombre: string | null; concepto_default: string | null; destino_default: string | null; cuenta_puc_default: string | null; retencion_hint: string | null; plazo_dias: number | null; fuente: string; n_facturas: number | null; confianza: string | null }[];
   cuentas: { codigo: string; nombre: string; activo: boolean }[];
   retenciones: { nit: string; nombre: string | null; retefuente: string | null; reteica: string | null; reteiva: string | null; humano: boolean }[];
 };
@@ -131,7 +131,7 @@ export function MaestrosView({ data }: { data: MaestrosData }) {
             <input name="plazo_dias" placeholder="Plazo (días)" inputMode="numeric" />
             <button type="submit">Agregar</button>
           </form>
-          <table className="mst-tabla"><thead><tr><th>NIT</th><th>Proveedor</th><th>Concepto</th><th>Destino</th><th>PUC</th><th>Plazo</th><th>Fuente</th></tr></thead>
+          <table className="mst-tabla"><thead><tr><th>NIT</th><th>Proveedor</th><th>Concepto</th><th>Destino</th><th>PUC</th><th>Plazo</th><th>Confianza</th><th>Fuente</th></tr></thead>
             <tbody>{data.proveedores.filter((r) => match(r.nit, r.nombre, r.concepto_default, r.destino_default)).map((r) => (
               <tr key={r.nit}>
                 <td className="mono">{r.nit}</td>
@@ -140,6 +140,9 @@ export function MaestrosView({ data }: { data: MaestrosData }) {
                 <td><Edit grupo="proveedores" id={r.nit} campo="destino_default" value={r.destino_default} /></td>
                 <td className="mono"><Edit grupo="proveedores" id={r.nit} campo="cuenta_puc_default" value={r.cuenta_puc_default} /></td>
                 <td><Edit grupo="proveedores" id={r.nit} campo="plazo_dias" value={r.plazo_dias} num suffix=" d" /></td>
+                <td>{r.confianza != null
+                  ? <span className={"conf " + (Number(r.confianza) >= 0.8 ? "hi" : Number(r.confianza) >= 0.5 ? "mid" : "lo")} title={`${r.n_facturas ?? 0} factura(s) de historia`}>{Math.round(Number(r.confianza) * 100)}%<i>{r.n_facturas ?? 0}</i></span>
+                  : <span className="muted">—</span>}</td>
                 <td>{fu(r.fuente)}</td>
               </tr>))}</tbody></table>
         </>
