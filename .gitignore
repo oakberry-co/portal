@@ -25,3 +25,7 @@ npm-debug.log*
 
 # typescript
 *.tsbuildinfo
+
+# Python (scripts/ del sync BQ→Postgres)
+__pycache__/
+*.pyc

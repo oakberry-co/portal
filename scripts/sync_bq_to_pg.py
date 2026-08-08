@@ -1,0 +1,322 @@
+#!/usr/bin/env python3
+"""Sync BigQuery facturación → Postgres (portal de conciliación de pagos).
+
+El único puente BQ→Postgres. Corre EN PARALELO al Sheet sin pisar decisiones
+humanas (esto es lo que el Google Sheet no podía garantizar):
+
+  · facturas          INSERT de nuevas por CUFE. NUNCA hace UPDATE de una
+                      existente (identidad/montos = verdad DIAN, capturada una vez).
+  · factura_propuesta UPSERT. SÍ se refresca: es la sugerencia de la máquina
+                      (concepto/destino/retención/plazo + confianza).
+  · factura_estado    INSERT (cufe,'capturada') SOLO para nuevas. Jamás toca una
+                      fila existente → lo que un humano confirmó es intocable.
+  · maestros          Siembra conceptos/destinos distintos para los comboboxes.
+  · eventos           Un evento tipo='sync' en la bitácora append-only encadenada
+                      por hash (mismo algoritmo que lib/eventos.ts). Solo cuando
+                      hubo cambio real, salvo que se fuerce (corrida manual).
+
+Regla de oro del portal: la app NO se monta sobre BigQuery. BQ = bodega
+analítica; Postgres = base operacional. Este job es el reflejo.
+
+Uso:
+  DATABASE_URL=postgres://... python3 scripts/sync_bq_to_pg.py [opciones]
+  (si no está en el entorno, lee ../.env.local junto al repo)
+
+Opciones:
+  --dry-run          Ejecuta todo y hace ROLLBACK. Reporta, no persiste.
+  --purge-demo       Borra las facturas de demo (cufe LIKE 'CUFE-DEMO-%').
+  --since FECHA      Solo facturas con fecha_emision >= FECHA (YYYY-MM-DD).
+  --since-days N     Solo los últimos N días (atajo para el cron frecuente).
+  --tenant NOMBRE    Tenant (default: manelfoods).
+  --actor QUIEN      Actor del evento (default: sistema; el botón pasa el correo).
+  --always-event     Escribe el evento aunque no haya cambios (corrida manual).
+"""
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import os
+import sys
+from datetime import datetime, timezone, timedelta
+
+import psycopg2
+from psycopg2.extras import Json, execute_values
+from google.cloud import bigquery
+
+PROJECT = "project-oakberry-colombia-dw"
+LOCK_KEY = 918273  # idéntico a lib/eventos.ts: serializa la cadena de eventos
+
+
+# ---------------------------------------------------------------------------
+# Bitácora: hash canónico IDÉNTICO a lib/eventos.ts (llaves ordenadas).
+#   payload = canonical({actor,campo,creadoEn,cufe,tipo,valorAnterior,valorNuevo})
+#   hash    = sha256(payload || hash_anterior)
+# Validado contra la cadena creada por el portal (8/8 eventos). Los valores del
+# evento son ASCII (ISO + enteros) para que canonical() calce byte a byte.
+# ---------------------------------------------------------------------------
+def canonical(v) -> str:
+    if v is None or isinstance(v, (str, int, float, bool)):
+        return json.dumps(v, ensure_ascii=False)
+    if isinstance(v, list):
+        return "[" + ",".join(canonical(x) for x in v) + "]"
+    if isinstance(v, dict):
+        return "{" + ",".join(
+            json.dumps(k, ensure_ascii=False) + ":" + canonical(v[k])
+            for k in sorted(v.keys())
+        ) + "}"
+    raise TypeError(f"canonical: tipo no soportado {type(v)}")
+
+
+def calcular_hash(cufe, tipo, campo, valor_anterior, valor_nuevo, actor,
+                  creado_en_iso, hash_anterior) -> str:
+    payload = canonical({
+        "cufe": cufe, "tipo": tipo, "campo": campo,
+        "valorAnterior": valor_anterior if valor_anterior is not None else None,
+        "valorNuevo": valor_nuevo if valor_nuevo is not None else None,
+        "actor": actor, "creadoEn": creado_en_iso,
+    })
+    return hashlib.sha256((payload + hash_anterior).encode("utf-8")).hexdigest()
+
+
+def ahora_ms():
+    """Instante UTC truncado a ms + su ISO 'YYYY-MM-DDTHH:MM:SS.mmmZ'.
+
+    El ISO debe reproducirse EXACTO al releer: node-pg lee el timestamptz como
+    Date (ms) y hace toISOString(). Guardamos con precisión ms para que el
+    round-trip devuelva el mismo string usado en el hash.
+    """
+    now = datetime.now(timezone.utc)
+    now = now.replace(microsecond=(now.microsecond // 1000) * 1000)
+    iso = now.strftime("%Y-%m-%dT%H:%M:%S.") + f"{now.microsecond // 1000:03d}Z"
+    return now, iso
+
+
+def registrar_evento(cur, *, cufe, tipo, valor_nuevo, actor, origen):
+    """Inserta un evento en la bitácora encadenada (mismo lock que el portal)."""
+    cur.execute("SELECT pg_advisory_xact_lock(%s)", (LOCK_KEY,))
+    cur.execute("SELECT hash_evento FROM eventos ORDER BY id DESC LIMIT 1")
+    row = cur.fetchone()
+    hash_anterior = row[0] if row else "GENESIS"
+    creado_dt, creado_iso = ahora_ms()
+    valor_nuevo = {**valor_nuevo, "corrida": creado_iso}
+    hash_evento = calcular_hash(
+        cufe, tipo, None, None, valor_nuevo, actor, creado_iso, hash_anterior)
+    cur.execute("""
+        INSERT INTO eventos
+          (cufe, tipo, campo, valor_anterior, valor_nuevo, actor, actor_rol,
+           origen, creado_en, hash_anterior, hash_evento)
+        VALUES (%s, %s, NULL, NULL, %s, %s, NULL, %s, %s, %s, %s)
+    """, (cufe, tipo, Json(valor_nuevo), actor, origen, creado_dt,
+          hash_anterior, hash_evento))
+    return hash_evento
+
+
+# ---------------------------------------------------------------------------
+# Fuente en BQ: la vista de clasificación (ya filtra a Manel Foods y trae
+# concepto/destino/retención sugeridos) + la tabla base para subtotal/iva/
+# responsabilidad DIAN/recepción. 1:1 por CUFE (verificado: 0 nulos, 0 dups).
+# ---------------------------------------------------------------------------
+def query_fuente(tenant: str, since: str | None) -> str:
+    filtro_fecha = f"AND vc.fecha_emision >= '{since}'" if since else ""
+    return f"""
+    SELECT
+      vc.cufe,
+      -- declarados (regalías/arriendo del exterior) no traen NIT colombiano;
+      -- la columna es NOT NULL → centinela 'ND'. numero cae al CUFE si faltara.
+      COALESCE(vc.proveedor_nit, 'ND')              AS nit_proveedor,
+      vc.proveedor                                  AS nombre_proveedor,
+      COALESCE(vc.numero_factura, vc.cufe)          AS numero,
+      SAFE_CAST(REGEXP_REPLACE(vc.numero_factura, r'\\D', '') AS INT64) AS consecutivo_num,
+      vc.fecha_emision,
+      ROUND(f.subtotal, 2)                          AS subtotal,
+      ROUND(f.iva, 2)                               AS iva,
+      ROUND(f.valor_total, 2)                       AS total,
+      COALESCE(f.moneda, 'COP')                     AS moneda,
+      (COALESCE(f.moneda, 'COP') <> 'COP')          AS es_exterior,
+      f.proveedor_responsabilidades                 AS responsabilidad_dian,
+      COALESCE(f._ingested_at, TIMESTAMP(f.fecha))  AS recepcion,
+      vc.concepto                                   AS concepto_sug,
+      COALESCE(vc.destino_nombre, vc.destino_tipo)  AS destino_sug,
+      ROUND(vc.retefuente, 2)                        AS retefuente_sug,
+      ROUND(vc.reteiva, 2)                           AS reteiva_sug,
+      IF(vc.retenciones - COALESCE(vc.retefuente, 0) - COALESCE(vc.reteiva, 0) > 1,
+         ROUND(vc.retenciones - COALESCE(vc.retefuente, 0) - COALESCE(vc.reteiva, 0), 2),
+         NULL)                                       AS reteica_sug,
+      vc.dias_de_pago                                AS plazo_dias_sug,
+      ROUND(f.confianza_clasificacion, 3)            AS confianza
+    FROM `{PROJECT}.facturacion.v_facturas_clasificadas` vc
+    JOIN `{PROJECT}.facturacion.facturas` f
+      ON f.cufe = vc.cufe AND f.tenant = vc.tenant
+    WHERE vc.tenant = '{tenant}'
+      AND vc.cufe IS NOT NULL AND vc.cufe != ''
+      {filtro_fecha}
+    QUALIFY ROW_NUMBER() OVER (PARTITION BY vc.cufe ORDER BY f._ingested_at DESC) = 1
+    """
+
+
+def fetch_source(tenant: str, since: str | None) -> list[dict]:
+    bq = bigquery.Client(project=PROJECT)
+    return [dict(r) for r in bq.query(query_fuente(tenant, since)).result()]
+
+
+def run_sync(conn, filas, *, purge_demo=False, actor="sistema", origen="sync",
+             always_event=False) -> dict:
+    """Escribe las filas en Postgres en UNA transacción. Devuelve el resumen.
+
+    NO hace commit/rollback: el llamador decide (permite dry-run y reuso).
+    """
+    cur = conn.cursor()
+    run_ts, _ = ahora_ms()
+
+    purgadas = 0
+    if purge_demo:
+        cur.execute("DELETE FROM facturas WHERE cufe LIKE 'CUFE-DEMO-%'")
+        purgadas = cur.rowcount
+
+    # facturas — INSERT de nuevas, nunca UPDATE. RETURNING → cuántas nuevas.
+    nuevas = execute_values(cur, """
+        INSERT INTO facturas
+          (cufe, nit_proveedor, nombre_proveedor, numero, consecutivo_num,
+           fecha_emision, subtotal, iva, total, moneda, es_exterior,
+           responsabilidad_dian, sincronizado_en)
+        VALUES %s
+        ON CONFLICT (cufe) DO NOTHING
+        RETURNING cufe
+    """, [(
+        r["cufe"], r["nit_proveedor"], r["nombre_proveedor"], r["numero"],
+        r["consecutivo_num"], r["fecha_emision"], r["subtotal"], r["iva"],
+        r["total"], r["moneda"], r["es_exterior"], r["responsabilidad_dian"],
+        r["recepcion"],
+    ) for r in filas], template="(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+        page_size=1000, fetch=True)
+    n_facturas = len(nuevas)
+
+    # factura_estado — fila inicial 'capturada' solo para nuevas.
+    execute_values(cur,
+        "INSERT INTO factura_estado (cufe, estado) VALUES %s "
+        "ON CONFLICT (cufe) DO NOTHING",
+        [(r["cufe"], "capturada") for r in filas],
+        template="(%s,%s)", page_size=1000)
+
+    # factura_propuesta — UPSERT (se refresca la sugerencia de la máquina).
+    execute_values(cur, """
+        INSERT INTO factura_propuesta
+          (cufe, concepto_sug, destino_sug, retefuente_sug, reteiva_sug,
+           reteica_sug, plazo_dias_sug, confianza, refrescado_en)
+        VALUES %s
+        ON CONFLICT (cufe) DO UPDATE SET
+          concepto_sug   = EXCLUDED.concepto_sug,
+          destino_sug    = EXCLUDED.destino_sug,
+          retefuente_sug = EXCLUDED.retefuente_sug,
+          reteiva_sug    = EXCLUDED.reteiva_sug,
+          reteica_sug    = EXCLUDED.reteica_sug,
+          plazo_dias_sug = EXCLUDED.plazo_dias_sug,
+          confianza      = EXCLUDED.confianza,
+          refrescado_en  = EXCLUDED.refrescado_en
+    """, [(
+        r["cufe"], r["concepto_sug"], r["destino_sug"], r["retefuente_sug"],
+        r["reteiva_sug"], r["reteica_sug"], r["plazo_dias_sug"],
+        r["confianza"], run_ts,
+    ) for r in filas], template="(%s,%s,%s,%s,%s,%s,%s,%s,%s)", page_size=1000)
+
+    # maestros — sembrar opciones distintas para los comboboxes.
+    conceptos = sorted({r["concepto_sug"].strip() for r in filas
+                        if r["concepto_sug"] and r["concepto_sug"].strip()})
+    destinos = sorted({r["destino_sug"].strip() for r in filas
+                       if r["destino_sug"] and r["destino_sug"].strip()})
+    n_conceptos = len(execute_values(cur,
+        "INSERT INTO maestro_conceptos (nombre, creado_por) VALUES %s "
+        "ON CONFLICT (nombre) DO NOTHING RETURNING nombre",
+        [(c, "sync") for c in conceptos], template="(%s,%s)", fetch=True)) if conceptos else 0
+    n_destinos = len(execute_values(cur,
+        "INSERT INTO maestro_destinos (nombre, creado_por) VALUES %s "
+        "ON CONFLICT (nombre) DO NOTHING RETURNING nombre",
+        [(d, "sync") for d in destinos], template="(%s,%s)", fetch=True)) if destinos else 0
+
+    resumen = {
+        "facturas_vista": len(filas),
+        "facturas_nuevas": n_facturas,
+        "propuestas_refrescadas": len(filas),
+        "conceptos_nuevos": n_conceptos,
+        "destinos_nuevos": n_destinos,
+        "demo_purgadas": purgadas,
+    }
+
+    # eventos — solo si hubo cambio real (o si se fuerza, p.ej. botón manual).
+    # Evita 96 eventos/día de ruido cuando el cron corre y no entra nada nuevo.
+    cambio = (n_facturas or purgadas or n_conceptos or n_destinos)
+    resumen["evento"] = None
+    if always_event or cambio:
+        resumen["evento"] = registrar_evento(
+            cur, cufe=None, tipo="sync", valor_nuevo=resumen.copy(),
+            actor=actor, origen=origen)
+    return resumen
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description="Sync BQ facturación → Postgres portal")
+    ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--purge-demo", action="store_true")
+    ap.add_argument("--since", default=None)
+    ap.add_argument("--since-days", type=int, default=None)
+    ap.add_argument("--tenant", default="manelfoods")
+    ap.add_argument("--actor", default="sistema")
+    ap.add_argument("--always-event", action="store_true")
+    args = ap.parse_args()
+
+    dsn = cargar_database_url()
+    if not dsn:
+        print("ERROR: falta DATABASE_URL (ni en el entorno ni en ../.env.local)", file=sys.stderr)
+        return 2
+
+    since = args.since
+    if args.since_days is not None:
+        since = (datetime.now(timezone.utc).date() - timedelta(days=args.since_days)).isoformat()
+
+    filas = fetch_source(args.tenant, since)
+    print(f"BQ: {len(filas)} facturas (tenant={args.tenant}"
+          + (f", desde {since}" if since else ", histórico completo") + ")")
+    if not filas and not args.purge_demo:
+        print("Nada que sincronizar."); return 0
+
+    conn = psycopg2.connect(dsn)
+    conn.autocommit = False
+    try:
+        r = run_sync(conn, filas, purge_demo=args.purge_demo, actor=args.actor,
+                     origen="web" if args.always_event else "sync",
+                     always_event=args.always_event)
+        if args.dry_run:
+            conn.rollback(); print("\n[DRY-RUN] ROLLBACK — no se persistió nada.")
+        else:
+            conn.commit(); print("\nCOMMIT OK.")
+        print(f"  facturas nuevas ....... {r['facturas_nuevas']}")
+        print(f"  propuestas refrescadas  {r['propuestas_refrescadas']}")
+        print(f"  conceptos nuevos ...... {r['conceptos_nuevos']}")
+        print(f"  destinos nuevos ....... {r['destinos_nuevos']}")
+        print(f"  demo purgadas ......... {r['demo_purgadas']}")
+        print(f"  evento ................ {(r['evento'] or 'sin cambios — omitido')[:24]}")
+        return 0
+    except Exception as e:
+        conn.rollback()
+        print(f"ERROR — ROLLBACK: {e}", file=sys.stderr)
+        return 1
+    finally:
+        conn.close()
+
+
+def cargar_database_url() -> str | None:
+    if os.environ.get("DATABASE_URL"):
+        return os.environ["DATABASE_URL"]
+    env_local = os.path.join(os.path.dirname(__file__), "..", ".env.local")
+    if os.path.exists(env_local):
+        with open(env_local) as fh:
+            for line in fh:
+                line = line.strip()
+                if line.startswith("DATABASE_URL="):
+                    return line.split("=", 1)[1].strip().strip('"').strip("'")
+    return None
+
+
+if __name__ == "__main__":
+    sys.exit(main())

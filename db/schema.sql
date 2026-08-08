@@ -209,4 +209,25 @@ CREATE TABLE IF NOT EXISTS usuarios (
   CONSTRAINT ck_rol CHECK (rol IN ('conciliador','pagador','causador','admin'))
 );
 
+-- -----------------------------------------------------------------------------
+-- 7) SYNC_SOLICITUDES — el "apartado" de extracción de la página escribe aquí
+--    cuando alguien pide una actualización manual (botón "Sincronizar ahora").
+--    El sync corre en la VM (donde viven las credenciales BQ, como el resto de
+--    extracciones); NO montamos la app sobre BQ. La VM atiende estas solicitudes
+--    en su ciclo (patrón watcher: detecta pendiente → extrae → marca atendida).
+--    Canal = la propia base (VM y portal ya la alcanzan): sin puertos ni polling
+--    que despierte Neon fuera de su ciclo.
+-- -----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS sync_solicitudes (
+  id             BIGSERIAL PRIMARY KEY,
+  solicitado_por TEXT        NOT NULL,                 -- correo del humano
+  solicitado_en  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  estado         TEXT        NOT NULL DEFAULT 'pendiente',  -- pendiente | atendida
+  atendido_en    TIMESTAMPTZ,
+  resultado      JSONB,                                -- resumen del sync que la atendió
+  CONSTRAINT ck_sol_estado CHECK (estado IN ('pendiente','atendida'))
+);
+CREATE INDEX IF NOT EXISTS ix_sol_pendiente ON sync_solicitudes (estado)
+  WHERE estado = 'pendiente';
+
 COMMIT;

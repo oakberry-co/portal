@@ -23,6 +23,23 @@ async function asegurarDestino(c: PoolClient, nombre: string, actor: string) {
   }
 }
 
+/** El "apartado" de extracción: registra una solicitud de sync manual. La VM
+ *  —donde viven las credenciales BQ, como el resto de extracciones— la atiende
+ *  en su ciclo (≤10 min), patrón watcher; NO montamos la app sobre BQ. Colapsa:
+ *  si ya hay una pendiente, no apila otra (evita disparos repetidos). */
+export async function solicitarSync() {
+  const user = await getCurrentUser();
+  await withTx(async (c) => {
+    const p = await c.query("SELECT 1 FROM sync_solicitudes WHERE estado = 'pendiente' LIMIT 1");
+    if (p.rowCount === 0) {
+      await c.query("INSERT INTO sync_solicitudes (solicitado_por) VALUES ($1)", [user.email]);
+      // Sin evento aquí: la solicitud queda en sync_solicitudes y el 'sync' que
+      // la atiende (atribuido a este correo) es el registro en la bitácora.
+    }
+  });
+  revalidatePath("/contabilidad/conciliacion");
+}
+
 /** Guarda concepto + destino + plazo de una factura. Estado + bitácora, atómico. */
 export async function guardarClasificacion(formData: FormData) {
   const user = await getCurrentUser();
