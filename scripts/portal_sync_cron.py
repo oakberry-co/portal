@@ -20,6 +20,8 @@ Uso (cron):
 from __future__ import annotations
 
 import argparse
+import os
+import subprocess
 import sys
 from datetime import datetime, timezone, timedelta
 
@@ -30,6 +32,29 @@ from sync_bq_to_pg import fetch_source, fetch_maestros, run_sync, cargar_databas
 
 TENANT = "manelfoods"
 VENTANA_DIAS = 45  # el ciclo frecuente solo mira lo reciente (rápido, poco churn)
+
+# Cuando alguien aprieta "Sincronizar ahora", además de refrescar BQ→portal leemos
+# los buzones (mismo ingest del cron horario) para traer facturas recién llegadas.
+FACT_DIR = "/home/daniel/proyectos/datawarehouse/contabilidad/facturacion"
+BUZONES = ["compras@manelfoods.com", "daniela@manelfoods.com",
+           "valerie@manelfoods.com", "paula@manelfoods.com"]
+
+
+def leer_correos():
+    """Best-effort: lee los 4 buzones → XML DIAN → BigQuery (ingest_buzon.py, el
+    mismo del cron horario). Si falla uno, seguimos: BQ ya tiene lo del último
+    barrido horario y el sync igual corre. Solo se llama al atender el botón."""
+    ingest = os.path.join(FACT_DIR, "ingest_buzon.py")
+    if not os.path.exists(ingest):
+        print("[portal_sync_cron] ingest_buzon no encontrado — omito lectura de correos")
+        return
+    for mbox in BUZONES:
+        try:
+            subprocess.run(["python3", ingest, "--mailbox", mbox, "--days", "2"],
+                           cwd=FACT_DIR, check=True, capture_output=True, timeout=180)
+            print(f"[portal_sync_cron] correo leído: {mbox}")
+        except Exception as e:
+            print(f"[portal_sync_cron] ingest {mbox} falló (sigo): {e}")
 
 
 def main() -> int:
