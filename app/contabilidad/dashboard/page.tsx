@@ -56,11 +56,12 @@ export default async function DashboardPage() {
   }
 
   const T = filas.reduce((a, f) => ({
-    facturas: a.facturas + f.facturas, valor: a.valor + f.valor, con_concepto: a.con_concepto + f.con_concepto,
+    facturas: a.facturas + f.facturas, valor: a.valor + f.valor, con_pdf: a.con_pdf + f.con_pdf,
+    con_concepto: a.con_concepto + f.con_concepto,
     con_destino: a.con_destino + f.con_destino, con_confianza: a.con_confianza + f.con_confianza,
     retenciones: a.retenciones + f.retenciones, aPagar: a.aPagar + f.a_pagar,
     dian: a.dian + (f.dian ?? 0), capturadas: a.capturadas + (f.capturadas ?? 0), causadas: a.causadas + (f.causadas ?? 0),
-  }), { facturas: 0, valor: 0, con_concepto: 0, con_destino: 0, con_confianza: 0, retenciones: 0, aPagar: 0, dian: 0, capturadas: 0, causadas: 0 });
+  }), { facturas: 0, valor: 0, con_pdf: 0, con_concepto: 0, con_destino: 0, con_confianza: 0, retenciones: 0, aPagar: 0, dian: 0, capturadas: 0, causadas: 0 });
   const maxVal = Math.max(1, ...filas.map((f) => f.valor));
 
   return (
@@ -73,6 +74,7 @@ export default async function DashboardPage() {
         <div className="dsh-card hl"><i>Confiable (auto)</i><b>{pct(T.con_confianza, T.facturas)}%</b><span>proveedor consistente</span></div>
         <div className="dsh-card"><i>Con concepto</i><b>{pct(T.con_concepto, T.facturas)}%</b><span>clasificable</span></div>
         <div className="dsh-card"><i>Con destino</i><b>{pct(T.con_destino, T.facturas)}%</b><span>tienda / c. de costo</span></div>
+        <div className="dsh-card"><i>PDF proveedor</i><b>{pct(T.con_pdf, T.facturas)}%</b><span>original del negocio (DIAN 100%)</span></div>
         <div className="dsh-card"><i>Captura DIAN</i><b>{pct(T.capturadas, T.dian)}%</b><span>fuga {T.dian - T.capturadas}</span></div>
         <div className="dsh-card"><i>Causadas (Siigo)</i><b>{pct(T.causadas, T.dian)}%</b><span>en contabilidad</span></div>
       </div>
@@ -84,11 +86,11 @@ export default async function DashboardPage() {
           <thead><tr>
             <th>Semana</th><th>Rango</th><th className="num">Facturas</th><th>Valor</th>
             <th className="num">Confiable</th><th className="num">Concepto</th><th className="num">Destino</th>
-            <th className="num">Captura</th><th className="num">Causadas</th><th className="num">A pagar</th>
+            <th className="num">PDF prov.</th><th className="num">Captura</th><th className="num">Causadas</th><th className="num">A pagar</th>
           </tr></thead>
           <tbody>
             {filas.map((f) => {
-              const pConf = pct(f.con_confianza, f.facturas), pCon = pct(f.con_concepto, f.facturas), pDes = pct(f.con_destino, f.facturas);
+              const pConf = pct(f.con_confianza, f.facturas), pCon = pct(f.con_concepto, f.facturas), pDes = pct(f.con_destino, f.facturas), pPdf = pct(f.con_pdf, f.facturas);
               const pCap = f.dian ? pct(f.capturadas ?? 0, f.dian) : null;
               const pCau = f.dian ? pct(f.causadas ?? 0, f.dian) : null;
               return (
@@ -100,6 +102,7 @@ export default async function DashboardPage() {
                   <td className={"num heat " + heat(pConf)}>{pConf}%</td>
                   <td className={"num heat " + heat(pCon)}>{pCon}%</td>
                   <td className={"num heat " + heat(pDes)}>{pDes}%</td>
+                  <td className={"num heat " + heat(pPdf)}>{pPdf}%</td>
                   <td className={"num" + (pCap != null ? " heat " + heat(pCap) : "")} title={f.dian ? `fuga ${(f.dian ?? 0) - (f.capturadas ?? 0)} de ${f.dian}` : ""}>{pCap != null ? pCap + "%" : "—"}</td>
                   <td className={"num" + (pCau != null ? " heat " + heat(pCau) : "")}>{pCau != null ? pCau + "%" : "—"}</td>
                   <td className="num">{M(f.a_pagar)}</td>

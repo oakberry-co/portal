@@ -128,7 +128,10 @@ def query_fuente(tenant: str, since: str | None) -> str:
       vc.proveedor                                  AS nombre_proveedor,
       COALESCE(vc.numero_factura, vc.cufe)          AS numero,
       SAFE_CAST(REGEXP_REPLACE(vc.numero_factura, r'\\D', '') AS INT64) AS consecutivo_num,
-      vc.fecha_emision,
+      -- una factura no puede emitirse en el futuro: los declarados fechados a fin
+      -- de mes (regalías/arriendo del mes en curso) caían en una "semana fantasma"
+      -- futura → topamos a hoy (Bogotá).
+      LEAST(vc.fecha_emision, CURRENT_DATE('America/Bogota')) AS fecha_emision,
       ROUND(f.subtotal, 2)                          AS subtotal,
       ROUND(f.iva, 2)                               AS iva,
       ROUND(f.valor_total, 2)                       AS total,
