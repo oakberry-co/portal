@@ -415,3 +415,23 @@ button.ghost { background: #fff; color: var(--purple); }
 .cbx-add.off { color: var(--lav); font-weight: 500; cursor: default; }
 .cbx-add.off:hover { background: none; }
 .cbx-empty { padding: 7px 10px; font-size: 12px; color: var(--lav); }
+
+/* Panel "Agregar" del combobox */
+.cbx-panel { padding: 10px; min-width: 250px; }
+.cbx-panel-title { font-family: var(--mono); font-size: 9.5px; text-transform: uppercase; letter-spacing: .06em; color: var(--purple); margin-bottom: 6px; }
+.cbx-panel-input { width: 100%; margin-bottom: 8px; }
+.cbx-warn { font-size: 11.5px; line-height: 1.4; margin-bottom: 8px; padding: 7px 9px; border-radius: 8px; background: #fff7e6; color: var(--warn); }
+.cbx-warn.dup { background: #fdeef0; color: var(--danger); }
+.cbx-warn.ok { background: #eaf7ee; color: var(--ok); }
+.cbx-warn b { font-weight: 700; }
+.cbx-sims { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px; }
+.cbx-sim { background: #fff; border: 1px solid var(--border-lav); border-radius: 999px; padding: 3px 9px; font-size: 11px; color: var(--purple) !important; cursor: pointer; font-weight: 600; }
+.cbx-sim:hover { border-color: var(--purple); background: var(--lav-soft); filter: none; }
+.cbx-panel-foot { display: flex; justify-content: flex-end; gap: 6px; }
+.cbx-panel-foot button { font-size: 11px; padding: 6px 12px; }
+.cbx-panel-foot button.ghost { background: #fff; color: var(--purple); border: 1px solid var(--border-lav); }
+
+/* Sufijo "%" en las tarifas del modal */
+.ret-tabla .pct-wrap { position: relative; display: block; }
+.ret-tabla .pct-wrap input { text-align: right; padding-right: 22px; }
+.ret-tabla .pct-sfx { position: absolute; right: 9px; top: 50%; transform: translateY(-50%); color: var(--lav); font-size: 12px; pointer-events: none; }

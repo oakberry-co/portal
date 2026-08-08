@@ -63,19 +63,19 @@ export function RetencionesModal({
               <tr>
                 <td>ReteFuente</td>
                 <td className="num">{copN(subtotal)}</td>
-                <td><input type="number" min={0} step="0.001" value={rf} onChange={(e) => setRf(e.target.value)} placeholder="0" /></td>
+                <td><span className="pct-wrap"><input type="number" min={0} step="0.001" value={rf} onChange={(e) => setRf(e.target.value)} placeholder="0" /><span className="pct-sfx">%</span></span></td>
                 <td className="num">{copN(amtRf)}</td>
               </tr>
               <tr>
                 <td>ReteIVA</td>
                 <td className="num">{copN(iva)}</td>
-                <td><input type="number" min={0} step="0.001" value={ri} onChange={(e) => setRi(e.target.value)} placeholder="0" /></td>
+                <td><span className="pct-wrap"><input type="number" min={0} step="0.001" value={ri} onChange={(e) => setRi(e.target.value)} placeholder="0" /><span className="pct-sfx">%</span></span></td>
                 <td className="num">{copN(amtRi)}</td>
               </tr>
               <tr>
                 <td>ReteICA</td>
                 <td className="num">{copN(subtotal)}</td>
-                <td><input type="number" min={0} step="0.001" value={ric} onChange={(e) => setRic(e.target.value)} placeholder="0" /></td>
+                <td><span className="pct-wrap"><input type="number" min={0} step="0.001" value={ric} onChange={(e) => setRic(e.target.value)} placeholder="0" /><span className="pct-sfx">%</span></span></td>
                 <td className="num">{copN(amtRic)}</td>
               </tr>
             </tbody>

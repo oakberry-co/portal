@@ -101,10 +101,10 @@ export function FacturaCard({
         <input type="hidden" name="cufe" value={f.cufe} />
         <div className="c-field">
           {conf != null && <span className={"dot " + (confBaja ? "warn" : "ok")} title={`Máquina: "${f.concepto_sug ?? "—"}" · ${conf}%`} />}
-          <Combobox name="concepto" options={conceptos} defaultValue={f.concepto ?? f.concepto_sug ?? ""} placeholder="Concepto" />
+          <Combobox name="concepto" label="concepto" options={conceptos} defaultValue={f.concepto ?? f.concepto_sug ?? ""} placeholder="Concepto" />
         </div>
         <div className="c-field">
-          <Combobox name="destino" options={destinos} defaultValue={f.destino ?? f.destino_sug ?? ""} placeholder="Destino" />
+          <Combobox name="destino" label="destino" options={destinos} defaultValue={f.destino ?? f.destino_sug ?? ""} placeholder="Destino" />
         </div>
         <div className="c-plazo">
           <input name="plazo_dias" type="number" min={0} defaultValue={f.plazo_dias ?? ""} placeholder="días" disabled={locked} title="Plazo (días)" />
