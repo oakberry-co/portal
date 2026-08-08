@@ -501,9 +501,11 @@ button.ghost { background: #fff; color: var(--purple); }
 .mst-add button { background: var(--purple); color: #fff; border: none; border-radius: 8px;
   padding: 8px 18px; font-weight: 700; font-size: 12.5px; cursor: pointer; }
 .mst-add button:hover { background: var(--purple-deep); }
-.mst-tabla { width: 100%; border-collapse: collapse; font-size: 12.5px;
+.mst-tabla { width: 100%; border-collapse: collapse; font-size: 12.5px; min-width: 0;
   background: var(--card); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
-.mst-tabla th { text-align: left; padding: 9px 12px; background: var(--lav-soft);
+/* anula el `th` global (position:sticky; top:60px) que descuadraba el encabezado */
+.mst-tabla th { position: static; top: auto; z-index: auto; vertical-align: middle;
+  text-align: left; padding: 9px 12px; background: var(--lav-soft);
   color: var(--purple-deep); font-weight: 700; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; border-bottom: 1px solid var(--border); }
 .mst-tabla td { padding: 8px 12px; border-bottom: 1px solid var(--border); color: var(--ink); vertical-align: middle; }
 .mst-tabla tr:last-child td { border-bottom: none; }

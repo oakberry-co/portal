@@ -39,17 +39,18 @@ export function MaestrosView({ data }: { data: MaestrosData }) {
   const match = (...xs: (string | number | null)[]) =>
     !filtro || xs.some((x) => String(x ?? "").toLowerCase().includes(filtro));
 
-  const cuentaN = data.conceptos.length, provN = data.proveedores.length;
+  const act = <T extends { activo: boolean }>(a: T[]) => a.filter((r) => r.activo).length;
+  const cuenta = (k: TabKey) =>
+    k === "conceptos" ? act(data.conceptos) : k === "destinos" ? act(data.destinos)
+    : k === "cuentas" ? act(data.cuentas) : k === "proveedores" ? data.proveedores.length
+    : k === "retenciones" ? data.retenciones.length : data.plazos.length;
 
   return (
     <div className="maestros">
       <div className="mst-tabs">
         {TABS.map((t) => (
           <button key={t.key} className={"mst-tab" + (tab === t.key ? " on" : "")} onClick={() => { setTab(t.key); setQ(""); }}>
-            {t.label}
-            <i>{t.key === "conceptos" ? cuentaN : t.key === "proveedores" ? provN
-              : t.key === "destinos" ? data.destinos.length : t.key === "cuentas" ? data.cuentas.length
-              : t.key === "retenciones" ? data.retenciones.length : data.plazos.length}</i>
+            {t.label}<i>{cuenta(t.key)}</i>
           </button>
         ))}
       </div>
@@ -65,7 +66,7 @@ export function MaestrosView({ data }: { data: MaestrosData }) {
             <button type="submit">Agregar</button>
           </form>
           <table className="mst-tabla"><thead><tr><th>Concepto</th><th>Cuenta PUC</th><th>Fuente</th><th></th></tr></thead>
-            <tbody>{data.conceptos.filter((r) => match(r.nombre, r.cuenta_puc)).map((r) => (
+            <tbody>{data.conceptos.filter((r) => r.activo && match(r.nombre, r.cuenta_puc)).map((r) => (
               <tr key={r.nombre} className={r.activo ? "" : "off"}>
                 <td>{r.nombre}</td><td className="mono">{r.cuenta_puc ?? "—"}</td><td>{fu(r.creado_por)}</td>
                 <td><Toggle tabla="conceptos" id={r.nombre} activo={r.activo} /></td>
@@ -81,7 +82,7 @@ export function MaestrosView({ data }: { data: MaestrosData }) {
             <button type="submit">Agregar</button>
           </form>
           <table className="mst-tabla"><thead><tr><th>Destino</th><th>Short code</th><th>Fuente</th><th></th></tr></thead>
-            <tbody>{data.destinos.filter((r) => match(r.nombre, r.short_code)).map((r) => (
+            <tbody>{data.destinos.filter((r) => r.activo && match(r.nombre, r.short_code)).map((r) => (
               <tr key={r.nombre} className={r.activo ? "" : "off"}>
                 <td>{r.nombre}</td><td className="mono">{r.short_code ?? "—"}</td><td>{fu(r.creado_por)}</td>
                 <td><Toggle tabla="destinos" id={r.nombre} activo={r.activo} /></td>
@@ -121,7 +122,7 @@ export function MaestrosView({ data }: { data: MaestrosData }) {
           </form>
           {data.cuentas.length === 0 && <p className="mst-empty">Aún vacío. Tu equipo contable entrega el plan de cuentas — agrégalas aquí o pásamelas y las cargo.</p>}
           <table className="mst-tabla"><thead><tr><th>Código</th><th>Cuenta</th><th></th></tr></thead>
-            <tbody>{data.cuentas.filter((r) => match(r.codigo, r.nombre)).map((r) => (
+            <tbody>{data.cuentas.filter((r) => r.activo && match(r.codigo, r.nombre)).map((r) => (
               <tr key={r.codigo} className={r.activo ? "" : "off"}>
                 <td className="mono">{r.codigo}</td><td>{r.nombre}</td>
                 <td><Toggle tabla="cuentas" id={r.codigo} activo={r.activo} /></td>
