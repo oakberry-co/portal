@@ -3,7 +3,8 @@
 import { useState } from "react";
 import { ETIQUETA, type Estado } from "@/lib/estados";
 import { Combobox } from "./Combobox";
-import { guardarClasificacion, confirmarRetenciones } from "./actions";
+import { guardarClasificacion } from "./actions";
+import { RetencionesModal } from "./RetencionesModal";
 
 export type FacturaRow = {
   cufe: string;
@@ -11,6 +12,9 @@ export type FacturaRow = {
   nit_proveedor: string;
   numero: string;
   fecha_emision: string | Date;
+  sincronizado_en: string | Date | null;
+  subtotal: string | null;
+  iva: string | null;
   total: string | null;
   responsabilidad_dian: string | null;
   estado: Estado;
@@ -34,31 +38,50 @@ export type FacturaRow = {
 
 const cop = new Intl.NumberFormat("es-CO", { style: "currency", currency: "COP", maximumFractionDigits: 0 });
 const copN = (n: number) => cop.format(Math.round(n || 0));
-const fecha = (d: string | Date | null) => (d ? new Date(d).toISOString().slice(0, 10) : "—");
-const ini = (conf: string | null, sug: string | null) =>
-  conf != null && conf !== "" ? String(Number(conf)) : sug != null && sug !== "" ? String(Number(sug)) : "";
-
-// display:contents deja que los <input>/campos de cada <form> participen en la
-// grilla de la fila -> dos formularios (clasificación / retenciones) en una línea.
+const num = (s: string | null) => (s != null && s !== "" ? Number(s) : 0);
 const contents = { display: "contents" as const };
+
+function ddmm(d: string | Date | null): string {
+  if (!d) return "—";
+  const x = new Date(d);
+  return `${String(x.getDate()).padStart(2, "0")}/${String(x.getMonth() + 1).padStart(2, "0")}`;
+}
+function semanaISO(d: string | Date | null): string {
+  if (!d) return "—";
+  const x = new Date(d);
+  const t = new Date(Date.UTC(x.getFullYear(), x.getMonth(), x.getDate()));
+  const day = t.getUTCDay() || 7;
+  t.setUTCDate(t.getUTCDate() + 4 - day);
+  const ys = new Date(Date.UTC(t.getUTCFullYear(), 0, 1));
+  return "S" + Math.ceil(((t.getTime() - ys.getTime()) / 86400000 + 1) / 7);
+}
 
 export function FacturaCard({
   f, conceptos, destinos,
 }: { f: FacturaRow; conceptos: string[]; destinos: string[] }) {
-  const total = f.total != null ? Number(f.total) : 0;
-  const conf = f.confianza != null ? Math.round(Number(f.confianza) * 100) : null;
+  const [modal, setModal] = useState(false);
 
-  const [rf, setRf] = useState(ini(f.retefuente, f.retefuente_sug));
-  const [ri, setRi] = useState(ini(f.reteiva, f.reteiva_sug));
-  const [ric, setRic] = useState(ini(f.reteica, f.reteica_sug));
-  const retenTotal = (Number(rf) || 0) + (Number(ri) || 0) + (Number(ric) || 0);
-  const valorAPagar = total - retenTotal;
+  const total = num(f.total);
+  const subtotal = num(f.subtotal);
+  const iva = num(f.iva);
+  const conf = f.confianza != null ? Math.round(Number(f.confianza) * 100) : null;
+  const confBaja = conf != null && conf < 85;
 
   const pend = f.estado === "capturada";
   const clasificada = f.estado !== "capturada";
   const locked = ["aprobada_pago", "pagada", "causada"].includes(f.estado);
   const retEditable = clasificada && !locked;
-  const confBaja = conf != null && conf < 85;
+
+  // Resumen de retenciones: lo confirmado si existe, si no la sugerencia (preview).
+  const retenTotal = f.retencion_ok && f.reten_total != null
+    ? num(f.reten_total)
+    : num(f.retefuente_sug) + num(f.reteiva_sug) + num(f.reteica_sug);
+  const valorAPagar = total - retenTotal;
+
+  // Vencimiento (día de pago) y si ya toca pagar.
+  const venc = f.fecha_vencimiento ? new Date(f.fecha_vencimiento) : null;
+  const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
+  const paraPago = !!venc && venc <= hoy && (f.estado === "retenciones_ok" || f.estado === "aprobada_pago");
 
   return (
     <div className={"fila" + (pend ? " pend" : "") + (locked ? " locked" : "")}>
@@ -66,9 +89,11 @@ export function FacturaCard({
 
       <div className="c-prov">
         <div className="prov" title={f.nombre_proveedor ?? ""}>{f.nombre_proveedor ?? "—"}</div>
-        <div className="muted mini">{f.numero} · {fecha(f.fecha_emision)} · NIT {f.nit_proveedor}</div>
+        <div className="muted mini">{f.numero} · NIT {f.nit_proveedor}{f.responsabilidad_dian ? ` · ${f.responsabilidad_dian}` : ""}</div>
       </div>
 
+      <div className="c-fecha">{ddmm(f.fecha_emision)}</div>
+      <div className="c-sem">{semanaISO(f.fecha_emision)}</div>
       <div className="c-valor num">{copN(total)}</div>
 
       {/* Clasificación */}
@@ -81,25 +106,30 @@ export function FacturaCard({
         <div className="c-field">
           <Combobox name="destino" options={destinos} defaultValue={f.destino ?? f.destino_sug ?? ""} placeholder="Destino" />
         </div>
-        <input className="c-plazo" name="plazo_dias" type="number" min={0} defaultValue={f.plazo_dias ?? ""} placeholder="días" disabled={locked} title="Plazo (días)" />
+        <div className="c-plazo">
+          <input name="plazo_dias" type="number" min={0} defaultValue={f.plazo_dias ?? ""} placeholder="días" disabled={locked} title="Plazo (días)" />
+          {venc && <span className={"venc" + (paraPago ? " due" : "")} title={paraPago ? "Ya vencido — para pago" : "Día de pago (recepción + plazo)"}>{paraPago ? "⏰ " : "→ "}{ddmm(venc)}</span>}
+        </div>
         <button type="submit" className="c-btn" disabled={locked} title="Confirmar clasificación">Clasif.</button>
       </form>
 
-      {/* Retenciones */}
-      <form action={confirmarRetenciones} style={contents}>
-        <input type="hidden" name="cufe" value={f.cufe} />
-        <input className="c-ret" name="retefuente" type="number" min={0} value={rf} onChange={(e) => setRf(e.target.value)} placeholder="RF" disabled={!retEditable} title="ReteFuente" />
-        <input className="c-ret" name="reteiva" type="number" min={0} value={ri} onChange={(e) => setRi(e.target.value)} placeholder="IVA" disabled={!retEditable} title="ReteIVA" />
-        <input className="c-ret" name="reteica" type="number" min={0} value={ric} onChange={(e) => setRic(e.target.value)} placeholder="ICA" disabled={!retEditable} title="ReteICA" />
-        <div className="c-pagar">
-          <div className="num accent" title="Valor a pagar = total − retenciones">{copN(valorAPagar)}</div>
-          <div className="muted mini">ret {copN(retenTotal)}{f.retencion_ok && !pend ? " ✓" : ""}</div>
-        </div>
-        <button type="submit" className="c-btn ghost" disabled={!retEditable} title={clasificada ? "Confirmar retenciones" : "Clasifica primero"}>Reten.</button>
-      </form>
+      <div className="c-pagar">
+        <div className="num accent" title="Valor a pagar = total − retenciones">{copN(valorAPagar)}</div>
+        <div className="muted mini">ret {copN(retenTotal)}{f.retencion_ok ? " ✓" : ""}</div>
+      </div>
+
+      <button
+        type="button"
+        className="c-btn ghost"
+        disabled={!retEditable}
+        onClick={() => setModal(true)}
+        title={clasificada ? "Abrir retenciones" : "Clasifica primero"}
+      >
+        Reten.
+      </button>
 
       <div className="c-docs">
-        <span className="ic off" title="Descargar factura del proveedor — adjunto no disponible todavía">📄</span>
+        <span className="ic off" title="Descargar factura del proveedor — se conecta con el sync">📄</span>
         <a
           className="ic dian"
           href={`https://catalogo-vpfe.dian.gov.co/document/searchqr?documentkey=${encodeURIComponent(f.cufe)}`}
@@ -110,6 +140,24 @@ export function FacturaCard({
           DIAN
         </a>
       </div>
+
+      {modal && (
+        <RetencionesModal
+          cufe={f.cufe}
+          proveedor={f.nombre_proveedor ?? f.nit_proveedor}
+          subtotal={subtotal}
+          iva={iva}
+          total={total}
+          retefuente={f.retefuente}
+          reteiva={f.reteiva}
+          reteica={f.reteica}
+          retefuente_sug={f.retefuente_sug}
+          reteiva_sug={f.reteiva_sug}
+          reteica_sug={f.reteica_sug}
+          yaConfirmada={f.retencion_ok}
+          onClose={() => setModal(false)}
+        />
+      )}
     </div>
   );
 }

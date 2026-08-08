@@ -9,7 +9,7 @@ async function cargar(): Promise<{ filas: FacturaRow[]; conceptos: string[]; des
   const pool = getPool();
   const filas = await pool.query<FacturaRow>(
     `SELECT f.cufe, f.nombre_proveedor, f.nit_proveedor, f.numero, f.fecha_emision,
-            f.total, f.responsabilidad_dian,
+            f.subtotal, f.iva, f.total, f.responsabilidad_dian, f.sincronizado_en,
             e.estado, e.concepto, e.destino, e.plazo_dias, e.fecha_vencimiento,
             e.retencion_ok, e.reten_total, e.retefuente, e.reteiva, e.reteica, e.valor_a_pagar,
             p.concepto_sug, p.destino_sug, p.confianza,

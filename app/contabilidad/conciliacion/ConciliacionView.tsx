@@ -140,14 +140,13 @@ export function ConciliacionView({
         <div className="fila-head">
           <div className="c-estado">Estado</div>
           <div className="c-prov">Proveedor</div>
+          <div className="c-fecha">Fecha</div>
+          <div className="c-sem">Sem</div>
           <div className="c-valor">Valor</div>
           <div>Concepto</div>
           <div>Destino</div>
           <div className="c-plazo">Plazo</div>
           <div className="c-btn" />
-          <div className="c-ret">R.Fte</div>
-          <div className="c-ret">R.IVA</div>
-          <div className="c-ret">R.ICA</div>
           <div className="c-pagar">A pagar</div>
           <div className="c-btn" />
           <div className="c-docs">Docs</div>

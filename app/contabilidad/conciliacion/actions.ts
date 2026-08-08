@@ -44,9 +44,9 @@ export async function guardarClasificacion(formData: FormData) {
     // Estado + factura actuales (para valor_anterior y la fecha de emisión).
     const cur = await c.query<{
       estado: string; concepto: string | null; destino: string | null; plazo_dias: number | null;
-      fecha_emision: Date;
+      fecha_emision: Date; sincronizado_en: Date | null;
     }>(
-      `SELECT e.estado, e.concepto, e.destino, e.plazo_dias, f.fecha_emision
+      `SELECT e.estado, e.concepto, e.destino, e.plazo_dias, f.fecha_emision, f.sincronizado_en
          FROM factura_estado e JOIN facturas f USING (cufe)
         WHERE e.cufe = $1 FOR UPDATE`,
       [cufe]
@@ -63,10 +63,12 @@ export async function guardarClasificacion(formData: FormData) {
     const nDestino = destino ?? antes.destino;
     const nPlazo = plazoDias ?? antes.plazo_dias;
 
-    // Vencimiento = emisión + plazo.
+    // Día de pago = fecha de RECEPCIÓN + plazo (no la de emisión). Recepción =
+    // cuando la factura entró al portal (sincronizado_en); si falta, cae a emisión.
     let vencimiento: string | null = null;
     if (nPlazo != null) {
-      const d = new Date(antes.fecha_emision);
+      const base = antes.sincronizado_en ?? antes.fecha_emision;
+      const d = new Date(base);
       d.setDate(d.getDate() + nPlazo);
       vencimiento = d.toISOString().slice(0, 10);
     }
