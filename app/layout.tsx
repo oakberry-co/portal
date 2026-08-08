@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import { Bebas_Neue, Montserrat, DM_Mono } from "next/font/google";
 import { getCurrentUserOrNull } from "@/lib/auth";
 import { signOut } from "@/auth";
+import { AsistenteFloating } from "./AsistenteFloating";
 
 const display = Bebas_Neue({ weight: "400", subsets: ["latin"], variable: "--font-display", display: "swap" });
 const sans = Montserrat({ subsets: ["latin"], weight: ["400", "500", "600", "700", "800", "900"], variable: "--font-sans", display: "swap" });
@@ -21,7 +22,6 @@ const MENU: { label: string; href?: string }[] = [
   { label: "Bancos" },
   { label: "Maestros", href: "/contabilidad/maestros" },
   { label: "Dashboard", href: "/contabilidad/dashboard" },
-  { label: "Asistente", href: "/contabilidad/asistente" },
 ];
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
@@ -52,6 +52,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
           </header>
         )}
         {children}
+        {user && <AsistenteFloating />}
       </body>
     </html>
   );
