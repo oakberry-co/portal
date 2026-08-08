@@ -17,6 +17,7 @@ export type FacturaRow = {
   iva: string | null;
   total: string | null;
   responsabilidad_dian: string | null;
+  link_drive: string | null;
   estado: Estado;
   concepto: string | null;
   destino: string | null;
@@ -138,7 +139,12 @@ export function FacturaCard({
       </button>
 
       <div className="c-docs">
-        <span className="ic off" title="Descargar factura del proveedor — se conecta con el sync">📄</span>
+        {f.link_drive ? (
+          <a className="ic doc" href={f.link_drive} target="_blank" rel="noopener noreferrer"
+             title="Descargar la factura del proveedor (PDF en Drive)">📄</a>
+        ) : (
+          <span className="ic off" title="Sin PDF del proveedor — usa el documento DIAN">📄</span>
+        )}
         <a
           className="ic dian"
           href={`https://catalogo-vpfe.dian.gov.co/document/searchqr?documentkey=${encodeURIComponent(f.cufe)}`}

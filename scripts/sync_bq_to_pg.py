@@ -135,9 +135,13 @@ def query_fuente(tenant: str, since: str | None) -> str:
       COALESCE(f.moneda, 'COP')                     AS moneda,
       (COALESCE(f.moneda, 'COP') <> 'COP')          AS es_exterior,
       f.proveedor_responsabilidades                 AS responsabilidad_dian,
+      vc.link_drive                                 AS link_drive,
+      vc.gcs_xml_path                               AS gcs_xml_path,
       COALESCE(f._ingested_at, TIMESTAMP(f.fecha))  AS recepcion,
       vc.concepto                                   AS concepto_sug,
-      COALESCE(vc.destino_nombre, vc.destino_tipo)  AS destino_sug,
+      -- solo sugerir un destino REAL (tienda/transversal); 'Propia'/'Franquicia'
+      -- son tipo, no destino → mejor NULL y que el humano elija de la lista.
+      vc.destino_nombre                             AS destino_sug,
       ROUND(vc.retefuente, 2)                        AS retefuente_sug,
       ROUND(vc.reteiva, 2)                           AS reteiva_sug,
       IF(vc.retenciones - COALESCE(vc.retefuente, 0) - COALESCE(vc.reteiva, 0) > 1,
@@ -160,8 +164,46 @@ def fetch_source(tenant: str, since: str | None) -> list[dict]:
     return [dict(r) for r in bq.query(query_fuente(tenant, since)).result()]
 
 
+def fetch_maestros(tenant: str):
+    """La NOMENCLATURA oficial (igual que la hoja "Maestros" del Sheet):
+    conceptos de maestro_conceptos, destinos de maestro_centros_costo."""
+    bq = bigquery.Client(project=PROJECT)
+    conceptos = [r["concepto"] for r in bq.query(
+        f"SELECT concepto FROM `{PROJECT}.facturacion.maestro_conceptos` "
+        f"WHERE tenant = '{tenant}' AND concepto IS NOT NULL ORDER BY concepto").result()]
+    destinos = [(r["nombre"], r["codigo"]) for r in bq.query(
+        f"SELECT codigo, nombre FROM `{PROJECT}.facturacion.maestro_centros_costo` "
+        f"WHERE tenant = '{tenant}' AND nombre IS NOT NULL ORDER BY codigo").result()]
+    destinos.append(("Todas las tiendas", "TRANSVERSAL"))  # gasto corporativo sin sede
+    return conceptos, destinos
+
+
+def sembrar_maestros_oficiales(cur, conceptos, destinos):
+    """Deja los comboboxes del portal EXACTOS a la nomenclatura del Sheet.
+    Reactiva/inserta los oficiales y DESACTIVA (no borra) el ruido de sync/seed
+    que no esté en la lista. Lo humano (creado_por = correo) queda intacto."""
+    # Oficiales → creado_por='maestro' (los reclasifica aunque existieran como
+    # 'sync'), así el barrido de abajo no los toca y no quedan duplicados por caso.
+    c_new = execute_values(cur,
+        "INSERT INTO maestro_conceptos (nombre, creado_por) VALUES %s "
+        "ON CONFLICT (nombre) DO UPDATE SET activo = TRUE, creado_por = 'maestro' "
+        "RETURNING (xmax = 0)",
+        [(c, "maestro") for c in conceptos], template="(%s,%s)", fetch=True) if conceptos else []
+    d_new = execute_values(cur,
+        "INSERT INTO maestro_destinos (nombre, short_code, creado_por) VALUES %s "
+        "ON CONFLICT (nombre) DO UPDATE SET activo = TRUE, creado_por = 'maestro', "
+        "  short_code = COALESCE(maestro_destinos.short_code, EXCLUDED.short_code) "
+        "RETURNING (xmax = 0)",
+        [(n, sc, "maestro") for n, sc in destinos], template="(%s,%s,%s)", fetch=True) if destinos else []
+    # Desactivar (no borrar) TODO el ruido de la siembra por valores distintos.
+    # Lo humano (creado_por = correo) y lo oficial ('maestro') quedan intactos.
+    cur.execute("UPDATE maestro_conceptos SET activo = FALSE WHERE creado_por IN ('sync','seed') AND activo")
+    cur.execute("UPDATE maestro_destinos SET activo = FALSE WHERE creado_por IN ('sync','seed') AND activo")
+    return sum(1 for r in c_new if r[0]), sum(1 for r in d_new if r[0])
+
+
 def run_sync(conn, filas, *, purge_demo=False, actor="sistema", origen="sync",
-             always_event=False) -> dict:
+             always_event=False, maestros=None) -> dict:
     """Escribe las filas en Postgres en UNA transacción. Devuelve el resumen.
 
     NO hace commit/rollback: el llamador decide (permite dry-run y reuso).
@@ -174,23 +216,32 @@ def run_sync(conn, filas, *, purge_demo=False, actor="sistema", origen="sync",
         cur.execute("DELETE FROM facturas WHERE cufe LIKE 'CUFE-DEMO-%'")
         purgadas = cur.rowcount
 
-    # facturas — INSERT de nuevas, nunca UPDATE. RETURNING → cuántas nuevas.
-    nuevas = execute_values(cur, """
+    # facturas — INSERT de nuevas (identidad/montos = verdad DIAN, no se re-escriben).
+    # Los ENLACES al documento (link_drive/gcs_xml_path) sí se rellenan: el pipeline
+    # los completa async (drive_links.py corre después del ingest), así que una
+    # factura entra con el enlace en NULL y aparece días después. WHERE evita
+    # churn: solo toca la fila si el enlace realmente cambió. xmax=0 → fue INSERT.
+    ret = execute_values(cur, """
         INSERT INTO facturas
           (cufe, nit_proveedor, nombre_proveedor, numero, consecutivo_num,
            fecha_emision, subtotal, iva, total, moneda, es_exterior,
-           responsabilidad_dian, sincronizado_en)
+           responsabilidad_dian, link_drive, gcs_xml_path, sincronizado_en)
         VALUES %s
-        ON CONFLICT (cufe) DO NOTHING
-        RETURNING cufe
+        ON CONFLICT (cufe) DO UPDATE SET
+          link_drive   = COALESCE(EXCLUDED.link_drive,   facturas.link_drive),
+          gcs_xml_path = COALESCE(EXCLUDED.gcs_xml_path, facturas.gcs_xml_path)
+        WHERE facturas.link_drive   IS DISTINCT FROM COALESCE(EXCLUDED.link_drive,   facturas.link_drive)
+           OR facturas.gcs_xml_path IS DISTINCT FROM COALESCE(EXCLUDED.gcs_xml_path, facturas.gcs_xml_path)
+        RETURNING (xmax = 0) AS insertada
     """, [(
         r["cufe"], r["nit_proveedor"], r["nombre_proveedor"], r["numero"],
         r["consecutivo_num"], r["fecha_emision"], r["subtotal"], r["iva"],
         r["total"], r["moneda"], r["es_exterior"], r["responsabilidad_dian"],
-        r["recepcion"],
-    ) for r in filas], template="(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+        r["link_drive"], r["gcs_xml_path"], r["recepcion"],
+    ) for r in filas], template="(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
         page_size=1000, fetch=True)
-    n_facturas = len(nuevas)
+    n_facturas = sum(1 for row in ret if row[0])       # insertadas
+    n_enlaces = sum(1 for row in ret if not row[0])    # enlaces rellenados
 
     # factura_estado — fila inicial 'capturada' solo para nuevas.
     execute_values(cur,
@@ -220,23 +271,16 @@ def run_sync(conn, filas, *, purge_demo=False, actor="sistema", origen="sync",
         r["confianza"], run_ts,
     ) for r in filas], template="(%s,%s,%s,%s,%s,%s,%s,%s,%s)", page_size=1000)
 
-    # maestros — sembrar opciones distintas para los comboboxes.
-    conceptos = sorted({r["concepto_sug"].strip() for r in filas
-                        if r["concepto_sug"] and r["concepto_sug"].strip()})
-    destinos = sorted({r["destino_sug"].strip() for r in filas
-                       if r["destino_sug"] and r["destino_sug"].strip()})
-    n_conceptos = len(execute_values(cur,
-        "INSERT INTO maestro_conceptos (nombre, creado_por) VALUES %s "
-        "ON CONFLICT (nombre) DO NOTHING RETURNING nombre",
-        [(c, "sync") for c in conceptos], template="(%s,%s)", fetch=True)) if conceptos else 0
-    n_destinos = len(execute_values(cur,
-        "INSERT INTO maestro_destinos (nombre, creado_por) VALUES %s "
-        "ON CONFLICT (nombre) DO NOTHING RETURNING nombre",
-        [(d, "sync") for d in destinos], template="(%s,%s)", fetch=True)) if destinos else 0
+    # maestros — la NOMENCLATURA oficial del Sheet (hoja "Maestros"). Solo si se
+    # pasó (el ciclo frecuente puede omitirla; cambia poco). Nunca texto libre.
+    n_conceptos = n_destinos = 0
+    if maestros is not None:
+        n_conceptos, n_destinos = sembrar_maestros_oficiales(cur, *maestros)
 
     resumen = {
         "facturas_vista": len(filas),
         "facturas_nuevas": n_facturas,
+        "enlaces_rellenados": n_enlaces,
         "propuestas_refrescadas": len(filas),
         "conceptos_nuevos": n_conceptos,
         "destinos_nuevos": n_destinos,
@@ -245,7 +289,7 @@ def run_sync(conn, filas, *, purge_demo=False, actor="sistema", origen="sync",
 
     # eventos — solo si hubo cambio real (o si se fuerza, p.ej. botón manual).
     # Evita 96 eventos/día de ruido cuando el cron corre y no entra nada nuevo.
-    cambio = (n_facturas or purgadas or n_conceptos or n_destinos)
+    cambio = (n_facturas or purgadas or n_conceptos or n_destinos or n_enlaces)
     resumen["evento"] = None
     if always_event or cambio:
         resumen["evento"] = registrar_evento(
@@ -285,7 +329,7 @@ def main() -> int:
     try:
         r = run_sync(conn, filas, purge_demo=args.purge_demo, actor=args.actor,
                      origen="web" if args.always_event else "sync",
-                     always_event=args.always_event)
+                     always_event=args.always_event, maestros=fetch_maestros(args.tenant))
         if args.dry_run:
             conn.rollback(); print("\n[DRY-RUN] ROLLBACK — no se persistió nada.")
         else:

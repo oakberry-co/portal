@@ -26,7 +26,7 @@ from datetime import datetime, timezone, timedelta
 import psycopg2
 from psycopg2.extras import Json
 
-from sync_bq_to_pg import fetch_source, run_sync, cargar_database_url
+from sync_bq_to_pg import fetch_source, fetch_maestros, run_sync, cargar_database_url
 
 TENANT = "manelfoods"
 VENTANA_DIAS = 45  # el ciclo frecuente solo mira lo reciente (rápido, poco churn)
@@ -62,7 +62,10 @@ def main() -> int:
                      - timedelta(days=args.since_days)).isoformat()
 
         filas = fetch_source(TENANT, since)
-        r = run_sync(conn, filas, actor=actor,
+        # Maestros oficiales solo en el refresco completo (cambian poco; ahorra
+        # 2 queries BQ en cada ciclo de 10 min).
+        maestros = fetch_maestros(TENANT) if args.full else None
+        r = run_sync(conn, filas, actor=actor, maestros=maestros,
                      origen="web" if hay else "sync", always_event=hay)
 
         if hay:

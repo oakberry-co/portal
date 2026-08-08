@@ -30,10 +30,17 @@ CREATE TABLE IF NOT EXISTS facturas (
   moneda                TEXT        NOT NULL DEFAULT 'COP',
   es_exterior           BOOLEAN     NOT NULL DEFAULT FALSE,
   responsabilidad_dian  TEXT,                          -- O-15 / O-47 -> excluye ReteFuente
+  link_drive            TEXT,                          -- PDF del proveedor en Drive (botón 📄 Factura)
+  gcs_xml_path          TEXT,                          -- XML DIAN en GCS (respaldo legal)
   sincronizado_en       TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS ix_facturas_nit   ON facturas (nit_proveedor);
 CREATE INDEX IF NOT EXISTS ix_facturas_fecha ON facturas (fecha_emision);
+
+-- Migración idempotente: enlaces al documento (se llenan async por el pipeline).
+ALTER TABLE facturas
+  ADD COLUMN IF NOT EXISTS link_drive   TEXT,
+  ADD COLUMN IF NOT EXISTS gcs_xml_path TEXT;
 
 -- -----------------------------------------------------------------------------
 -- 2) FACTURA_PROPUESTA — lo que la MÁQUINA sugiere (concepto/destino/retención).
