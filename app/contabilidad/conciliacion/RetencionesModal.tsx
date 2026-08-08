@@ -16,16 +16,18 @@ const pctIni = (amt: string | null, base: number) =>
 export function RetencionesModal({
   cufe, proveedor, subtotal, iva, total,
   retefuente, reteiva, reteica, retefuente_sug, reteiva_sug, reteica_sug,
-  yaConfirmada, onClose,
+  tarRf, tarIva, tarIca, yaConfirmada, onClose,
 }: {
   cufe: string; proveedor: string; subtotal: number; iva: number; total: number;
   retefuente: string | null; reteiva: string | null; reteica: string | null;
   retefuente_sug: string | null; reteiva_sug: string | null; reteica_sug: string | null;
+  tarRf: string | null; tarIva: string | null; tarIca: string | null;
   yaConfirmada: boolean; onClose: () => void;
 }) {
-  const [rf, setRf] = useState(pctIni(retefuente ?? retefuente_sug, subtotal));
-  const [ri, setRi] = useState(pctIni(reteiva ?? reteiva_sug, iva));
-  const [ric, setRic] = useState(pctIni(reteica ?? reteica_sug, subtotal));
+  // Pre-llenado: monto confirmado → monto sugerido → TARIFA del maestro del proveedor.
+  const [rf, setRf] = useState(pctIni(retefuente ?? retefuente_sug, subtotal) || (tarRf ?? ""));
+  const [ri, setRi] = useState(pctIni(reteiva ?? reteiva_sug, iva) || (tarIva ?? ""));
+  const [ric, setRic] = useState(pctIni(reteica ?? reteica_sug, subtotal) || (tarIca ?? ""));
 
   const amtRf = Math.round((subtotal * (Number(rf) || 0)) / 100);
   const amtRi = Math.round((iva * (Number(ri) || 0)) / 100);

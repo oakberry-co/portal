@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ESTADOS, type Estado } from "@/lib/estados";
+import { type Estado } from "@/lib/estados";
 import { Combobox } from "./Combobox";
 import { guardarClasificacion } from "./actions";
 import { RetencionesModal } from "./RetencionesModal";
@@ -36,6 +36,9 @@ export type FacturaRow = {
   retefuente_sug: string | null;
   reteiva_sug: string | null;
   reteica_sug: string | null;
+  ret_rf: string | null;
+  ret_ica: string | null;
+  ret_iva: string | null;
 };
 
 const cop = new Intl.NumberFormat("es-CO", { style: "currency", currency: "COP", maximumFractionDigits: 0 });
@@ -72,9 +75,10 @@ export function FacturaCard({
   const pend = f.estado === "capturada";
   const clasificada = f.estado !== "capturada";
   const locked = ["aprobada_pago", "pagada", "causada"].includes(f.estado);
-  const retEditable = clasificada && !locked;
-  // Semáforo: verde si ya se hizo el paso, rojo si falta.
-  const retencionDone = ESTADOS.indexOf(f.estado) >= ESTADOS.indexOf("retenciones_ok");
+  // Clasificación y retenciones son INDEPENDIENTES: se pueden hacer al tiempo,
+  // una no desbloquea la otra. Dos semáforos separados.
+  const retEditable = !locked;
+  const retencionDone = f.retencion_ok;
 
   // Resumen de retenciones: lo confirmado si existe, si no la sugerencia (preview).
   const retenTotal = f.retencion_ok && f.reten_total != null
@@ -134,7 +138,7 @@ export function FacturaCard({
         className="c-btn ghost"
         disabled={!retEditable}
         onClick={() => setModal(true)}
-        title={clasificada ? "Abrir retenciones" : "Clasifica primero"}
+        title="Abrir retenciones (independiente de la clasificación)"
       >
         Reten.
       </button>
@@ -170,6 +174,9 @@ export function FacturaCard({
           retefuente_sug={f.retefuente_sug}
           reteiva_sug={f.reteiva_sug}
           reteica_sug={f.reteica_sug}
+          tarRf={f.ret_rf}
+          tarIva={f.ret_iva}
+          tarIca={f.ret_ica}
           yaConfirmada={f.retencion_ok}
           onClose={() => setModal(false)}
         />

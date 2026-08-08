@@ -61,11 +61,11 @@ export async function guardarClasificacion(formData: FormData) {
     // Estado + factura actuales (para valor_anterior y la fecha de emisión).
     const cur = await c.query<{
       estado: string; concepto: string | null; destino: string | null; plazo_dias: number | null;
-      fecha_emision: Date; sincronizado_en: Date | null;
+      fecha_emision: Date; sincronizado_en: Date | null; retencion_ok: boolean;
       nit_proveedor: string; nombre_proveedor: string | null;
     }>(
-      `SELECT e.estado, e.concepto, e.destino, e.plazo_dias, f.fecha_emision, f.sincronizado_en,
-              f.nit_proveedor, f.nombre_proveedor
+      `SELECT e.estado, e.concepto, e.destino, e.plazo_dias, e.retencion_ok,
+              f.fecha_emision, f.sincronizado_en, f.nit_proveedor, f.nombre_proveedor
          FROM factura_estado e JOIN facturas f USING (cufe)
         WHERE e.cufe = $1 FOR UPDATE`,
       [cufe]
@@ -92,9 +92,13 @@ export async function guardarClasificacion(formData: FormData) {
       vencimiento = d.toISOString().slice(0, 10);
     }
 
-    // Avanza a 'clasificada' solo si están los tres y aún estaba 'capturada'.
+    // Independiente de retenciones: si quedó completa y la retención YA estaba
+    // hecha, salta directo a 'retenciones_ok' (el orden no importa).
     const completa = !!nConcepto && !!nDestino && nPlazo != null;
-    const nuevoEstado = completa && antes.estado === "capturada" ? "clasificada" : antes.estado;
+    let nuevoEstado = antes.estado;
+    if (completa && ["capturada", "clasificada"].includes(antes.estado)) {
+      nuevoEstado = antes.retencion_ok ? "retenciones_ok" : "clasificada";
+    }
 
     await c.query(
       `UPDATE factura_estado
@@ -275,23 +279,23 @@ export async function confirmarRetenciones(formData: FormData) {
     if (cur.rowCount === 0) throw new Error("Factura no encontrada: " + cufe);
     const antes = cur.rows[0];
 
-    if (antes.estado === "capturada") {
-      throw new Error("Clasifica la factura (concepto · destino · plazo) antes de confirmar retenciones.");
-    }
-    if (antes.estado !== "clasificada" && antes.estado !== "retenciones_ok") {
+    if (["aprobada_pago", "pagada", "causada"].includes(antes.estado)) {
       throw new Error("Las retenciones ya no se pueden editar en este estado.");
     }
-
+    // Independiente de la clasificación: si aún no está clasificada, guardamos la
+    // retención igual (el semáforo Reten se pone verde por retencion_ok) y el
+    // estado queda como estaba; si ya estaba clasificada, avanza a retenciones_ok.
     const total = antes.total != null ? Number(antes.total) : 0;
     const valorAPagar = total - retenTotal;
+    const nuevoEstado = antes.estado === "clasificada" ? "retenciones_ok" : antes.estado;
 
     await c.query(
       `UPDATE factura_estado
           SET retefuente = $2, reteiva = $3, reteica = $4,
               reten_total = $5, valor_a_pagar = $6,
-              retencion_ok = TRUE, estado = 'retenciones_ok', actualizado_en = now()
+              retencion_ok = TRUE, estado = $7, actualizado_en = now()
         WHERE cufe = $1`,
-      [cufe, retefuente, reteiva, reteica, retenTotal, valorAPagar]
+      [cufe, retefuente, reteiva, reteica, retenTotal, valorAPagar, nuevoEstado]
     );
 
     await registrarEvento(c, {
@@ -304,7 +308,7 @@ export async function confirmarRetenciones(formData: FormData) {
       },
       valorNuevo: {
         retefuente, reteiva, reteica, reten_total: retenTotal,
-        valor_a_pagar: valorAPagar, estado: "retenciones_ok",
+        valor_a_pagar: valorAPagar, estado: nuevoEstado,
       },
       actor: user.email,
       actorRol: user.rol,

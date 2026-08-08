@@ -109,19 +109,23 @@ export async function agregarCuentaPuc(fd: FormData) {
 export async function agregarRetencion(fd: FormData) {
   const user = await guard();
   const nit = S(fd, "nit_proveedor");
-  const tipo = S(fd, "tipo");
-  const tarifa = N(fd, "tarifa");
-  if (!nit || !tipo || tarifa == null) throw new Error("Falta NIT, tipo o tarifa.");
-  const base = S(fd, "base") || "subtotal";
+  if (!nit) throw new Error("Falta el NIT del proveedor.");
+  const reglas: [string, number | null, string][] = [
+    ["ReteFuente", N(fd, "retefuente"), "subtotal"],
+    ["ReteICA", N(fd, "reteica"), "subtotal"],
+    ["ReteIVA", N(fd, "reteiva"), "iva"],
+  ];
+  const activos = reglas.filter(([, t]) => t != null && t > 0);
+  if (!activos.length) throw new Error("Pon al menos una tarifa (RF, ICA o IVA).");
   await withTx(async (c) => {
-    await c.query(
-      `INSERT INTO maestro_retenciones (nit_proveedor, tipo, tarifa, base, fuente, creado_por)
-       VALUES ($1,$2,$3,$4,'humano',$5)
-       ON CONFLICT (nit_proveedor, tipo) DO UPDATE SET
-         tarifa = EXCLUDED.tarifa, base = EXCLUDED.base, fuente = 'humano'`,
-      [nit, tipo, tarifa, base, user.email]
-    );
-    await registrarEvento(c, { cufe: null, tipo: "crea_maestro", campo: "retencion", valorNuevo: { nit, tipo, tarifa }, actor: user.email, actorRol: user.rol });
+    for (const [tipo, tarifa, base] of activos) {
+      await c.query(
+        `INSERT INTO maestro_retenciones (nit_proveedor, tipo, tarifa, base, fuente, creado_por)
+         VALUES ($1,$2,$3,$4,'humano',$5)
+         ON CONFLICT (nit_proveedor, tipo) DO UPDATE SET tarifa = EXCLUDED.tarifa, base = EXCLUDED.base, fuente = 'humano'`,
+        [nit, tipo, tarifa, base, user.email]);
+    }
+    await registrarEvento(c, { cufe: null, tipo: "crea_maestro", campo: "retencion", valorNuevo: { nit, reglas: activos.length }, actor: user.email, actorRol: user.rol });
   });
   done();
 }
@@ -158,12 +162,38 @@ const EDITABLE: Record<string, { tabla: string; key: string; campos: Record<stri
   destinos:    { tabla: "maestro_destinos",    key: "nombre", campos: { short_code: "text" } },
   proveedores: { tabla: "maestro_proveedores", key: "nit",    campos: { nombre: "text", concepto_default: "text", destino_default: "text", cuenta_puc_default: "text", plazo_dias: "num" } },
   cuentas:     { tabla: "maestro_cuentas_puc", key: "codigo", campos: { nombre: "text" } },
-  retenciones: { tabla: "maestro_retenciones", key: "id",     campos: { tarifa: "num", base: "text", tipo: "text" } },
 };
 
 export async function actualizarCampo(fd: FormData) {
   const user = await guard();
   const grupo = S(fd, "tabla"), campo = S(fd, "campo"), id = S(fd, "id");
+
+  // Retenciones: la tabla es 1 fila por proveedor con columnas RF/ICA/IVA. Cada
+  // celda es una regla (nit_proveedor, tipo). Editar/vaciar toca esa regla.
+  if (grupo === "retenciones") {
+    const map: Record<string, [string, string]> = {
+      retefuente: ["ReteFuente", "subtotal"], reteica: ["ReteICA", "subtotal"], reteiva: ["ReteIVA", "iva"],
+    };
+    const t = map[campo];
+    if (!t) throw new Error("Campo no editable.");
+    const raw = S(fd, "valor").replace(/[^\d.-]/g, "");
+    await withTx(async (c) => {
+      if (raw === "") {
+        await c.query("DELETE FROM maestro_retenciones WHERE nit_proveedor = $1 AND tipo = $2", [id, t[0]]);
+      } else {
+        const tarifa = Number(raw);
+        if (!Number.isFinite(tarifa)) throw new Error("Tarifa inválida.");
+        await c.query(
+          `INSERT INTO maestro_retenciones (nit_proveedor, tipo, tarifa, base, fuente, creado_por)
+           VALUES ($1,$2,$3,$4,'humano',$5)
+           ON CONFLICT (nit_proveedor, tipo) DO UPDATE SET tarifa = EXCLUDED.tarifa, base = EXCLUDED.base, fuente = 'humano'`,
+          [id, t[0], tarifa, t[1], user.email]);
+      }
+      await registrarEvento(c, { cufe: null, tipo: "edita_maestro", campo: `retencion.${t[0]}`, valorNuevo: { nit: id, valor: raw }, actor: user.email, actorRol: user.rol });
+    });
+    return done();
+  }
+
   const def = EDITABLE[grupo];
   if (!def || !(campo in def.campos)) throw new Error("Campo no editable.");
   const raw = S(fd, "valor");

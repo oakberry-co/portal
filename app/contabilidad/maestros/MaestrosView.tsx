@@ -11,7 +11,7 @@ export type MaestrosData = {
   destinos: { nombre: string; short_code: string | null; activo: boolean; creado_por: string | null }[];
   proveedores: { nit: string; nombre: string | null; concepto_default: string | null; destino_default: string | null; cuenta_puc_default: string | null; retencion_hint: string | null; plazo_dias: number | null; fuente: string }[];
   cuentas: { codigo: string; nombre: string; activo: boolean }[];
-  retenciones: { id: number; nit_proveedor: string; tipo: string; tarifa: string; base: string; fuente: string }[];
+  retenciones: { nit: string; nombre: string | null; retefuente: string | null; reteica: string | null; reteiva: string | null; humano: boolean }[];
 };
 
 const TABS = [
@@ -167,20 +167,21 @@ export function MaestrosView({ data }: { data: MaestrosData }) {
         <>
           <form action={agregarRetencion} className="mst-add wide">
             <input name="nit_proveedor" placeholder="NIT proveedor" required />
-            <input name="tipo" placeholder="Tipo (ReteFuente/ReteIVA/ReteICA)" required />
-            <input name="tarifa" placeholder="Tarifa %" inputMode="decimal" required />
-            <input name="base" placeholder="base (subtotal/iva)" />
+            <input name="retefuente" placeholder="ReteFuente %" inputMode="decimal" />
+            <input name="reteica" placeholder="ReteICA %" inputMode="decimal" />
+            <input name="reteiva" placeholder="ReteIVA %" inputMode="decimal" />
             <button type="submit">Agregar</button>
           </form>
           {data.retenciones.length === 0 && <p className="mst-empty">Aún vacío. Se llena con la base del equipo, de Siigo por NIT, o manual aquí.</p>}
-          <table className="mst-tabla"><thead><tr><th>NIT</th><th>Tipo</th><th>Tarifa</th><th>Base</th><th>Fuente</th></tr></thead>
-            <tbody>{data.retenciones.filter((r) => match(r.nit_proveedor, r.tipo)).map((r) => (
-              <tr key={r.id}>
-                <td className="mono">{r.nit_proveedor}</td>
-                <td><Edit grupo="retenciones" id={String(r.id)} campo="tipo" value={r.tipo} /></td>
-                <td><Edit grupo="retenciones" id={String(r.id)} campo="tarifa" value={r.tarifa} num suffix="%" /></td>
-                <td><Edit grupo="retenciones" id={String(r.id)} campo="base" value={r.base} /></td>
-                <td>{fu(r.fuente)}</td>
+          <table className="mst-tabla"><thead><tr><th>NIT</th><th>Proveedor</th><th>ReteFuente</th><th>ReteICA</th><th>ReteIVA</th><th>Fuente</th></tr></thead>
+            <tbody>{data.retenciones.filter((r) => match(r.nit, r.nombre)).map((r) => (
+              <tr key={r.nit}>
+                <td className="mono">{r.nit}</td>
+                <td>{r.nombre ?? <span className="muted">—</span>}</td>
+                <td><Edit grupo="retenciones" id={r.nit} campo="retefuente" value={r.retefuente} num suffix="%" /></td>
+                <td><Edit grupo="retenciones" id={r.nit} campo="reteica" value={r.reteica} num suffix="%" /></td>
+                <td><Edit grupo="retenciones" id={r.nit} campo="reteiva" value={r.reteiva} num suffix="%" /></td>
+                <td>{r.humano ? <span className="ft hum">humano</span> : <span className="ft off">Sheet</span>}</td>
               </tr>))}</tbody></table>
         </>
       )}
