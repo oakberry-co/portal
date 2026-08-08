@@ -150,6 +150,38 @@ export async function agregarPlazo(fd: FormData) {
   done();
 }
 
+/** Edición inline tipo Excel: doble clic → cambia un campo. Whitelist estricta
+ *  (tabla·campo·tipo) → nada de inyección. En proveedores marca fuente='humano'
+ *  para que el sync no lo pise. Permiso: los 3 admin (guard). */
+const EDITABLE: Record<string, { tabla: string; key: string; campos: Record<string, "text" | "num"> }> = {
+  conceptos:   { tabla: "maestro_conceptos",   key: "nombre", campos: { cuenta_puc: "text" } },
+  destinos:    { tabla: "maestro_destinos",    key: "nombre", campos: { short_code: "text" } },
+  proveedores: { tabla: "maestro_proveedores", key: "nit",    campos: { nombre: "text", concepto_default: "text", destino_default: "text", cuenta_puc_default: "text", plazo_dias: "num" } },
+  cuentas:     { tabla: "maestro_cuentas_puc", key: "codigo", campos: { nombre: "text" } },
+  retenciones: { tabla: "maestro_retenciones", key: "id",     campos: { tarifa: "num", base: "text", tipo: "text" } },
+};
+
+export async function actualizarCampo(fd: FormData) {
+  const user = await guard();
+  const grupo = S(fd, "tabla"), campo = S(fd, "campo"), id = S(fd, "id");
+  const def = EDITABLE[grupo];
+  if (!def || !(campo in def.campos)) throw new Error("Campo no editable.");
+  const raw = S(fd, "valor");
+  let valor: string | number | null = raw === "" ? null : raw;
+  if (def.campos[campo] === "num" && valor !== null) {
+    const n = Number(String(valor).replace(/[^\d.-]/g, ""));
+    if (!Number.isFinite(n)) throw new Error("Número inválido.");
+    valor = n;
+  }
+  const keyVal: string | number = def.key === "id" ? Number(id) : id;
+  const extra = grupo === "proveedores" ? ", fuente = 'humano', actualizado_en = now()" : "";
+  await withTx(async (c) => {
+    await c.query(`UPDATE ${def.tabla} SET ${campo} = $1${extra} WHERE ${def.key} = $2`, [valor, keyVal]);
+    await registrarEvento(c, { cufe: null, tipo: "edita_maestro", campo: `${grupo}.${campo}`, valorNuevo: { id, valor }, actor: user.email, actorRol: user.rol });
+  });
+  done();
+}
+
 /** Activa/desactiva una fila (no borra: reversible + deja rastro). */
 export async function toggleMaestro(fd: FormData) {
   await guard();

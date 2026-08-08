@@ -521,3 +521,11 @@ button.ghost { background: #fff; color: var(--purple); }
 .ft.off { background: rgba(0,0,0,.05); color: var(--lav); }
 .mst-empty { color: var(--lav); font-size: 13px; padding: 14px; background: var(--lav-soft);
   border: 1px dashed var(--border-lav); border-radius: 10px; margin-bottom: 12px; }
+
+/* Edición inline tipo Excel en Maestros */
+.mst-hint { font-size: 11.5px; color: var(--lav); margin: 0 0 10px; }
+.mst-cell { cursor: cell; border-radius: 4px; padding: 1px 4px; border-bottom: 1px dashed transparent; transition: background .1s; }
+.mst-cell:hover { background: var(--lav-soft); border-bottom-color: var(--border-lav); }
+.mst-cell.saving { opacity: .45; }
+.mst-edit { width: 100%; min-width: 64px; padding: 3px 6px; border: 1.5px solid var(--purple);
+  border-radius: 5px; font-size: 12.5px; font-family: inherit; background: #fff; box-sizing: border-box; }
