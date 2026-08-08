@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ETIQUETA, type Estado } from "@/lib/estados";
+import { ESTADOS, type Estado } from "@/lib/estados";
 import { Combobox } from "./Combobox";
 import { guardarClasificacion } from "./actions";
 import { RetencionesModal } from "./RetencionesModal";
@@ -71,6 +71,8 @@ export function FacturaCard({
   const clasificada = f.estado !== "capturada";
   const locked = ["aprobada_pago", "pagada", "causada"].includes(f.estado);
   const retEditable = clasificada && !locked;
+  // Semáforo: verde si ya se hizo el paso, rojo si falta.
+  const retencionDone = ESTADOS.indexOf(f.estado) >= ESTADOS.indexOf("retenciones_ok");
 
   // Resumen de retenciones: lo confirmado si existe, si no la sugerencia (preview).
   const retenTotal = f.retencion_ok && f.reten_total != null
@@ -85,7 +87,14 @@ export function FacturaCard({
 
   return (
     <div className={"fila" + (pend ? " pend" : "") + (locked ? " locked" : "")}>
-      <div className="c-estado"><span className={`badge ${f.estado}`}>{ETIQUETA[f.estado]}</span></div>
+      <div className="c-estado">
+        <span className="sem" title={clasificada ? "Clasificado" : "Falta clasificar"}>
+          <i className={"luz " + (clasificada ? "ok" : "no")} />Clasif
+        </span>
+        <span className="sem" title={retencionDone ? "Retenciones hechas" : "Faltan retenciones"}>
+          <i className={"luz " + (retencionDone ? "ok" : "no")} />Reten
+        </span>
+      </div>
 
       <div className="c-prov">
         <div className="prov" title={f.nombre_proveedor ?? ""}>{f.nombre_proveedor ?? "—"}</div>
