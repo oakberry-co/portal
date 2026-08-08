@@ -1,26 +1,23 @@
 "use client";
 
-// Combobox con DOS modos a la vez:
-//  - al enfocar/hacer clic: despliega TODA la lista de opciones (para navegar).
-//  - al escribir: filtra a las coincidencias Y siempre ofrece "➕ Agregar '<texto>'"
-//    (si el texto no es una opción exacta) — así no hay que bajar por la lista.
-// El <input name> lleva el valor -> el server action lo recibe por FormData.
+// Combobox con DOS modos + anti-duplicados:
+//  - al enfocar: despliega TODA la lista (navegar).
+//  - al escribir: filtra a coincidencias.
+//  - la fila "➕ Agregar" está SIEMPRE al final. Es accionable solo si lo escrito
+//    es realmente nuevo; si se parece a algo existente (igual o prefijo de una
+//    opción), NO propone agregar (evita duplicados) y lo dice.
 import { useEffect, useRef, useState } from "react";
 
+// normaliza: minúsculas, sin acentos, espacios colapsados — para comparar sin duplicar.
+const norm = (s: string) =>
+  s.trim().toLowerCase().replace(/\s+/g, " ").normalize("NFD").replace(/[̀-ͯ]/g, "");
+
 export function Combobox({
-  name,
-  options,
-  defaultValue = "",
-  placeholder,
-}: {
-  name: string;
-  options: string[];
-  defaultValue?: string;
-  placeholder?: string;
-}) {
+  name, options, defaultValue = "", placeholder,
+}: { name: string; options: string[]; defaultValue?: string; placeholder?: string }) {
   const [value, setValue] = useState(defaultValue);
   const [open, setOpen] = useState(false);
-  const [typing, setTyping] = useState(false); // true = filtra; false = lista completa
+  const [typing, setTyping] = useState(false);
   const [hover, setHover] = useState(-1);
   const box = useRef<HTMLDivElement>(null);
 
@@ -32,10 +29,12 @@ export function Combobox({
     return () => document.removeEventListener("mousedown", onDoc);
   }, []);
 
-  const q = value.trim().toLowerCase();
-  const filtered = typing && q ? options.filter((o) => o.toLowerCase().includes(q)) : options;
-  const exact = q !== "" && options.some((o) => o.toLowerCase() === q);
-  const puedeAgregar = q !== "" && !exact;
+  const q = norm(value);
+  const filtered = typing && q ? options.filter((o) => norm(o).includes(q)) : options;
+  // "se parece" = igual a una existente, o alguna existente empieza por lo escrito
+  // (estás filtrando hacia una que ya existe) -> no ofrecer agregar.
+  const pareceExistente = q !== "" && options.some((o) => { const n = norm(o); return n === q || n.startsWith(q); });
+  const puedeAgregar = value.trim() !== "" && !pareceExistente;
 
   function elegir(v: string) { setValue(v); setOpen(false); setTyping(false); }
 
@@ -55,16 +54,16 @@ export function Combobox({
         onFocus={(e) => { setOpen(true); setTyping(false); setHover(-1); e.currentTarget.select(); }}
         onChange={(e) => { setValue(e.target.value); setOpen(true); setTyping(true); setHover(-1); }}
         onKeyDown={(e) => {
-          if (e.key === "ArrowDown") { e.preventDefault(); setOpen(true); setHover((h) => Math.min(h + 1, filtered.length - (puedeAgregar ? 0 : 1))); }
+          if (e.key === "ArrowDown") { e.preventDefault(); setOpen(true); setHover((h) => Math.min(h + 1, filtered.length)); }
           else if (e.key === "ArrowUp") { e.preventDefault(); setHover((h) => Math.max(h - 1, 0)); }
           else if (e.key === "Enter" && open) {
             e.preventDefault();
             if (hover >= 0 && hover < filtered.length) elegir(filtered[hover]);
-            else { setOpen(false); setTyping(false); } // Enter con texto nuevo = "agregar": lo deja tal cual
+            else { setOpen(false); setTyping(false); }
           } else if (e.key === "Escape") { setOpen(false); setTyping(false); }
         }}
       />
-      {open && (filtered.length > 0 || puedeAgregar) && (
+      {open && (
         <div className="cbx-menu">
           {filtered.slice(0, 100).map((o, i) => (
             <button
@@ -77,7 +76,8 @@ export function Combobox({
               {o}
             </button>
           ))}
-          {puedeAgregar && (
+          {filtered.length === 0 && <div className="cbx-empty">Sin coincidencias</div>}
+          {puedeAgregar ? (
             <button
               type="button"
               className={"cbx-add" + (hover === filtered.length ? " on" : "")}
@@ -86,6 +86,10 @@ export function Combobox({
             >
               ➕ Agregar “{value.trim()}”
             </button>
+          ) : (
+            <div className="cbx-add off">
+              ➕ {value.trim() === "" ? "Escribe para agregar uno nuevo" : "se parece a una opción existente"}
+            </div>
           )}
         </div>
       )}
