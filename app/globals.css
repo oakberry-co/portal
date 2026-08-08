@@ -529,3 +529,27 @@ button.ghost { background: #fff; color: var(--purple); }
 .mst-cell.saving { opacity: .45; }
 .mst-edit { width: 100%; min-width: 64px; padding: 3px 6px; border: 1.5px solid var(--purple);
   border-radius: 5px; font-size: 12.5px; font-family: inherit; background: #fff; box-sizing: border-box; }
+
+/* Dashboard (evolución semanal) --------------------------------------------- */
+.dsh-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(155px, 1fr)); gap: 12px; margin: 6px 0 20px; }
+.dsh-card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; box-shadow: var(--shadow); display: flex; flex-direction: column; gap: 1px; }
+.dsh-card i { font-style: normal; font-size: 10px; text-transform: uppercase; letter-spacing: .05em; color: var(--lav); font-weight: 700; }
+.dsh-card b { font-size: 21px; color: var(--purple-deep); font-weight: 800; line-height: 1.15; }
+.dsh-card span { font-size: 10.5px; color: var(--lav); }
+.dsh-wrap { max-height: 62vh; overflow: auto; border: 1px solid var(--border); border-radius: 12px; background: var(--card); box-shadow: var(--shadow); }
+.dsh-tabla { width: 100%; border-collapse: collapse; font-size: 12px; min-width: 760px; }
+.dsh-tabla th { position: sticky; top: 0; z-index: 2; background: var(--lav-soft); color: var(--purple-deep);
+  text-align: left; padding: 9px 10px; font-size: 10px; text-transform: uppercase; letter-spacing: .03em; font-weight: 700; border-bottom: 1px solid var(--border); }
+.dsh-tabla th.num, .dsh-tabla td.num { text-align: right; }
+.dsh-tabla td { padding: 6px 10px; border-bottom: 1px solid var(--border); vertical-align: middle; color: var(--ink); }
+.dsh-tabla tr:hover td { background: #fdfbf6; }
+.dsh-tabla .num { font-variant-numeric: tabular-nums; }
+.dsh-tabla .mono { font-family: var(--mono); font-size: 11px; color: var(--purple); font-weight: 600; }
+.dsh-tabla .muted { color: var(--lav); font-size: 11px; }
+.heat { font-weight: 700; border-radius: 5px; padding: 1px 5px; }
+.heat.hi  { color: #1e7d47;       background: rgba(39,174,96,.13); }
+.heat.mid { color: var(--warn);   background: rgba(183,121,31,.12); }
+.heat.lo  { color: var(--danger); background: rgba(192,57,43,.10); }
+.dsh-val { font-size: 11px; color: var(--ink); }
+.dsh-bar { height: 4px; background: var(--cream-2); border-radius: 3px; margin-top: 2px; min-width: 70px; }
+.dsh-bar span { display: block; height: 100%; border-radius: 3px; background: linear-gradient(90deg, var(--purple), var(--coral)); }
