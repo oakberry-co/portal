@@ -736,3 +736,8 @@ button.ghost { background: #fff; color: var(--purple); }
 .pg-venc { margin-left: 3px; }
 .pg-venc-tag { font-size: 10px; font-weight: 700; color: var(--coral); background: rgba(232,89,60,.1); border-radius: 999px; padding: 1px 8px; margin-left: auto; }
 @media (max-width: 980px) { .pg-board { grid-template-columns: 1fr; } .pg-col-body { max-height: none; } }
+.pg-subtabs { margin-bottom: 14px; }
+.pg-hfiltros { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 4px 0 10px; }
+.pg-hfiltros input, .pg-hfiltros select { width: auto; font-size: 12.5px; padding: 7px 10px; font-weight: 600; }
+.pg-hfiltros input[type="date"] { font-size: 12px; font-weight: 400; }
+.pg-hfiltros input:not([type="date"]) { min-width: 200px; }

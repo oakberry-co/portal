@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { Fragment, useState, useTransition } from "react";
 import { asignarCuenta, quitarCuenta, confirmarPago } from "./actions";
 
 export type FilaPago = {
@@ -53,6 +53,7 @@ export function PagosView({ pendientes, validacion, historial, cuentas }: {
   const [expPago, setExpPago] = useState<Set<number>>(new Set());
   const [modal, setModal] = useState<{ grupo: Grupo } | null>(null);
   const [pending, start] = useTransition();
+  const [vista, setVista] = useState<"tablero" | "historial">("tablero");
 
   const toggle = <T,>(set: Set<T>, k: T) => { const n = new Set(set); n.has(k) ? n.delete(k) : n.add(k); return n; };
   const totalPend = pendientes.reduce((s, f) => s + saldo(f), 0);
@@ -88,6 +89,12 @@ export function PagosView({ pendientes, validacion, historial, cuentas }: {
 
   return (
     <div className="pagos">
+      <div className="pg-tabs pg-subtabs">
+        <button className={vista === "tablero" ? "on" : ""} onClick={() => setVista("tablero")}>Tablero</button>
+        <button className={vista === "historial" ? "on" : ""} onClick={() => setVista("historial")}>Historial<i>{historial.length}</i></button>
+      </div>
+
+      {vista === "tablero" && (<>
       <div className="pg-kpis">
         <div className="pg-kpi due"><i>Por pagar (total)</i><b>{$(totalPend + totalVal)}</b><span>{pendientes.length + validacion.length} facturas</span></div>
         <div className="pg-kpi"><i>En validación</i><b>{$(totalVal)}</b><span>{validacion.length} factura(s) con cuenta</span></div>
@@ -217,8 +224,81 @@ export function PagosView({ pendientes, validacion, historial, cuentas }: {
           </div>
         </section>
       </div>
+      </>)}
+
+      {vista === "historial" && <HistorialView historial={historial} cuentas={cuentas} />}
 
       {modal && <ModalConfirmar grupo={modal.grupo} onClose={() => setModal(null)} />}
+    </div>
+  );
+}
+
+function HistorialView({ historial, cuentas }: { historial: PagoHecho[]; cuentas: CuentaPago[] }) {
+  const [q, setQ] = useState("");
+  const [cta, setCta] = useState("");
+  const [desde, setDesde] = useState("");
+  const [hasta, setHasta] = useState("");
+  const [exp, setExp] = useState<Set<number>>(new Set());
+  const toggle = (k: number) => { const n = new Set(exp); n.has(k) ? n.delete(k) : n.add(k); setExp(n); };
+
+  const ff = q.trim().toLowerCase();
+  const filt = historial.filter((p) =>
+    (!ff || (p.proveedor ?? p.nit_proveedor).toLowerCase().includes(ff)) &&
+    (!cta || p.cuenta_pago === cta) &&
+    (!desde || p.fecha_pago >= desde) &&
+    (!hasta || p.fecha_pago <= hasta));
+  const totalF = filt.reduce((s, p) => s + p.monto, 0);
+  const href = (() => {
+    const u = new URLSearchParams();
+    if (cta) u.set("cuenta", cta); if (desde) u.set("desde", desde); if (hasta) u.set("hasta", hasta);
+    const qs = u.toString(); return "/contabilidad/pagos/historial/export" + (qs ? "?" + qs : "");
+  })();
+
+  return (
+    <div>
+      <div className="pg-hfiltros">
+        <input placeholder="Buscar proveedor…" value={q} onChange={(e) => setQ(e.target.value)} />
+        <select value={cta} onChange={(e) => setCta(e.target.value)}>
+          <option value="">Toda cuenta</option>
+          {cuentas.map((c) => <option key={c.nombre} value={c.nombre}>{c.nombre}</option>)}
+        </select>
+        <input type="date" value={desde} onChange={(e) => setDesde(e.target.value)} title="Desde" />
+        <span className="muted">→</span>
+        <input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} title="Hasta" />
+        <a className="export-btn" href={href} title="Descargar historial en Excel">⬇ Excel</a>
+      </div>
+      <p className="sub"><strong>{filt.length}</strong> pago(s) · total <strong>{$(totalF)}</strong></p>
+      {!filt.length ? (
+        <div className="pg-empty">Sin pagos con esos filtros.</div>
+      ) : (
+        <div className="pg-hist">
+          <table className="pg-htabla">
+            <thead><tr><th>Fecha</th><th>Proveedor</th><th>Cuenta</th><th className="num">Monto</th><th>Tipo</th><th className="num">Fact.</th><th>Soporte</th><th>Quién</th></tr></thead>
+            <tbody>
+              {filt.map((p) => (
+                <Fragment key={p.id}>
+                  <tr className="pg-hrow" onClick={() => toggle(p.id)}>
+                    <td className="mono">{dm(p.fecha_pago)}</td>
+                    <td>{p.proveedor ?? p.nit_proveedor}</td>
+                    <td>{p.cuenta_pago ?? <span className="muted">—</span>}</td>
+                    <td className="num"><b>{$(p.monto)}</b></td>
+                    <td>{p.tipo === "abono" ? <span className="pg-abono">abono</span> : <span className="pg-completo">completo</span>}</td>
+                    <td className="num">{p.n_facturas} {exp.has(p.id) ? "▾" : "▸"}</td>
+                    <td>{p.comprobante_url ? <a href={p.comprobante_url} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}>📎</a> : <span className="muted">—</span>}</td>
+                    <td className="muted">{p.pagado_por.split("@")[0]}</td>
+                  </tr>
+                  {exp.has(p.id) && (
+                    <tr className="pg-hdet"><td colSpan={8}>
+                      {p.nota && <div className="pg-nota">📝 {p.nota}</div>}
+                      <div className="pg-fact-list">{p.facturas.map((x, i) => <span key={i}><b className="mono">{x.numero}</b> {$(x.monto)}</span>)}</div>
+                    </td></tr>
+                  )}
+                </Fragment>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }
