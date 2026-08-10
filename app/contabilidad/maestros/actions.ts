@@ -154,14 +154,43 @@ export async function agregarPlazo(fd: FormData) {
   done();
 }
 
+/** Agrega/actualiza la cuenta bancaria de un proveedor (para el archivo del banco
+ *  en Pagos). Se puede llenar a mano aquí o cargando el Sheet. fuente='humano'. */
+export async function agregarCuentaBanco(fd: FormData) {
+  const user = await guard();
+  const nit = S(fd, "nit");
+  if (!nit) throw new Error("Falta el NIT del proveedor.");
+  const v = (k: string) => S(fd, k) || null;
+  await withTx(async (c) => {
+    await c.query(
+      `INSERT INTO cuentas_bancarias_proveedor
+         (nit, titular_nombre, titular_apellido, tipo_doc, num_doc, banco, tipo_cuenta, num_cuenta, correo, fuente, creado_por)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'humano',$10)
+       ON CONFLICT (nit) DO UPDATE SET
+         titular_nombre = COALESCE(EXCLUDED.titular_nombre, cuentas_bancarias_proveedor.titular_nombre),
+         titular_apellido = COALESCE(EXCLUDED.titular_apellido, cuentas_bancarias_proveedor.titular_apellido),
+         tipo_doc = EXCLUDED.tipo_doc,
+         num_doc = COALESCE(EXCLUDED.num_doc, cuentas_bancarias_proveedor.num_doc),
+         banco = COALESCE(EXCLUDED.banco, cuentas_bancarias_proveedor.banco),
+         tipo_cuenta = COALESCE(EXCLUDED.tipo_cuenta, cuentas_bancarias_proveedor.tipo_cuenta),
+         num_cuenta = COALESCE(EXCLUDED.num_cuenta, cuentas_bancarias_proveedor.num_cuenta),
+         correo = COALESCE(EXCLUDED.correo, cuentas_bancarias_proveedor.correo),
+         fuente = 'humano', actualizado_en = now()`,
+      [nit, v("titular_nombre"), v("titular_apellido"), S(fd, "tipo_doc") || "NIT", v("num_doc"), v("banco"), v("tipo_cuenta"), v("num_cuenta"), v("correo"), user.email]);
+    await registrarEvento(c, { cufe: null, tipo: "crea_maestro", campo: "cuenta_banco", valorNuevo: { nit, banco: S(fd, "banco") }, actor: user.email, actorRol: user.rol });
+  });
+  done();
+}
+
 /** Edición inline tipo Excel: doble clic → cambia un campo. Whitelist estricta
- *  (tabla·campo·tipo) → nada de inyección. En proveedores marca fuente='humano'
- *  para que el sync no lo pise. Permiso: los 3 admin (guard). */
+ *  (tabla·campo·tipo) → nada de inyección. En proveedores/bancos marca fuente='humano'
+ *  para que el sync/loader no lo pise. Permiso: los 3 admin (guard). */
 const EDITABLE: Record<string, { tabla: string; key: string; campos: Record<string, "text" | "num"> }> = {
   conceptos:   { tabla: "maestro_conceptos",   key: "nombre", campos: { cuenta_puc: "text" } },
   destinos:    { tabla: "maestro_destinos",    key: "nombre", campos: { short_code: "text" } },
   proveedores: { tabla: "maestro_proveedores", key: "nit",    campos: { nombre: "text", concepto_default: "text", destino_default: "text", cuenta_puc_default: "text", plazo_dias: "num" } },
   cuentas:     { tabla: "maestro_cuentas_puc", key: "codigo", campos: { nombre: "text" } },
+  bancos:      { tabla: "cuentas_bancarias_proveedor", key: "nit", campos: { titular_nombre: "text", titular_apellido: "text", tipo_doc: "text", num_doc: "text", banco: "text", tipo_cuenta: "text", num_cuenta: "text", correo: "text", referencia: "text" } },
 };
 
 export async function actualizarCampo(fd: FormData) {
@@ -204,7 +233,7 @@ export async function actualizarCampo(fd: FormData) {
     valor = n;
   }
   const keyVal: string | number = def.key === "id" ? Number(id) : id;
-  const extra = grupo === "proveedores" ? ", fuente = 'humano', actualizado_en = now()" : "";
+  const extra = grupo === "proveedores" || grupo === "bancos" ? ", fuente = 'humano', actualizado_en = now()" : "";
   await withTx(async (c) => {
     await c.query(`UPDATE ${def.tabla} SET ${campo} = $1${extra} WHERE ${def.key} = $2`, [valor, keyVal]);
     await registrarEvento(c, { cufe: null, tipo: "edita_maestro", campo: `${grupo}.${campo}`, valorNuevo: { id, valor }, actor: user.email, actorRol: user.rol });

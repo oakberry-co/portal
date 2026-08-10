@@ -5,7 +5,7 @@ export const dynamic = "force-dynamic";
 
 async function cargar(): Promise<MaestrosData> {
   const pool = getPool();
-  const [conceptos, destinos, proveedores, cuentas, retenciones] = await Promise.all([
+  const [conceptos, destinos, proveedores, cuentas, retenciones, bancos] = await Promise.all([
     pool.query("SELECT nombre, cuenta_puc, activo, creado_por FROM maestro_conceptos ORDER BY activo DESC, nombre"),
     pool.query("SELECT nombre, short_code, activo, creado_por FROM maestro_destinos ORDER BY activo DESC, nombre"),
     pool.query("SELECT nit, nombre, concepto_default, destino_default, cuenta_puc_default, retencion_hint, plazo_dias, fuente, n_facturas, confianza::text FROM maestro_proveedores ORDER BY nombre NULLS LAST"),
@@ -19,10 +19,16 @@ async function cargar(): Promise<MaestrosData> {
                 LEFT JOIN maestro_proveedores mp ON mp.nit = r.nit_proveedor
                 GROUP BY r.nit_proveedor, mp.nombre
                 ORDER BY mp.nombre NULLS LAST`),
+    pool.query(`SELECT cb.nit, coalesce(mp.nombre, cb.titular_nombre) AS nombre,
+                  cb.titular_nombre, cb.titular_apellido, cb.tipo_doc, cb.num_doc,
+                  cb.banco, cb.tipo_cuenta, cb.num_cuenta, cb.correo, cb.referencia, cb.fuente
+                FROM cuentas_bancarias_proveedor cb
+                LEFT JOIN maestro_proveedores mp ON mp.nit = cb.nit
+                ORDER BY nombre NULLS LAST`),
   ]);
   return {
     conceptos: conceptos.rows, destinos: destinos.rows, proveedores: proveedores.rows,
-    cuentas: cuentas.rows, retenciones: retenciones.rows,
+    cuentas: cuentas.rows, retenciones: retenciones.rows, bancos: bancos.rows,
   } as MaestrosData;
 }
 

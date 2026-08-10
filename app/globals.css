@@ -537,6 +537,10 @@ button.ghost { background: #fff; color: var(--purple); }
 .mst-empty { color: var(--lav); font-size: 13px; padding: 14px; background: var(--lav-soft);
   border: 1px dashed var(--border-lav); border-radius: 10px; margin-bottom: 12px; }
 
+/* Tabla bancaria (ancha) con scroll horizontal propio */
+.mst-scroll { overflow-x: auto; }
+.mst-scroll .mst-tabla { min-width: 900px; }
+
 /* Edición inline tipo Excel en Maestros */
 .mst-hint { font-size: 11.5px; color: var(--lav); margin: 0 0 10px; }
 .mst-cell { cursor: cell; border-radius: 4px; padding: 1px 4px; border-bottom: 1px dashed transparent; transition: background .1s; }

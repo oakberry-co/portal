@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import {
   agregarConcepto, agregarDestino, agregarProveedor,
-  agregarCuentaPuc, agregarRetencion, actualizarCampo, toggleMaestro,
+  agregarCuentaPuc, agregarRetencion, agregarCuentaBanco, actualizarCampo, toggleMaestro,
 } from "./actions";
 
 export type MaestrosData = {
@@ -12,6 +12,7 @@ export type MaestrosData = {
   proveedores: { nit: string; nombre: string | null; concepto_default: string | null; destino_default: string | null; cuenta_puc_default: string | null; retencion_hint: string | null; plazo_dias: number | null; fuente: string; n_facturas: number | null; confianza: string | null }[];
   cuentas: { codigo: string; nombre: string; activo: boolean }[];
   retenciones: { nit: string; nombre: string | null; retefuente: string | null; reteica: string | null; reteiva: string | null; humano: boolean }[];
+  bancos: { nit: string; nombre: string | null; titular_nombre: string | null; titular_apellido: string | null; tipo_doc: string | null; num_doc: string | null; banco: string | null; tipo_cuenta: string | null; num_cuenta: string | null; correo: string | null; referencia: string | null; fuente: string }[];
 };
 
 const TABS = [
@@ -20,6 +21,7 @@ const TABS = [
   { key: "proveedores", label: "Proveedores", fuente: "Facturas + Siigo · APRENDE cada vez que clasificas · plazo de pago incluido" },
   { key: "cuentas", label: "Cuentas PUC", fuente: "La entrega tu equipo contable" },
   { key: "retenciones", label: "Retenciones", fuente: "Base del equipo + Siigo (se cruza por NIT)" },
+  { key: "bancos", label: "Cuentas bancarias", fuente: "Para el archivo del banco (Pagos) · súbela por Sheet o agrégala a mano" },
 ] as const;
 
 type TabKey = (typeof TABS)[number]["key"];
@@ -68,6 +70,7 @@ export function MaestrosView({ data }: { data: MaestrosData }) {
   const cuenta = (k: TabKey) =>
     k === "conceptos" ? act(data.conceptos) : k === "destinos" ? act(data.destinos)
     : k === "cuentas" ? act(data.cuentas) : k === "proveedores" ? data.proveedores.length
+    : k === "bancos" ? data.bancos.length
     : data.retenciones.length;
 
   return (
@@ -186,6 +189,41 @@ export function MaestrosView({ data }: { data: MaestrosData }) {
                 <td><Edit grupo="retenciones" id={r.nit} campo="reteiva" value={r.reteiva} num suffix="%" /></td>
                 <td>{r.humano ? <span className="ft hum">humano</span> : <span className="ft off">Sheet</span>}</td>
               </tr>))}</tbody></table>
+        </>
+      )}
+
+      {tab === "bancos" && (
+        <>
+          <form action={agregarCuentaBanco} className="mst-add wide">
+            <input name="nit" placeholder="NIT" required />
+            <input name="titular_nombre" placeholder="Titular / razón social" />
+            <input name="titular_apellido" placeholder="Apellido (si es persona)" />
+            <select name="tipo_doc" defaultValue="NIT"><option value="NIT">NIT</option><option value="CC">CC</option><option value="CE">CE</option><option value="PPT">PPT</option></select>
+            <input name="num_doc" placeholder="N° documento" />
+            <input name="banco" placeholder="Banco" />
+            <select name="tipo_cuenta" defaultValue=""><option value="">Tipo cuenta</option><option value="ahorros">Ahorros</option><option value="corriente">Corriente</option><option value="deposito">Depósito</option></select>
+            <input name="num_cuenta" placeholder="N° cuenta" />
+            <input name="correo" placeholder="Correo (opc)" />
+            <button type="submit">Agregar</button>
+          </form>
+          {data.bancos.length === 0 && <p className="mst-empty">Aún vacío. Súbeme tu Sheet de cuentas bancarias y lo cargo, o agrégalas aquí. Sin esto, el archivo del banco (Pagos) sale con banco y cuenta en blanco.</p>}
+          <div className="mst-scroll">
+            <table className="mst-tabla"><thead><tr><th>NIT</th><th>Proveedor</th><th>Titular</th><th>Apellido</th><th>Doc</th><th>N° doc</th><th>Banco</th><th>Cuenta</th><th>N° cuenta</th><th>Correo</th><th>Fuente</th></tr></thead>
+              <tbody>{data.bancos.filter((r) => match(r.nit, r.nombre, r.banco, r.num_cuenta)).map((r) => (
+                <tr key={r.nit}>
+                  <td className="mono">{r.nit}</td>
+                  <td>{r.nombre ?? <span className="muted">—</span>}</td>
+                  <td><Edit grupo="bancos" id={r.nit} campo="titular_nombre" value={r.titular_nombre} /></td>
+                  <td><Edit grupo="bancos" id={r.nit} campo="titular_apellido" value={r.titular_apellido} /></td>
+                  <td><Edit grupo="bancos" id={r.nit} campo="tipo_doc" value={r.tipo_doc} /></td>
+                  <td className="mono"><Edit grupo="bancos" id={r.nit} campo="num_doc" value={r.num_doc} /></td>
+                  <td><Edit grupo="bancos" id={r.nit} campo="banco" value={r.banco} /></td>
+                  <td><Edit grupo="bancos" id={r.nit} campo="tipo_cuenta" value={r.tipo_cuenta} /></td>
+                  <td className="mono"><Edit grupo="bancos" id={r.nit} campo="num_cuenta" value={r.num_cuenta} /></td>
+                  <td><Edit grupo="bancos" id={r.nit} campo="correo" value={r.correo} /></td>
+                  <td>{fu(r.fuente)}</td>
+                </tr>))}</tbody></table>
+          </div>
         </>
       )}
     </div>
