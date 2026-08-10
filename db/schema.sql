@@ -305,4 +305,49 @@ CREATE INDEX IF NOT EXISTS ix_pagofact_cufe ON pago_facturas (cufe);
 -- semana" la cambia sin tocar la fecha de vencimiento real.
 ALTER TABLE factura_estado ADD COLUMN IF NOT EXISTS fecha_pago_prog DATE;
 
+-- -----------------------------------------------------------------------------
+-- 10) PAGOS v2 — cuenta propia de pago POR FACTURA + maestro de cuentas
+--     bancarias del proveedor (para armar el archivo del banco). El pago fluye
+--     como un tablero de 3 columnas:
+--       retenciones_ok  (Pendientes: se asigna la cuenta por factura)
+--         -> aprobada_pago (Validación semana en curso: por cuenta, se baja el CSV)
+--         -> pagada        (Confirmados: el banco ya ejecutó).
+--     La cuenta desde la que sale el dinero se elige POR FACTURA (Daniel).
+-- -----------------------------------------------------------------------------
+ALTER TABLE factura_estado ADD COLUMN IF NOT EXISTS cuenta_pago TEXT;  -- cuenta propia asignada
+ALTER TABLE pagos          ADD COLUMN IF NOT EXISTS cuenta_pago TEXT;  -- con qué cuenta se pagó
+
+-- Cuentas propias de pago (maestro-lite): Rappi / Davivienda / PSE. El 'formato'
+-- define la plantilla del CSV del banco al exportar.
+CREATE TABLE IF NOT EXISTS cuentas_pago (
+  id         SERIAL PRIMARY KEY,
+  nombre     TEXT UNIQUE NOT NULL,
+  formato    TEXT NOT NULL DEFAULT 'generico',   -- rappi | davivienda | pse | generico
+  activo     BOOLEAN NOT NULL DEFAULT TRUE,
+  creado_por TEXT,
+  creado_en  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+INSERT INTO cuentas_pago (nombre, formato) VALUES
+  ('Rappi', 'rappi'), ('Davivienda', 'davivienda'), ('PSE', 'pse')
+ON CONFLICT (nombre) DO NOTHING;
+
+-- Maestro de cuentas bancarias del proveedor (falta subir la data). Alimenta el
+-- archivo del banco (1 línea por proveedor). banco->código ACH se resuelve al
+-- exportar. Se llena a mano en Maestros o cargando el Sheet cuando esté listo.
+CREATE TABLE IF NOT EXISTS cuentas_bancarias_proveedor (
+  nit              TEXT PRIMARY KEY,
+  titular_nombre   TEXT,
+  titular_apellido TEXT,
+  tipo_doc         TEXT NOT NULL DEFAULT 'NIT',    -- CC | CE | NIT | PPT
+  num_doc          TEXT,                           -- default = nit
+  banco            TEXT,                           -- nombre del banco (código ACH al exportar)
+  tipo_cuenta      TEXT,                           -- ahorros | corriente | deposito
+  num_cuenta       TEXT,
+  correo           TEXT,
+  referencia       TEXT,
+  fuente           TEXT NOT NULL DEFAULT 'humano', -- humano | sheet | siigo
+  creado_por       TEXT,
+  actualizado_en   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 COMMIT;

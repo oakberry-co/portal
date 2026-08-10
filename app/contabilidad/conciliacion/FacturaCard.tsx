@@ -76,6 +76,7 @@ export const FacturaCard = memo(function FacturaCard({
 }) {
   const [modal, setModal] = useState(false);
   const [pending, start] = useTransition();
+  const [faltaDest, setFaltaDest] = useState(false);
 
   const total = num(f.total);
   const subtotal = num(f.subtotal);
@@ -114,6 +115,13 @@ export const FacturaCard = memo(function FacturaCard({
   function onClasif(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
+    // No dejar avanzar sin DESTINO (pedido de Daniel): la factura debe ir a un
+    // destino/centro de costo antes de clasificarse.
+    if (!String(fd.get("destino") ?? "").trim()) {
+      setFaltaDest(true);
+      return;
+    }
+    setFaltaDest(false);
     start(async () => {
       try {
         const patch = await guardarClasificacion(fd);
@@ -143,7 +151,7 @@ export const FacturaCard = memo(function FacturaCard({
           {conf != null && <span className={"dot " + (confBaja ? "warn" : "ok")} title={`Máquina: "${f.concepto_sug ?? "—"}" · ${conf}%`} />}
           <Combobox name="concepto" label="concepto" options={conceptos} defaultValue={f.concepto ?? f.concepto_sug ?? ""} placeholder="Concepto" />
         </div>
-        <div className="c-field">
+        <div className={"c-field" + (faltaDest ? " falta" : "")} title={faltaDest ? "Ponle un destino antes de clasificar" : undefined}>
           <Combobox name="destino" label="destino" options={destinos} defaultValue={f.destino ?? f.destino_sug ?? ""} placeholder="Destino" />
         </div>
         <div className="c-plazo">

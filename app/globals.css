@@ -680,3 +680,46 @@ button.ghost { background: #fff; color: var(--purple); }
 .pg-nota { font-size: 12px; color: var(--lav); margin-bottom: 6px; }
 .pg-fact-list { display: flex; flex-wrap: wrap; gap: 8px; font-size: 11.5px; color: var(--ink); }
 .pg-fact-list span { background: #fff; border: 1px solid var(--border); border-radius: 6px; padding: 2px 8px; }
+
+/* Conciliación: destino obligatorio antes de clasificar (borde rojo) */
+.c-field.falta .cbx-input { border-color: var(--danger); background: #fff6f6; }
+
+/* Pagos v2 — tablero de 3 columnas (Pendientes → Validación → Confirmados) ---- */
+.container-wide { max-width: 1440px; }
+.pg-board { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; align-items: start; margin-top: 4px; }
+.pg-board.busy { opacity: .55; pointer-events: none; }
+.pg-col { border: 1px solid var(--border); border-radius: 14px; background: var(--card); box-shadow: var(--shadow); overflow: hidden; display: flex; flex-direction: column; }
+.pg-col-head { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; border-bottom: 1px solid var(--border); background: var(--lav-soft); }
+.pg-col-tag { font-weight: 800; font-size: 12px; text-transform: uppercase; letter-spacing: .03em; color: var(--purple-deep); }
+.pg-col-tag.pend { color: var(--coral); }
+.pg-col-tag.val { color: var(--warn); }
+.pg-col-tag.ok { color: var(--ok); }
+.pg-col-head i { font-style: normal; font-family: var(--mono); font-size: 11px; background: rgba(0,0,0,.06); border-radius: 999px; padding: 1px 8px; color: var(--lav); }
+.pg-col-body { padding: 8px; display: flex; flex-direction: column; gap: 6px; max-height: 72vh; overflow-y: auto; }
+.pg-empty.sm { padding: 18px 14px; font-size: 12px; }
+.pg-col .pg-prov { border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+.pg-col .pg-prov-head { padding: 8px 10px; }
+.pg-col .pg-prov-nom { font-size: 12.5px; }
+.pg-col .pg-prov-tot { min-width: 0; font-size: 12.5px; }
+.pg-col .pg-prov-n { font-size: 10.5px; }
+.pg-prov.val { border-color: var(--border-lav); }
+.pg-nobank { color: var(--coral); font-size: 9px; font-weight: 700; margin-left: 6px; white-space: nowrap; }
+.pg-assign { display: flex; align-items: center; gap: 6px; padding: 6px 10px; background: var(--cream); border-top: 1px solid var(--border); }
+.pg-assign select { width: auto; flex: 1; min-width: 0; font-size: 11.5px; padding: 5px 6px; font-weight: 600; }
+.pg-mini { background: #fff; color: var(--purple) !important; border: 1px solid var(--border-lav); border-radius: 7px; padding: 5px 9px; font-size: 11px; font-weight: 700; cursor: pointer; white-space: nowrap; }
+.pg-mini:hover:not(:disabled) { border-color: var(--purple); background: var(--lav-soft); filter: none; }
+.pg-cta { border: 1px solid var(--border-lav); border-radius: 10px; overflow: hidden; }
+.pg-cta-head { display: flex; align-items: center; gap: 8px; padding: 7px 10px; background: var(--lav-soft); }
+.pg-cta-nom { font-weight: 800; font-size: 12.5px; color: var(--purple-deep); flex: 1; }
+.pg-cta-tot { font-weight: 700; font-size: 12px; color: var(--coral); }
+.pg-csv { background: var(--purple); color: #fff !important; border-radius: 7px; padding: 4px 9px; font-size: 11px; font-weight: 700; text-decoration: none !important; white-space: nowrap; }
+.pg-csv:hover { background: var(--purple-deep); }
+.pg-conf { border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+.pg-conf-head { display: flex; align-items: center; gap: 8px; padding: 8px 10px; cursor: pointer; }
+.pg-conf-head:hover { background: #fdfbf6; }
+.pg-conf-nom { flex: 1; font-weight: 700; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pg-conf-cta { font-size: 10px; color: var(--purple); background: var(--lav-soft); border-radius: 999px; padding: 1px 8px; white-space: nowrap; }
+.pg-conf-mto { font-weight: 800; color: var(--ok); font-size: 12.5px; }
+.pg-conf-det { padding: 8px 12px; background: var(--cream); border-top: 1px solid var(--border); }
+.pg-conf-det .pg-fact-list { margin-top: 6px; }
+@media (max-width: 980px) { .pg-board { grid-template-columns: 1fr; } .pg-col-body { max-height: none; } }
