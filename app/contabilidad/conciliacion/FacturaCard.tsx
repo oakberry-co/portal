@@ -140,7 +140,14 @@ export const FacturaCard = memo(function FacturaCard({
       </div>
 
       <div className="c-num mono" title={`Factura ${f.numero}`}>{f.numero}</div>
-      <div className="c-fecha">{ddmm(f.fecha_emision)}</div>
+      <div className="c-fecha">
+        <span title="Fecha de emisión (DIAN)">{ddmm(f.fecha_emision)}</span>
+        {f.sincronizado_en && (
+          <span className="lleg" title="Fecha en que llegó la factura al portal (recepción). Con esta fecha + plazo se calcula el día de pago.">
+            llegó {ddmm(f.sincronizado_en)}
+          </span>
+        )}
+      </div>
       <div className="c-sem">{semanaISO(f.fecha_emision)}</div>
       <div className="c-valor num">{copN(total)}</div>
 
@@ -177,12 +184,6 @@ export const FacturaCard = memo(function FacturaCard({
       </button>
 
       <div className="c-docs">
-        {f.link_drive ? (
-          <a className="ic doc" href={f.link_drive} target="_blank" rel="noopener noreferrer"
-             title="Descargar la factura del proveedor (PDF en Drive)">📄</a>
-        ) : (
-          <span className="ic off" title="Sin PDF del proveedor — usa el documento DIAN">📄</span>
-        )}
         <a
           className="ic dian"
           href={`https://catalogo-vpfe.dian.gov.co/document/searchqr?documentkey=${encodeURIComponent(f.cufe)}`}
@@ -192,6 +193,12 @@ export const FacturaCard = memo(function FacturaCard({
         >
           DIAN
         </a>
+        {f.link_drive ? (
+          <a className="ic pdf" href={f.link_drive} target="_blank" rel="noopener noreferrer"
+             title="Descargar el PDF de la factura del proveedor">PDF</a>
+        ) : (
+          <span className="ic pdf off" title="Sin PDF del proveedor — usa el documento DIAN">PDF</span>
+        )}
       </div>
 
       {/* Semáforos (al final): Clasificación · Retención · Estado de pago */}
