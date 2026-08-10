@@ -350,4 +350,12 @@ CREATE TABLE IF NOT EXISTS cuentas_bancarias_proveedor (
   actualizado_en   TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- Config de Pagos (clave/valor). dia_pago = día de la semana en que se paga
+-- (ISO 1=Lun .. 7=Dom); la fecha de pago SUGERIDA de cada factura se alinea a él.
+CREATE TABLE IF NOT EXISTS config_pagos (
+  clave TEXT PRIMARY KEY,
+  valor TEXT
+);
+INSERT INTO config_pagos (clave, valor) VALUES ('dia_pago', '5') ON CONFLICT (clave) DO NOTHING;
+
 COMMIT;

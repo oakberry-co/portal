@@ -6,13 +6,14 @@ export const dynamic = "force-dynamic";
 const CAMPOS = `
   f.cufe, f.nombre_proveedor, f.nit_proveedor, f.numero, f.fecha_emision::text AS fecha_emision,
   e.concepto, e.destino, e.cuenta_pago,
+  e.fecha_vencimiento::text AS fecha_vencimiento,
   coalesce(e.fecha_pago_prog, e.fecha_vencimiento, f.fecha_emision)::text AS semana_fecha,
   coalesce(e.valor_a_pagar, f.total)::float AS a_pagar,
   coalesce(e.pago_monto,0)::float AS pagado,
   coalesce(e.pago_estado,'pendiente') AS pago_estado,
   (cb.nit IS NOT NULL) AS tiene_banco`;
 
-async function cargar(): Promise<{ pendientes: FilaPago[]; validacion: FilaPago[]; historial: PagoHecho[]; cuentas: CuentaPago[] }> {
+async function cargar(): Promise<{ pendientes: FilaPago[]; validacion: FilaPago[]; historial: PagoHecho[]; cuentas: CuentaPago[]; diaPago: number }> {
   const pool = getPool();
   // Columna 1 — PENDIENTES: listas para pago (retenciones_ok), sin cuenta asignada.
   const pendientes = await pool.query<FilaPago>(`
@@ -42,8 +43,10 @@ async function cargar(): Promise<{ pendientes: FilaPago[]; validacion: FilaPago[
     GROUP BY p.id
     ORDER BY p.fecha_pago DESC, p.id DESC
     LIMIT 300`);
-  const cuentas = await pool.query<CuentaPago>("SELECT nombre, formato FROM cuentas_pago WHERE activo ORDER BY id");
-  return { pendientes: pendientes.rows, validacion: validacion.rows, historial: historial.rows, cuentas: cuentas.rows };
+  const cuentas = await pool.query<CuentaPago>("SELECT nombre, formato, activo FROM cuentas_pago ORDER BY id");
+  const cfg = await pool.query<{ valor: string }>("SELECT valor FROM config_pagos WHERE clave = 'dia_pago'");
+  const diaPago = Number(cfg.rows[0]?.valor ?? 5) || 5;
+  return { pendientes: pendientes.rows, validacion: validacion.rows, historial: historial.rows, cuentas: cuentas.rows, diaPago };
 }
 
 export default async function PagosPage() {
@@ -61,7 +64,7 @@ export default async function PagosPage() {
         <b> Validación semana en curso</b> (baja el archivo del banco por cuenta) →
         <b> Confirmados</b> (el banco ya pagó).
       </p>
-      <PagosView pendientes={data.pendientes} validacion={data.validacion} historial={data.historial} cuentas={data.cuentas} />
+      <PagosView pendientes={data.pendientes} validacion={data.validacion} historial={data.historial} cuentas={data.cuentas} diaPago={data.diaPago} />
     </div>
   );
 }

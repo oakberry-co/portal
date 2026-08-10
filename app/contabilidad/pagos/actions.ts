@@ -158,3 +158,49 @@ export async function reprogramarSemana(fd: FormData) {
   });
   done();
 }
+
+// ---------- Configuración de Pagos (cuentas propias + día de pago) ----------
+
+/** Agrega/reactiva una cuenta propia de pago. `formato` define la plantilla del
+ *  CSV del banco (rappi | davivienda | pse | generico). */
+export async function agregarCuentaPago(fd: FormData) {
+  const user = await guardPagador();
+  const nombre = String(fd.get("nombre") ?? "").trim();
+  const formato = String(fd.get("formato") ?? "generico").trim() || "generico";
+  if (!nombre) throw new Error("Falta el nombre de la cuenta.");
+  await withTx(async (c) => {
+    await c.query(
+      `INSERT INTO cuentas_pago (nombre, formato, creado_por, activo)
+       VALUES ($1,$2,$3,TRUE)
+       ON CONFLICT (nombre) DO UPDATE SET formato = EXCLUDED.formato, activo = TRUE`,
+      [nombre, formato, user.email]);
+    await registrarEvento(c, { cufe: null, tipo: "crea_maestro", campo: "cuenta_pago", valorNuevo: { nombre, formato }, actor: user.email, actorRol: user.rol, origen: "web" });
+  });
+  done();
+}
+
+/** Activa/desactiva una cuenta propia de pago (no borra). */
+export async function toggleCuentaPago(fd: FormData) {
+  await guardPagador();
+  const nombre = String(fd.get("nombre") ?? "").trim();
+  if (!nombre) throw new Error("Falta la cuenta.");
+  await withTx(async (c) => {
+    await c.query("UPDATE cuentas_pago SET activo = NOT activo WHERE nombre = $1", [nombre]);
+  });
+  done();
+}
+
+/** Define el día de pago (ISO 1=Lun..7=Dom): la fecha de pago SUGERIDA de cada
+ *  factura se alinea a ese día (último día de pago ≤ vencimiento). */
+export async function guardarDiaPago(fd: FormData) {
+  const user = await guardPagador();
+  const dia = String(fd.get("dia_pago") ?? "").trim();
+  if (!/^[1-7]$/.test(dia)) throw new Error("Día de pago inválido.");
+  await withTx(async (c) => {
+    await c.query(
+      `INSERT INTO config_pagos (clave, valor) VALUES ('dia_pago',$1)
+       ON CONFLICT (clave) DO UPDATE SET valor = EXCLUDED.valor`, [dia]);
+    await registrarEvento(c, { cufe: null, tipo: "config", campo: "dia_pago", valorNuevo: { dia }, actor: user.email, actorRol: user.rol, origen: "web" });
+  });
+  done();
+}

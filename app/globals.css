@@ -741,3 +741,27 @@ button.ghost { background: #fff; color: var(--purple); }
 .pg-hfiltros input, .pg-hfiltros select { width: auto; font-size: 12.5px; padding: 7px 10px; font-weight: 600; }
 .pg-hfiltros input[type="date"] { font-size: 12px; font-weight: 400; }
 .pg-hfiltros input:not([type="date"]) { min-width: 200px; }
+
+/* Fix historial: el `th` global (sticky top:60px) descuadraba la tabla → static */
+.pg-htabla th { position: static; top: auto; }
+
+/* Fila de Pendientes con fecha sugerida / vencimiento / urgencia */
+.pg-fcell { line-height: 1.3; }
+.pg-frow { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.pg-frow .mono { font-size: 11.5px; color: var(--purple); }
+.pg-urg { font-size: 9.5px; font-weight: 700; white-space: nowrap; }
+.pg-urg.lo { color: var(--danger); }
+.pg-urg.mid { color: var(--warn); }
+.pg-urg.hi { color: var(--lav); }
+.pg-fdates { font-size: 9.5px; color: var(--lav); margin-top: 1px; }
+.pg-fdates b { color: var(--purple-deep); }
+
+/* Configuración de Pagos (día de pago + cuentas propias) */
+.pg-config { display: grid; gap: 16px; max-width: 760px; }
+.pg-cfg-card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 16px 18px; box-shadow: var(--shadow); }
+.pg-cfg-card h3 { margin: 0 0 4px; font-size: 15px; color: var(--purple-deep); font-weight: 800; }
+.pg-cfg-card > p.muted { font-size: 12px; margin: 0; }
+.pg-cfg-form { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin: 10px 0 14px; }
+.pg-cfg-form input, .pg-cfg-form select { width: auto; font-size: 13px; }
+.pg-cfg-form input { min-width: 200px; }
+.pg-config .mst-tabla { min-width: 0; }

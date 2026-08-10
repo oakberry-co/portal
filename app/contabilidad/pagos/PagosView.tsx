@@ -1,11 +1,11 @@
 "use client";
 
 import { Fragment, useState, useTransition } from "react";
-import { asignarCuenta, quitarCuenta, confirmarPago } from "./actions";
+import { asignarCuenta, quitarCuenta, confirmarPago, agregarCuentaPago, toggleCuentaPago, guardarDiaPago } from "./actions";
 
 export type FilaPago = {
   cufe: string; nombre_proveedor: string | null; nit_proveedor: string; numero: string;
-  fecha_emision: string; concepto: string | null; destino: string | null;
+  fecha_emision: string; fecha_vencimiento: string | null; concepto: string | null; destino: string | null;
   cuenta_pago: string | null; semana_fecha: string; a_pagar: number; pagado: number;
   pago_estado: string; tiene_banco: boolean;
 };
@@ -15,7 +15,7 @@ export type PagoHecho = {
   pagado_por: string; creado_en: string; n_facturas: number;
   facturas: { numero: string; monto: number }[];
 };
-export type CuentaPago = { nombre: string; formato: string };
+export type CuentaPago = { nombre: string; formato: string; activo: boolean };
 
 const cop = new Intl.NumberFormat("es-CO", { style: "currency", currency: "COP", maximumFractionDigits: 0 });
 const $ = (n: number) => cop.format(Math.round(n || 0));
@@ -24,6 +24,15 @@ const MESES = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "o
 const dm = (s: string) => { const x = new Date(s); return `${String(x.getUTCDate()).padStart(2, "0")}/${MESES[x.getUTCMonth()]}`; };
 const mesActual = new Date().toISOString().slice(0, 7);
 const hoyISO = new Date().toISOString().slice(0, 10);
+
+/** Fecha de pago SUGERIDA: el último "día de pago" (ISO 1=Lun..7=Dom) ≤ vencimiento. */
+function sugPago(dueISO: string, payDow: number): string {
+  const d = new Date(dueISO + "T00:00:00Z");
+  const dow = d.getUTCDay() || 7;
+  d.setUTCDate(d.getUTCDate() - ((dow - payDow + 7) % 7));
+  return d.toISOString().slice(0, 10);
+}
+const diasHasta = (iso: string) => Math.round((new Date(iso + "T00:00:00Z").getTime() - new Date(hoyISO + "T00:00:00Z").getTime()) / 86400000);
 
 type Grupo = { nit: string; nombre: string; tiene_banco: boolean; facturas: FilaPago[]; total: number; oldest: string };
 
@@ -34,9 +43,9 @@ function porProveedor(filas: FilaPago[]): Grupo[] {
     g.facturas.push(f);
   }
   return [...m.values()].map((g) => {
-    g.facturas.sort((a, b) => a.fecha_emision.localeCompare(b.fecha_emision)); // más viejas primero (prioriza pagar lo viejo)
-    return { ...g, total: g.facturas.reduce((s, f) => s + saldo(f), 0), oldest: g.facturas[0]?.fecha_emision ?? "9999" };
-  }).sort((a, b) => a.oldest.localeCompare(b.oldest)); // el proveedor con la deuda más vieja, primero
+    g.facturas.sort((a, b) => a.semana_fecha.localeCompare(b.semana_fecha)); // más urgentes primero (por fecha de pago)
+    return { ...g, total: g.facturas.reduce((s, f) => s + saldo(f), 0), oldest: g.facturas[0]?.semana_fecha ?? "9999" };
+  }).sort((a, b) => a.oldest.localeCompare(b.oldest)); // el proveedor con el pago más próximo/vencido, primero
 }
 function porCuenta(filas: FilaPago[]): { cuenta: string; provs: Grupo[]; total: number }[] {
   const m = new Map<string, FilaPago[]>();
@@ -44,8 +53,8 @@ function porCuenta(filas: FilaPago[]): { cuenta: string; provs: Grupo[]; total: 
   return [...m.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([cuenta, fs]) => ({ cuenta, provs: porProveedor(fs), total: fs.reduce((s, f) => s + saldo(f), 0) }));
 }
 
-export function PagosView({ pendientes, validacion, historial, cuentas }: {
-  pendientes: FilaPago[]; validacion: FilaPago[]; historial: PagoHecho[]; cuentas: CuentaPago[];
+export function PagosView({ pendientes, validacion, historial, cuentas, diaPago }: {
+  pendientes: FilaPago[]; validacion: FilaPago[]; historial: PagoHecho[]; cuentas: CuentaPago[]; diaPago: number;
 }) {
   const [abierto, setAbierto] = useState<Set<string>>(new Set());
   const [sel, setSel] = useState<Set<string>>(new Set());
@@ -53,7 +62,7 @@ export function PagosView({ pendientes, validacion, historial, cuentas }: {
   const [expPago, setExpPago] = useState<Set<number>>(new Set());
   const [modal, setModal] = useState<{ grupo: Grupo } | null>(null);
   const [pending, start] = useTransition();
-  const [vista, setVista] = useState<"tablero" | "historial">("tablero");
+  const [vista, setVista] = useState<"tablero" | "historial" | "config">("tablero");
 
   const toggle = <T,>(set: Set<T>, k: T) => { const n = new Set(set); n.has(k) ? n.delete(k) : n.add(k); return n; };
   const totalPend = pendientes.reduce((s, f) => s + saldo(f), 0);
@@ -63,7 +72,8 @@ export function PagosView({ pendientes, validacion, historial, cuentas }: {
 
   const gruposPend = porProveedor(pendientes);
   const porCta = porCuenta(validacion);
-  const cuenta0 = cuentas[0]?.nombre ?? "";
+  const ctasActivas = cuentas.filter((c) => c.activo);
+  const cuenta0 = ctasActivas[0]?.nombre ?? "";
 
   // Facturas seleccionadas de un grupo (si ninguna marcada → todas: atajo rápido).
   const seleccion = (g: Grupo) => { const s = g.facturas.filter((f) => sel.has(f.cufe)); return s.length ? s : g.facturas; };
@@ -92,6 +102,7 @@ export function PagosView({ pendientes, validacion, historial, cuentas }: {
       <div className="pg-tabs pg-subtabs">
         <button className={vista === "tablero" ? "on" : ""} onClick={() => setVista("tablero")}>Tablero</button>
         <button className={vista === "historial" ? "on" : ""} onClick={() => setVista("historial")}>Historial<i>{historial.length}</i></button>
+        <button className={vista === "config" ? "on" : ""} onClick={() => setVista("config")}>⚙ Configuración</button>
       </div>
 
       {vista === "tablero" && (<>
@@ -127,20 +138,25 @@ export function PagosView({ pendientes, validacion, historial, cuentas }: {
                           {g.facturas.every((f) => sel.has(f.cufe)) ? "Ninguna" : "Todas"}
                         </button>
                         <select value={cuentaProv[key] ?? cuenta0} onChange={(e) => setCuentaProv({ ...cuentaProv, [key]: e.target.value })}>
-                          {cuentas.map((c) => <option key={c.nombre} value={c.nombre}>{c.nombre}</option>)}
+                          {ctasActivas.map((c) => <option key={c.nombre} value={c.nombre}>{c.nombre}</option>)}
                         </select>
                         <button type="button" className="pg-btn" disabled={pending} onClick={() => asignar(g, key)}>Asignar →</button>
                       </div>
                       <div className="pg-pend-list">
                         <table className="pg-tabla"><tbody>
                           {g.facturas.map((f) => {
-                            const venc = f.semana_fecha < hoyISO;
+                            const orig = f.fecha_vencimiento ?? f.semana_fecha;
+                            const sug = sugPago(orig, diaPago);
+                            const dias = diasHasta(orig);
+                            const urg = dias < 0 ? "lo" : dias <= 3 ? "mid" : "hi";
+                            const urgTxt = dias < 0 ? `⏰ ${-dias}d tarde` : dias === 0 ? "⏰ hoy" : `faltan ${dias}d`;
                             return (
-                              <tr key={f.cufe} className={venc ? "venc" : ""}>
+                              <tr key={f.cufe} className={dias < 0 ? "venc" : ""}>
                                 <td className="pg-chk"><input type="checkbox" checked={sel.has(f.cufe)} onChange={() => setSel(toggle(sel, f.cufe))} /></td>
-                                <td className="mono">{f.numero}</td>
-                                <td className="pg-fch">{dm(f.fecha_emision)}{venc && <span className="pg-venc" title="Vencida — prioriza pagarla">⏰</span>}</td>
-                                <td className="muted">{f.concepto ?? "—"}</td>
+                                <td className="pg-fcell">
+                                  <div className="pg-frow"><span className="mono">{f.numero}</span><span className={"pg-urg " + urg}>{urgTxt}</span></div>
+                                  <div className="pg-fdates">pagar <b>{dm(sug)}</b> · vence {dm(orig)}</div>
+                                </td>
                                 <td className="num">{$(saldo(f))}</td>
                               </tr>
                             );
@@ -228,6 +244,8 @@ export function PagosView({ pendientes, validacion, historial, cuentas }: {
 
       {vista === "historial" && <HistorialView historial={historial} cuentas={cuentas} />}
 
+      {vista === "config" && <ConfigView cuentas={cuentas} diaPago={diaPago} />}
+
       {modal && <ModalConfirmar grupo={modal.grupo} onClose={() => setModal(null)} />}
     </div>
   );
@@ -299,6 +317,54 @@ function HistorialView({ historial, cuentas }: { historial: PagoHecho[]; cuentas
           </table>
         </div>
       )}
+    </div>
+  );
+}
+
+function ConfigView({ cuentas, diaPago }: { cuentas: CuentaPago[]; diaPago: number }) {
+  const DOWS = [
+    { v: 1, l: "Lunes" }, { v: 2, l: "Martes" }, { v: 3, l: "Miércoles" }, { v: 4, l: "Jueves" },
+    { v: 5, l: "Viernes" }, { v: 6, l: "Sábado" }, { v: 7, l: "Domingo" },
+  ];
+  return (
+    <div className="pg-config">
+      <section className="pg-cfg-card">
+        <h3>Día de pago</h3>
+        <p className="muted">El día de la semana en que pagas. La <b>fecha de pago sugerida</b> de cada factura se alinea a este día (el último ≤ su vencimiento) para no pagar tarde.</p>
+        <form action={guardarDiaPago} className="pg-cfg-form">
+          <select name="dia_pago" defaultValue={String(diaPago)}>
+            {DOWS.map((d) => <option key={d.v} value={d.v}>{d.l}</option>)}
+          </select>
+          <button type="submit">Guardar</button>
+        </form>
+      </section>
+      <section className="pg-cfg-card">
+        <h3>Cuentas de pago</h3>
+        <p className="muted">Las cuentas propias desde las que pagas. Cada una define el formato del archivo del banco (Rappi/Davivienda/PSE/genérico).</p>
+        <form action={agregarCuentaPago} className="pg-cfg-form">
+          <input name="nombre" placeholder="Nombre (ej. Bancolombia)" required />
+          <select name="formato" defaultValue="generico">
+            <option value="rappi">Formato Rappi</option>
+            <option value="davivienda">Formato Davivienda</option>
+            <option value="pse">Formato PSE / legible</option>
+            <option value="generico">Genérico</option>
+          </select>
+          <button type="submit">Agregar</button>
+        </form>
+        <table className="mst-tabla"><thead><tr><th>Cuenta</th><th>Formato</th><th>Estado</th><th></th></tr></thead>
+          <tbody>{cuentas.map((c) => (
+            <tr key={c.nombre} className={c.activo ? "" : "off"}>
+              <td><b>{c.nombre}</b></td>
+              <td className="mono">{c.formato}</td>
+              <td>{c.activo ? <span className="ft hum">activa</span> : <span className="ft off">inactiva</span>}</td>
+              <td>
+                <form action={toggleCuentaPago} style={{ display: "inline" }}>
+                  <input type="hidden" name="nombre" value={c.nombre} />
+                  <button type="submit" className="mst-toggle on">{c.activo ? "desactivar" : "activar"}</button>
+                </form>
+              </td>
+            </tr>))}</tbody></table>
+      </section>
     </div>
   );
 }
