@@ -276,8 +276,8 @@ button.ghost { background: #fff; color: var(--purple); }
 .fila-head, .fila {
   display: grid;
   grid-template-columns:
-    92px minmax(140px, 1.3fr) 56px 44px 100px minmax(120px, 1fr) minmax(120px, 1fr)
-    72px 62px 108px 62px 64px;
+    minmax(126px, 1.15fr) 74px 48px 36px 88px minmax(102px, 1fr) minmax(102px, 1fr)
+    62px 52px 94px 52px 48px 96px;
   align-items: center; gap: 8px; padding: 7px 14px;
 }
 .fila-head {
@@ -301,6 +301,11 @@ button.ghost { background: #fff; color: var(--purple); }
 .luz { width: 9px; height: 9px; border-radius: 50%; flex: none; }
 .luz.ok { background: var(--ok); box-shadow: 0 0 0 2px #e6f4ea; }
 .luz.no { background: var(--danger); box-shadow: 0 0 0 2px #fdeef0; }
+.luz.mid { background: #e8873c; box-shadow: 0 0 0 2px #fdeede; }
+/* N° de factura (columna propia) y semáforos al final (Clasif·Reten·Pago) */
+.c-num { font-family: var(--mono); font-size: 10.5px; color: var(--lav); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.c-sems { display: flex; flex-direction: column; gap: 3px; }
+.fila-head .c-sems { display: block; }
 .c-prov { min-width: 0; }
 .c-prov .prov { font-size: 12.5px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .c-prov .muted { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -323,6 +328,16 @@ button.ghost { background: #fff; color: var(--purple); }
 .c-pagar .num.accent { color: var(--coral); font-weight: 800; font-size: 12.5px; }
 .c-pagar .mini { font-size: 9.5px; }
 .tabla-vacia { padding: 40px; text-align: center; }
+
+/* Paginador de la grilla (no montamos las 3.900 filas a la vez) */
+.pager { display: flex; align-items: center; justify-content: center; gap: 14px; margin: 14px 0 4px; }
+.pager-btn { background: #fff; color: var(--purple) !important; border: 1.5px solid var(--border-lav);
+  border-radius: 999px; padding: 7px 16px; font-size: 12.5px; font-weight: 700; cursor: pointer; }
+.pager-btn:hover:not(:disabled) { border-color: var(--purple); background: var(--lav-soft); filter: none; }
+.pager-btn:disabled { opacity: .4; cursor: default; }
+.pager-info { font-size: 12px; color: var(--lav); font-variant-numeric: tabular-nums;
+  display: inline-flex; flex-direction: column; align-items: center; line-height: 1.2; }
+.pager-info i { font-style: normal; font-size: 10px; color: var(--lav); font-family: var(--mono); }
 
 /* --- Modal de retenciones ------------------------------------------------- */
 .modal-backdrop {
@@ -385,20 +400,17 @@ button.ghost { background: #fff; color: var(--purple); }
 .fila .c-btn.ghost:hover:not(:disabled) { border-color: var(--purple); background: var(--lav-soft); filter: none; }
 
 /* Responsive: en angosto se apila sin scroll horizontal */
-@media (max-width: 1060px) {
+@media (max-width: 1140px) {
   .fila-head { display: none; }
   .fila {
-    grid-template-columns: repeat(4, 1fr); gap: 8px 10px; padding: 12px 14px;
-    border-radius: 0 !important;
+    grid-template-columns: 1fr 1fr; gap: 8px 12px; padding: 12px 14px;
+    border-radius: 0 !important; align-items: center;
   }
-  .fila .c-estado { grid-column: 1 / 2; }
-  .fila .c-prov { grid-column: 2 / 5; }
-  .fila .c-valor { grid-column: 1 / 3; text-align: left; }
-  .fila .c-pagar { grid-column: 3 / 5; text-align: right; }
-  .fila .c-field { grid-column: span 2; }
-  .fila .c-plazo { grid-column: span 1; }
-  .fila .c-ret { grid-column: span 1; }
-  .fila .c-docs { grid-column: 1 / 5; justify-content: flex-start; margin-top: 2px; }
+  .fila .c-prov { grid-column: 1 / 3; }
+  .fila .c-field { grid-column: 1 / 3; }
+  .fila .c-valor, .fila .c-pagar { text-align: left; }
+  .fila .c-docs { justify-content: flex-start; }
+  .fila .c-sems { grid-column: 1 / 3; flex-direction: row; gap: 16px; margin-top: 2px; }
 }
 
 /* --- Combobox ------------------------------------------------------------- */

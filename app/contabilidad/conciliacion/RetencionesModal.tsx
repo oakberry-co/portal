@@ -6,6 +6,7 @@
 // a confirmarRetenciones (que ya guarda pesos + avanza a retenciones_ok).
 import { useState } from "react";
 import { confirmarRetenciones } from "./actions";
+import { type FilaPatch } from "./FacturaCard";
 
 const cop = new Intl.NumberFormat("es-CO", { style: "currency", currency: "COP", maximumFractionDigits: 0 });
 const copN = (n: number) => cop.format(Math.round(n || 0));
@@ -16,13 +17,15 @@ const pctIni = (amt: string | null, base: number) =>
 export function RetencionesModal({
   cufe, proveedor, subtotal, iva, total,
   retefuente, reteiva, reteica, retefuente_sug, reteiva_sug, reteica_sug,
-  tarRf, tarIva, tarIca, yaConfirmada, onClose,
+  tarRf, tarIva, tarIca, yaConfirmada, onSaved, onClose,
 }: {
   cufe: string; proveedor: string; subtotal: number; iva: number; total: number;
   retefuente: string | null; reteiva: string | null; reteica: string | null;
   retefuente_sug: string | null; reteiva_sug: string | null; reteica_sug: string | null;
   tarRf: string | null; tarIva: string | null; tarIca: string | null;
-  yaConfirmada: boolean; onClose: () => void;
+  yaConfirmada: boolean;
+  onSaved: (cufe: string, patch: FilaPatch) => void;
+  onClose: () => void;
 }) {
   // Pre-llenado: monto confirmado → monto sugerido → TARIFA del maestro del proveedor.
   const [rf, setRf] = useState(pctIni(retefuente ?? retefuente_sug, subtotal) || (tarRf ?? ""));
@@ -36,7 +39,8 @@ export function RetencionesModal({
   const valorAPagar = total - retenTotal;
 
   async function confirmar(fd: FormData) {
-    await confirmarRetenciones(fd);
+    const patch = await confirmarRetenciones(fd);
+    onSaved(cufe, patch as FilaPatch);
     onClose();
   }
 

@@ -57,7 +57,7 @@ export async function guardarClasificacion(formData: FormData) {
     throw new Error("Plazo inválido.");
   }
 
-  await withTx(async (c) => {
+  return withTx(async (c) => {
     // Estado + factura actuales (para valor_anterior y la fecha de emisión).
     const cur = await c.query<{
       estado: string; concepto: string | null; destino: string | null; plazo_dias: number | null;
@@ -137,9 +137,14 @@ export async function guardarClasificacion(formData: FormData) {
       actorRol: user.rol,
       origen: "web",
     });
-  });
 
-  revalidatePath("/contabilidad/conciliacion");
+    // Devuelve el nuevo estado para que el cliente parche la fila EN SITIO
+    // (semáforo rojo→verde) sin recargar ni reordenar la grilla.
+    return {
+      estado: nuevoEstado, concepto: nConcepto, destino: nDestino,
+      plazo_dias: nPlazo, fecha_vencimiento: vencimiento, retencion_ok: antes.retencion_ok,
+    };
+  });
 }
 
 /** Acción combinada (rápida, 1 clic por fila): guarda clasificación
@@ -266,7 +271,7 @@ export async function confirmarRetenciones(formData: FormData) {
   const reteica = monto("reteica");
   const retenTotal = retefuente + reteiva + reteica;
 
-  await withTx(async (c) => {
+  return withTx(async (c) => {
     const cur = await c.query<{
       estado: string; retefuente: string | null; reteiva: string | null;
       reteica: string | null; reten_total: string | null; total: string | null;
@@ -314,7 +319,12 @@ export async function confirmarRetenciones(formData: FormData) {
       actorRol: user.rol,
       origen: "web",
     });
-  });
 
-  revalidatePath("/contabilidad/conciliacion");
+    // Devuelve lo confirmado para el parche optimista del cliente (semáforo Reten).
+    return {
+      estado: nuevoEstado, retencion_ok: true,
+      retefuente: String(retefuente), reteiva: String(reteiva), reteica: String(reteica),
+      reten_total: String(retenTotal), valor_a_pagar: String(valorAPagar),
+    };
+  });
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { memo, useState, useTransition } from "react";
 import { type Estado } from "@/lib/estados";
 import { Combobox } from "./Combobox";
 import { guardarClasificacion } from "./actions";
@@ -29,6 +29,8 @@ export type FacturaRow = {
   reteiva: string | null;
   reteica: string | null;
   valor_a_pagar: string | null;
+  pago_estado: string | null;
+  fecha_pago_prog: string | Date | null;
   concepto_sug: string | null;
   destino_sug: string | null;
   confianza: string | null;
@@ -40,6 +42,9 @@ export type FacturaRow = {
   ret_ica: string | null;
   ret_iva: string | null;
 };
+
+/** Parche que devuelven las acciones para actualizar la fila en sitio (optimista). */
+export type FilaPatch = Partial<FacturaRow>;
 
 const cop = new Intl.NumberFormat("es-CO", { style: "currency", currency: "COP", maximumFractionDigits: 0 });
 const copN = (n: number) => cop.format(Math.round(n || 0));
@@ -61,10 +66,16 @@ function semanaISO(d: string | Date | null): string {
   return "S" + Math.ceil(((t.getTime() - ys.getTime()) / 86400000 + 1) / 7);
 }
 
-export function FacturaCard({
-  f, conceptos, destinos,
-}: { f: FacturaRow; conceptos: string[]; destinos: string[] }) {
+export const FacturaCard = memo(function FacturaCard({
+  f, conceptos, destinos, onSaved,
+}: {
+  f: FacturaRow;
+  conceptos: string[];
+  destinos: string[];
+  onSaved: (cufe: string, patch: FilaPatch) => void;
+}) {
   const [modal, setModal] = useState(false);
+  const [pending, start] = useTransition();
 
   const total = num(f.total);
   const subtotal = num(f.subtotal);
@@ -76,9 +87,16 @@ export function FacturaCard({
   const clasificada = f.estado !== "capturada";
   const locked = ["aprobada_pago", "pagada", "causada"].includes(f.estado);
   // Clasificación y retenciones son INDEPENDIENTES: se pueden hacer al tiempo,
-  // una no desbloquea la otra. Dos semáforos separados.
+  // una no desbloquea la otra. Semáforos separados (al final de la fila).
   const retEditable = !locked;
   const retencionDone = f.retencion_ok;
+
+  // Semáforo de ESTADO DE PAGO: verde = pagada, naranja = movida de semana
+  // (reprogramada y sin pagar), rojo = pendiente por pagar.
+  const pagada = f.estado === "pagada" || f.estado === "causada" || f.pago_estado === "pagado";
+  const movida = !pagada && !!f.fecha_pago_prog;
+  const pagoLuz = pagada ? "ok" : movida ? "mid" : "no";
+  const pagoTitle = pagada ? "Pagada" : movida ? "Movida de semana (reprogramada)" : "Pendiente por pagar";
 
   // Resumen de retenciones: lo confirmado si existe, si no la sugerencia (preview).
   const retenTotal = f.retencion_ok && f.reten_total != null
@@ -91,28 +109,35 @@ export function FacturaCard({
   const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
   const paraPago = !!venc && venc <= hoy && (f.estado === "retenciones_ok" || f.estado === "aprobada_pago");
 
+  // Guardado OPTIMISTA: llama la acción y parchea la fila en sitio (sin recargar
+  // ni reordenar). El semáforo pasa de rojo a verde y la fila se queda donde está.
+  function onClasif(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const fd = new FormData(e.currentTarget);
+    start(async () => {
+      try {
+        const patch = await guardarClasificacion(fd);
+        onSaved(f.cufe, patch as FilaPatch);
+      } catch (err) {
+        alert("No se pudo guardar la clasificación: " + (err as Error).message);
+      }
+    });
+  }
+
   return (
     <div className={"fila" + (pend ? " pend" : "") + (locked ? " locked" : "")}>
-      <div className="c-estado">
-        <span className="sem" title={clasificada ? "Clasificado" : "Falta clasificar"}>
-          <i className={"luz " + (clasificada ? "ok" : "no")} />Clasif
-        </span>
-        <span className="sem" title={retencionDone ? "Retenciones hechas" : "Faltan retenciones"}>
-          <i className={"luz " + (retencionDone ? "ok" : "no")} />Reten
-        </span>
-      </div>
-
       <div className="c-prov">
         <div className="prov" title={f.nombre_proveedor ?? ""}>{f.nombre_proveedor ?? "—"}</div>
-        <div className="muted mini">{f.numero} · NIT {f.nit_proveedor}{f.responsabilidad_dian ? ` · ${f.responsabilidad_dian}` : ""}</div>
+        <div className="muted mini">NIT {f.nit_proveedor}{f.responsabilidad_dian ? ` · ${f.responsabilidad_dian}` : ""}</div>
       </div>
 
+      <div className="c-num mono" title={`Factura ${f.numero}`}>{f.numero}</div>
       <div className="c-fecha">{ddmm(f.fecha_emision)}</div>
       <div className="c-sem">{semanaISO(f.fecha_emision)}</div>
       <div className="c-valor num">{copN(total)}</div>
 
       {/* Clasificación */}
-      <form action={guardarClasificacion} style={contents}>
+      <form onSubmit={onClasif} style={contents}>
         <input type="hidden" name="cufe" value={f.cufe} />
         <div className="c-field">
           {conf != null && <span className={"dot " + (confBaja ? "warn" : "ok")} title={`Máquina: "${f.concepto_sug ?? "—"}" · ${conf}%`} />}
@@ -125,7 +150,7 @@ export function FacturaCard({
           <input name="plazo_dias" type="number" min={0} defaultValue={f.plazo_dias ?? f.plazo_sug ?? ""} placeholder="días" disabled={locked} title={f.plazo_sug != null && f.plazo_dias == null ? `Plazo sugerido del proveedor: ${f.plazo_sug} días` : "Plazo (días)"} />
           {venc && <span className={"venc" + (paraPago ? " due" : "")} title={paraPago ? "Ya vencido — para pago" : "Día de pago (recepción + plazo)"}>{paraPago ? "⏰ " : "→ "}{ddmm(venc)}</span>}
         </div>
-        <button type="submit" className="c-btn" disabled={locked} title="Confirmar clasificación">Clasif.</button>
+        <button type="submit" className="c-btn" disabled={locked || pending} title="Confirmar clasificación">{pending ? "…" : "Clasif."}</button>
       </form>
 
       <div className="c-pagar">
@@ -161,6 +186,19 @@ export function FacturaCard({
         </a>
       </div>
 
+      {/* Semáforos (al final): Clasificación · Retención · Estado de pago */}
+      <div className="c-sems">
+        <span className="sem" title={clasificada ? "Clasificado" : "Falta clasificar"}>
+          <i className={"luz " + (clasificada ? "ok" : "no")} />Clasif
+        </span>
+        <span className="sem" title={retencionDone ? "Retenciones hechas" : "Faltan retenciones"}>
+          <i className={"luz " + (retencionDone ? "ok" : "no")} />Reten
+        </span>
+        <span className="sem" title={pagoTitle}>
+          <i className={"luz " + pagoLuz} />Pago
+        </span>
+      </div>
+
       {modal && (
         <RetencionesModal
           cufe={f.cufe}
@@ -178,9 +216,10 @@ export function FacturaCard({
           tarIva={f.ret_iva}
           tarIca={f.ret_ica}
           yaConfirmada={f.retencion_ok}
+          onSaved={onSaved}
           onClose={() => setModal(false)}
         />
       )}
     </div>
   );
-}
+});

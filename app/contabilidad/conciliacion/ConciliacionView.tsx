@@ -1,9 +1,10 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { FacturaCard, type FacturaRow } from "./FacturaCard";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { FacturaCard, type FacturaRow, type FilaPatch } from "./FacturaCard";
 
 const MESES = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
+const PAGE = 100; // filas por página — no montamos 3.900 filas (mataba el navegador)
 
 function fechaDe(f: FacturaRow) { return new Date(f.fecha_emision); }
 
@@ -30,6 +31,22 @@ export function ConciliacionView({
   const [soloPend, setSoloPend] = useState(false);
   const [desde, setDesde] = useState("");
   const [hasta, setHasta] = useState("");
+  const [page, setPage] = useState(0);
+
+  // Parches optimistas: al guardar una fila, la acción devuelve el nuevo estado y
+  // lo mezclamos aquí SIN reordenar ni recargar. La fila se queda en su sitio y su
+  // semáforo pasa de rojo a verde (lo que pidió Daniel). El orden base (de props)
+  // se preserva; sólo se refresca de verdad al navegar/recargar.
+  const [patches, setPatches] = useState<Record<string, FilaPatch>>({});
+  const onSaved = useCallback((cufe: string, patch: FilaPatch) => {
+    setPatches((p) => ({ ...p, [cufe]: { ...p[cufe], ...patch } }));
+  }, []);
+  const rows = useMemo(
+    () => (Object.keys(patches).length
+      ? filas.map((f) => (patches[f.cufe] ? ({ ...f, ...patches[f.cufe] } as FacturaRow) : f))
+      : filas),
+    [filas, patches]
+  );
 
   const exportHref = (() => {
     const p = new URLSearchParams();
@@ -60,7 +77,7 @@ export function ConciliacionView({
 
   const filtradas = useMemo(() => {
     const qq = q.trim().toLowerCase();
-    return filas.filter((f) => {
+    return rows.filter((f) => {
       if (soloPend && f.estado !== "capturada") return false;
       const d = fechaDe(f);
       const y = d.getFullYear(), m = d.getMonth() + 1;
@@ -77,9 +94,17 @@ export function ConciliacionView({
       }
       return true;
     });
-  }, [filas, q, anio, mes, sem, concepto, destino, prov, soloPend]);
+  }, [rows, q, anio, mes, sem, concepto, destino, prov, soloPend]);
 
-  const porClasificar = filas.filter((f) => f.estado === "capturada").length;
+  // Al cambiar cualquier filtro/búsqueda, vuelve a la primera página.
+  useEffect(() => { setPage(0); }, [q, anio, mes, sem, concepto, destino, prov, soloPend]);
+
+  const totalPag = Math.max(1, Math.ceil(filtradas.length / PAGE));
+  const pageSafe = Math.min(page, totalPag - 1);
+  const desdeIdx = pageSafe * PAGE;
+  const visible = filtradas.slice(desdeIdx, desdeIdx + PAGE);
+
+  const porClasificar = rows.filter((f) => f.estado === "capturada").length;
   const activos = !!(q || anio || mes || sem || concepto || destino || prov || soloPend);
   const limpiar = () => { setQ(""); setAnio(""); setMes(""); setSem(""); setConcepto(""); setDestino(""); setProv(""); setSoloPend(false); };
 
@@ -132,14 +157,14 @@ export function ConciliacionView({
       </div>
 
       <p className="sub">
-        {activos ? <><strong>{filtradas.length}</strong> de {filas.length} facturas</> : <>{filas.length} facturas</>}
+        {activos ? <><strong>{filtradas.length}</strong> de {rows.length} facturas</> : <>{rows.length} facturas</>}
         {" · "}<strong>{porClasificar}</strong> por clasificar. Revisa la sugerencia de la máquina, ajusta y confirma; cada cambio queda en la bitácora.
       </p>
 
       <div className="tabla">
         <div className="fila-head">
-          <div className="c-estado">Estado</div>
           <div className="c-prov">Proveedor</div>
+          <div className="c-num">Factura</div>
           <div className="c-fecha">Fecha</div>
           <div className="c-sem">Sem</div>
           <div className="c-valor">Valor</div>
@@ -150,14 +175,26 @@ export function ConciliacionView({
           <div className="c-pagar">A pagar</div>
           <div className="c-btn" />
           <div className="c-docs">Docs</div>
+          <div className="c-sems">Estado</div>
         </div>
 
-        {filtradas.length === 0 ? (
+        {visible.length === 0 ? (
           <div className="tabla-vacia muted">Ninguna factura coincide con los filtros.</div>
         ) : (
-          filtradas.map((f) => <FacturaCard key={f.cufe} f={f} conceptos={conceptos} destinos={destinos} />)
+          visible.map((f) => <FacturaCard key={f.cufe} f={f} conceptos={conceptos} destinos={destinos} onSaved={onSaved} />)
         )}
       </div>
+
+      {filtradas.length > PAGE && (
+        <div className="pager">
+          <button type="button" className="pager-btn" disabled={pageSafe === 0} onClick={() => setPage(pageSafe - 1)}>← Anteriores</button>
+          <span className="pager-info">
+            {desdeIdx + 1}–{Math.min(desdeIdx + PAGE, filtradas.length)} de {filtradas.length}
+            <i>página {pageSafe + 1} de {totalPag}</i>
+          </span>
+          <button type="button" className="pager-btn" disabled={pageSafe >= totalPag - 1} onClick={() => setPage(pageSafe + 1)}>Siguientes →</button>
+        </div>
+      )}
     </>
   );
 }

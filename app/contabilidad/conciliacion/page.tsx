@@ -27,6 +27,7 @@ async function cargar(): Promise<{ filas: FacturaRow[]; conceptos: string[]; des
             f.subtotal, f.iva, f.total, f.responsabilidad_dian, f.link_drive, f.sincronizado_en,
             e.estado, e.concepto, e.destino, e.plazo_dias, e.fecha_vencimiento,
             e.retencion_ok, e.reten_total, e.retefuente, e.reteiva, e.reteica, e.valor_a_pagar,
+            e.pago_estado, e.fecha_pago_prog,
             COALESCE(p.concepto_sug, mp.concepto_default) AS concepto_sug,
             COALESCE(p.destino_sug, mp.destino_default) AS destino_sug,
             p.confianza, mp.plazo_dias AS plazo_sug,
