@@ -23,16 +23,20 @@ const saldo = (f: FilaPago) => Math.max(0, f.a_pagar - f.pagado);
 const MESES = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
 const dm = (s: string) => { const x = new Date(s); return `${String(x.getUTCDate()).padStart(2, "0")}/${MESES[x.getUTCMonth()]}`; };
 const mesActual = new Date().toISOString().slice(0, 7);
+const hoyISO = new Date().toISOString().slice(0, 10);
 
-type Grupo = { nit: string; nombre: string; tiene_banco: boolean; facturas: FilaPago[]; total: number };
+type Grupo = { nit: string; nombre: string; tiene_banco: boolean; facturas: FilaPago[]; total: number; oldest: string };
 
 function porProveedor(filas: FilaPago[]): Grupo[] {
   const m = new Map<string, Grupo>();
   for (const f of filas) {
-    const g = m.get(f.nit_proveedor) ?? m.set(f.nit_proveedor, { nit: f.nit_proveedor, nombre: f.nombre_proveedor ?? f.nit_proveedor, tiene_banco: f.tiene_banco, facturas: [], total: 0 }).get(f.nit_proveedor)!;
+    const g = m.get(f.nit_proveedor) ?? m.set(f.nit_proveedor, { nit: f.nit_proveedor, nombre: f.nombre_proveedor ?? f.nit_proveedor, tiene_banco: f.tiene_banco, facturas: [], total: 0, oldest: "9999" }).get(f.nit_proveedor)!;
     g.facturas.push(f);
   }
-  return [...m.values()].map((g) => ({ ...g, total: g.facturas.reduce((s, f) => s + saldo(f), 0) })).sort((a, b) => b.total - a.total);
+  return [...m.values()].map((g) => {
+    g.facturas.sort((a, b) => a.fecha_emision.localeCompare(b.fecha_emision)); // más viejas primero (prioriza pagar lo viejo)
+    return { ...g, total: g.facturas.reduce((s, f) => s + saldo(f), 0), oldest: g.facturas[0]?.fecha_emision ?? "9999" };
+  }).sort((a, b) => a.oldest.localeCompare(b.oldest)); // el proveedor con la deuda más vieja, primero
 }
 function porCuenta(filas: FilaPago[]): { cuenta: string; provs: Grupo[]; total: number }[] {
   const m = new Map<string, FilaPago[]>();
@@ -53,6 +57,7 @@ export function PagosView({ pendientes, validacion, historial, cuentas }: {
   const toggle = <T,>(set: Set<T>, k: T) => { const n = new Set(set); n.has(k) ? n.delete(k) : n.add(k); return n; };
   const totalPend = pendientes.reduce((s, f) => s + saldo(f), 0);
   const totalVal = validacion.reduce((s, f) => s + saldo(f), 0);
+  const vencidasPend = pendientes.filter((f) => f.semana_fecha < hoyISO).length;
   const pagadoMes = historial.filter((p) => p.fecha_pago.slice(0, 7) === mesActual).reduce((s, p) => s + p.monto, 0);
 
   const gruposPend = porProveedor(pendientes);
@@ -92,7 +97,7 @@ export function PagosView({ pendientes, validacion, historial, cuentas }: {
       <div className={"pg-board" + (pending ? " busy" : "")}>
         {/* ---------- Columna 1: PENDIENTES ---------- */}
         <section className="pg-col">
-          <div className="pg-col-head"><span className="pg-col-tag pend">Pendientes</span><i>{pendientes.length}</i></div>
+          <div className="pg-col-head"><span className="pg-col-tag pend">Pendientes</span>{vencidasPend > 0 && <span className="pg-venc-tag" title="Facturas pasadas de su día de pago">⏰ {vencidasPend}</span>}<i>{pendientes.length}</i></div>
           <div className="pg-col-body">
             {!gruposPend.length ? (
               <div className="pg-empty sm">Nada pendiente. Aparecen aquí las facturas con retenciones confirmadas.</div>
@@ -109,17 +114,8 @@ export function PagosView({ pendientes, validacion, historial, cuentas }: {
                   </div>
                   {exp && (
                     <>
-                      <table className="pg-tabla"><tbody>
-                        {g.facturas.map((f) => (
-                          <tr key={f.cufe}>
-                            <td className="pg-chk"><input type="checkbox" checked={sel.has(f.cufe)} onChange={() => setSel(toggle(sel, f.cufe))} /></td>
-                            <td className="mono">{f.numero}</td>
-                            <td className="muted">{f.concepto ?? "—"}</td>
-                            <td className="num">{$(saldo(f))}</td>
-                          </tr>
-                        ))}
-                      </tbody></table>
-                      <div className="pg-assign">
+                      {/* Asignar cuenta ARRIBA (siempre visible, no enterrado bajo N facturas) */}
+                      <div className="pg-assign top">
                         <button type="button" className="pg-mini" onClick={() => { const n = new Set(sel); const all = g.facturas.every((f) => n.has(f.cufe)); g.facturas.forEach((f) => all ? n.delete(f.cufe) : n.add(f.cufe)); setSel(n); }}>
                           {g.facturas.every((f) => sel.has(f.cufe)) ? "Ninguna" : "Todas"}
                         </button>
@@ -127,6 +123,22 @@ export function PagosView({ pendientes, validacion, historial, cuentas }: {
                           {cuentas.map((c) => <option key={c.nombre} value={c.nombre}>{c.nombre}</option>)}
                         </select>
                         <button type="button" className="pg-btn" disabled={pending} onClick={() => asignar(g, key)}>Asignar →</button>
+                      </div>
+                      <div className="pg-pend-list">
+                        <table className="pg-tabla"><tbody>
+                          {g.facturas.map((f) => {
+                            const venc = f.semana_fecha < hoyISO;
+                            return (
+                              <tr key={f.cufe} className={venc ? "venc" : ""}>
+                                <td className="pg-chk"><input type="checkbox" checked={sel.has(f.cufe)} onChange={() => setSel(toggle(sel, f.cufe))} /></td>
+                                <td className="mono">{f.numero}</td>
+                                <td className="pg-fch">{dm(f.fecha_emision)}{venc && <span className="pg-venc" title="Vencida — prioriza pagarla">⏰</span>}</td>
+                                <td className="muted">{f.concepto ?? "—"}</td>
+                                <td className="num">{$(saldo(f))}</td>
+                              </tr>
+                            );
+                          })}
+                        </tbody></table>
                       </div>
                     </>
                   )}
@@ -162,7 +174,7 @@ export function PagosView({ pendientes, validacion, historial, cuentas }: {
                         <>
                           <table className="pg-tabla"><tbody>
                             {g.facturas.map((f) => (
-                              <tr key={f.cufe}><td className="mono">{f.numero}</td><td className="muted">{f.concepto ?? "—"}</td><td className="num">{f.pagado > 0 ? <span className="pg-abono">saldo </span> : ""}{$(saldo(f))}</td></tr>
+                              <tr key={f.cufe}><td className="mono">{f.numero}</td><td className="pg-fch">{dm(f.fecha_emision)}</td><td className="muted">{f.concepto ?? "—"}</td><td className="num">{f.pagado > 0 ? <span className="pg-abono">saldo </span> : ""}{$(saldo(f))}</td></tr>
                             ))}
                           </tbody></table>
                           <div className="pg-assign">
