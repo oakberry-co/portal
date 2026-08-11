@@ -760,6 +760,15 @@ button.ghost { background: #fff; color: var(--purple); }
 .pg-urg.hi { color: var(--lav); }
 .pg-fdates { font-size: 9.5px; color: var(--lav); margin-top: 1px; }
 .pg-fdates b { color: var(--purple-deep); }
+/* Filtros de periodo (Validación/Confirmados) + sub-secciones de Pendientes */
+.pg-filtros { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 2px 0 12px; }
+.pg-filtros select { width: auto; font-size: 12.5px; padding: 6px 9px; font-weight: 600; color: var(--purple-deep); }
+.pg-sub { margin-bottom: 8px; }
+.pg-sub-tag { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 10.5px;
+  font-weight: 800; text-transform: uppercase; letter-spacing: .04em; padding: 5px 10px; border-radius: 8px; margin-bottom: 5px; }
+.pg-sub-tag i { font-style: normal; font-family: var(--mono); font-size: 10px; background: rgba(0,0,0,.08); border-radius: 999px; padding: 1px 7px; }
+.pg-sub-tag.pasadas { color: var(--coral); background: rgba(232,89,60,.09); }
+.pg-sub-tag.encurso { color: var(--purple); background: var(--lav-soft); }
 
 /* Configuración de Pagos (día de pago + cuentas propias) */
 .pg-config { display: grid; gap: 16px; max-width: 760px; }

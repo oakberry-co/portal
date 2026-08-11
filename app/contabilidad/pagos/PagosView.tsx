@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useState, useTransition } from "react";
+import { Fragment, useMemo, useState, useTransition } from "react";
 import { asignarCuenta, quitarCuenta, confirmarPago, agregarCuentaPago, toggleCuentaPago, guardarDiaPago } from "./actions";
 
 export type FilaPago = {
@@ -34,6 +34,15 @@ function sugPago(dueISO: string, payDow: number): string {
   return d.toISOString().slice(0, 10);
 }
 const diasHasta = (iso: string) => Math.round((new Date(iso + "T00:00:00Z").getTime() - new Date(hoyISO + "T00:00:00Z").getTime()) / 86400000);
+/** Semana ISO como "YYYY-Sww" (para filtros y para partir Pendientes por semana). */
+function semanaISO(s: string): string {
+  const x = new Date(s);
+  const t = new Date(Date.UTC(x.getUTCFullYear(), x.getUTCMonth(), x.getUTCDate()));
+  const day = t.getUTCDay() || 7; t.setUTCDate(t.getUTCDate() + 4 - day);
+  const ys = new Date(Date.UTC(t.getUTCFullYear(), 0, 1));
+  return `${t.getUTCFullYear()}-S${String(Math.ceil(((t.getTime() - ys.getTime()) / 86400000 + 1) / 7)).padStart(2, "0")}`;
+}
+const hoySem = semanaISO(new Date().toISOString());
 
 type Grupo = { nit: string; nombre: string; tiene_banco: boolean; facturas: FilaPago[]; total: number; oldest: string };
 
@@ -64,6 +73,9 @@ export function PagosView({ pendientes, validacion, historial, cuentas, diaPago 
   const [modal, setModal] = useState<{ grupo: Grupo } | null>(null);
   const [pending, start] = useTransition();
   const [vista, setVista] = useState<"tablero" | "historial" | "config">("tablero");
+  const [fAnio, setFAnio] = useState("");
+  const [fMes, setFMes] = useState("");
+  const [fSem, setFSem] = useState("");
 
   const toggle = <T,>(set: Set<T>, k: T) => { const n = new Set(set); n.has(k) ? n.delete(k) : n.add(k); return n; };
   const totalPend = pendientes.reduce((s, f) => s + saldo(f), 0);
@@ -71,10 +83,36 @@ export function PagosView({ pendientes, validacion, historial, cuentas, diaPago 
   const vencidasPend = pendientes.filter((f) => f.semana_fecha < hoyISO).length;
   const pagadoMes = historial.filter((p) => p.fecha_pago.slice(0, 7) === mesActual).reduce((s, p) => s + p.monto, 0);
 
-  const gruposPend = porProveedor(pendientes);
-  const porCta = porCuenta(validacion);
   const ctasActivas = cuentas.filter((c) => c.activo);
   const cuenta0 = ctasActivas[0]?.nombre ?? "";
+
+  // Filtro de periodo (año/mes/semana) → aplica a Validación y Confirmados.
+  const pasaFiltro = (iso: string) => {
+    if (!iso) return true;
+    const d = iso.slice(0, 10);
+    if (fAnio && d.slice(0, 4) !== fAnio) return false;
+    if (fMes && d.slice(0, 7) !== fMes) return false;
+    if (fSem && semanaISO(iso) !== fSem) return false;
+    return true;
+  };
+  const opciones = useMemo(() => {
+    const anios = new Set<string>(), meses = new Set<string>(), sems = new Set<string>();
+    for (const iso of [...validacion.map((f) => f.semana_fecha), ...historial.map((p) => p.fecha_pago)]) {
+      if (!iso) continue;
+      anios.add(iso.slice(0, 4)); meses.add(iso.slice(0, 7)); sems.add(semanaISO(iso));
+    }
+    const desc = (a: string, b: string) => (a < b ? 1 : -1);
+    return { anios: [...anios].sort(desc), meses: [...meses].sort(desc), sems: [...sems].sort(desc) };
+  }, [validacion, historial]);
+  const hayFiltro = !!(fAnio || fMes || fSem);
+
+  const validacionF = validacion.filter((f) => pasaFiltro(f.semana_fecha));
+  const historialF = historial.filter((p) => pasaFiltro(p.fecha_pago));
+  const porCta = porCuenta(validacionF);
+
+  // Pendientes divididas: semanas pasadas (< semana en curso) y semana en curso (>=).
+  const gruposPasadas = porProveedor(pendientes.filter((f) => semanaISO(f.semana_fecha) < hoySem));
+  const gruposEnCurso = porProveedor(pendientes.filter((f) => semanaISO(f.semana_fecha) >= hoySem));
 
   // Facturas seleccionadas de un grupo (si ninguna marcada → todas: atajo rápido).
   const seleccion = (g: Grupo) => { const s = g.facturas.filter((f) => sel.has(f.cufe)); return s.length ? s : g.facturas; };
@@ -98,6 +136,55 @@ export function PagosView({ pendientes, validacion, historial, cuentas, diaPago 
     });
   }
 
+  const renderGrupoPend = (g: Grupo, keyPrefix: string) => {
+    const key = keyPrefix + g.nit; const exp = abierto.has(key);
+    const selG = g.facturas.filter((f) => sel.has(f.cufe)).length;
+    return (
+      <div key={key} className="pg-prov">
+        <div className="pg-prov-head" onClick={() => setAbierto(toggle(abierto, key))}>
+          <span className="pg-caret">{exp ? "▾" : "▸"}</span>
+          <span className="pg-prov-nom">{g.nombre}</span>
+          <span className="pg-prov-n">{g.facturas.length}{selG ? ` · ${selG} sel` : ""}</span>
+          <span className="pg-prov-tot">{$(g.total)}</span>
+        </div>
+        {exp && (
+          <>
+            <div className="pg-assign top">
+              <button type="button" className="pg-mini" onClick={() => { const n = new Set(sel); const all = g.facturas.every((f) => n.has(f.cufe)); g.facturas.forEach((f) => all ? n.delete(f.cufe) : n.add(f.cufe)); setSel(n); }}>
+                {g.facturas.every((f) => sel.has(f.cufe)) ? "Ninguna" : "Todas"}
+              </button>
+              <select value={cuentaProv[key] ?? cuenta0} onChange={(e) => setCuentaProv({ ...cuentaProv, [key]: e.target.value })}>
+                {ctasActivas.map((c) => <option key={c.nombre} value={c.nombre}>{c.nombre}</option>)}
+              </select>
+              <button type="button" className="pg-btn" disabled={pending} onClick={() => asignar(g, key)}>Asignar →</button>
+            </div>
+            <div className="pg-pend-list">
+              <table className="pg-tabla"><tbody>
+                {g.facturas.map((f) => {
+                  const orig = f.fecha_vencimiento ?? f.semana_fecha;
+                  const sug = sugPago(orig, diaPago);
+                  const dias = diasHasta(orig);
+                  const urg = dias < 0 ? "lo" : dias <= 3 ? "mid" : "hi";
+                  const urgTxt = dias < 0 ? `⏰ ${-dias}d tarde` : dias === 0 ? "⏰ hoy" : `faltan ${dias}d`;
+                  return (
+                    <tr key={f.cufe} className={dias < 0 ? "venc" : ""}>
+                      <td className="pg-chk"><input type="checkbox" checked={sel.has(f.cufe)} onChange={() => setSel(toggle(sel, f.cufe))} /></td>
+                      <td className="pg-fcell">
+                        <div className="pg-frow"><span className="mono">{f.numero}</span><span className={"pg-urg " + urg}>{urgTxt}</span></div>
+                        <div className="pg-fdates">pagar <b>{dm(sug)}</b> · vence {dm(orig)}</div>
+                      </td>
+                      <td className="num">{$(saldo(f))}</td>
+                    </tr>
+                  );
+                })}
+              </tbody></table>
+            </div>
+          </>
+        )}
+      </div>
+    );
+  };
+
   return (
     <div className="pagos">
       <div className="pg-tabs pg-subtabs">
@@ -113,68 +200,41 @@ export function PagosView({ pendientes, validacion, historial, cuentas, diaPago 
         <div className="pg-kpi paid"><i>Pagado este mes</i><b>{$(pagadoMes)}</b><span>{historial.filter((p) => p.fecha_pago.slice(0, 7) === mesActual).length} pago(s)</span></div>
       </div>
 
+      <div className="pg-filtros">
+        <span className="muted mini">Filtrar Validación y Confirmados:</span>
+        <select value={fAnio} onChange={(e) => setFAnio(e.target.value)}><option value="">Año</option>{opciones.anios.map((a) => <option key={a} value={a}>{a}</option>)}</select>
+        <select value={fMes} onChange={(e) => setFMes(e.target.value)}><option value="">Mes</option>{opciones.meses.map((m) => { const [y, mm] = m.split("-"); return <option key={m} value={m}>{MESES[Number(mm) - 1]} {y}</option>; })}</select>
+        <select value={fSem} onChange={(e) => setFSem(e.target.value)}><option value="">Semana</option>{opciones.sems.map((s) => { const [y, w] = s.split("-S"); return <option key={s} value={s}>Sem {w} · {y}</option>; })}</select>
+        {hayFiltro && <button type="button" className="pg-mini" onClick={() => { setFAnio(""); setFMes(""); setFSem(""); }}>Limpiar</button>}
+      </div>
+
       <div className={"pg-board" + (pending ? " busy" : "")}>
         {/* ---------- Columna 1: PENDIENTES ---------- */}
         <section className="pg-col">
           <div className="pg-col-head"><span className="pg-col-tag pend">Pendientes</span>{vencidasPend > 0 && <span className="pg-venc-tag" title="Facturas pasadas de su día de pago">⏰ {vencidasPend}</span>}<i>{pendientes.length}</i></div>
           <div className="pg-col-body">
-            {!gruposPend.length ? (
+            {!pendientes.length ? (
               <div className="pg-empty sm">Nada pendiente. Aparecen aquí las facturas con retenciones confirmadas.</div>
-            ) : gruposPend.map((g) => {
-              const key = "P" + g.nit; const exp = abierto.has(key);
-              const selG = g.facturas.filter((f) => sel.has(f.cufe)).length;
-              return (
-                <div key={key} className="pg-prov">
-                  <div className="pg-prov-head" onClick={() => setAbierto(toggle(abierto, key))}>
-                    <span className="pg-caret">{exp ? "▾" : "▸"}</span>
-                    <span className="pg-prov-nom">{g.nombre}</span>
-                    <span className="pg-prov-n">{g.facturas.length}{selG ? ` · ${selG} sel` : ""}</span>
-                    <span className="pg-prov-tot">{$(g.total)}</span>
+            ) : (
+              <>
+                {gruposPasadas.length > 0 && (
+                  <div className="pg-sub">
+                    <div className="pg-sub-tag pasadas">⏰ Semanas pasadas<i>{gruposPasadas.reduce((n, g) => n + g.facturas.length, 0)}</i></div>
+                    {gruposPasadas.map((g) => renderGrupoPend(g, "PA"))}
                   </div>
-                  {exp && (
-                    <>
-                      {/* Asignar cuenta ARRIBA (siempre visible, no enterrado bajo N facturas) */}
-                      <div className="pg-assign top">
-                        <button type="button" className="pg-mini" onClick={() => { const n = new Set(sel); const all = g.facturas.every((f) => n.has(f.cufe)); g.facturas.forEach((f) => all ? n.delete(f.cufe) : n.add(f.cufe)); setSel(n); }}>
-                          {g.facturas.every((f) => sel.has(f.cufe)) ? "Ninguna" : "Todas"}
-                        </button>
-                        <select value={cuentaProv[key] ?? cuenta0} onChange={(e) => setCuentaProv({ ...cuentaProv, [key]: e.target.value })}>
-                          {ctasActivas.map((c) => <option key={c.nombre} value={c.nombre}>{c.nombre}</option>)}
-                        </select>
-                        <button type="button" className="pg-btn" disabled={pending} onClick={() => asignar(g, key)}>Asignar →</button>
-                      </div>
-                      <div className="pg-pend-list">
-                        <table className="pg-tabla"><tbody>
-                          {g.facturas.map((f) => {
-                            const orig = f.fecha_vencimiento ?? f.semana_fecha;
-                            const sug = sugPago(orig, diaPago);
-                            const dias = diasHasta(orig);
-                            const urg = dias < 0 ? "lo" : dias <= 3 ? "mid" : "hi";
-                            const urgTxt = dias < 0 ? `⏰ ${-dias}d tarde` : dias === 0 ? "⏰ hoy" : `faltan ${dias}d`;
-                            return (
-                              <tr key={f.cufe} className={dias < 0 ? "venc" : ""}>
-                                <td className="pg-chk"><input type="checkbox" checked={sel.has(f.cufe)} onChange={() => setSel(toggle(sel, f.cufe))} /></td>
-                                <td className="pg-fcell">
-                                  <div className="pg-frow"><span className="mono">{f.numero}</span><span className={"pg-urg " + urg}>{urgTxt}</span></div>
-                                  <div className="pg-fdates">pagar <b>{dm(sug)}</b> · vence {dm(orig)}</div>
-                                </td>
-                                <td className="num">{$(saldo(f))}</td>
-                              </tr>
-                            );
-                          })}
-                        </tbody></table>
-                      </div>
-                    </>
-                  )}
+                )}
+                <div className="pg-sub">
+                  <div className="pg-sub-tag encurso">Semana en curso<i>{gruposEnCurso.reduce((n, g) => n + g.facturas.length, 0)}</i></div>
+                  {gruposEnCurso.length ? gruposEnCurso.map((g) => renderGrupoPend(g, "PC")) : <div className="pg-empty sm">Nada en la semana en curso.</div>}
                 </div>
-              );
-            })}
+              </>
+            )}
           </div>
         </section>
 
         {/* ---------- Columna 2: VALIDACIÓN SEMANA EN CURSO ---------- */}
         <section className="pg-col">
-          <div className="pg-col-head"><span className="pg-col-tag val">Validación semana en curso</span><i>{validacion.length}</i></div>
+          <div className="pg-col-head"><span className="pg-col-tag val">Validación semana en curso</span><i>{validacionF.length}</i></div>
           <div className="pg-col-body">
             {!porCta.length ? (
               <div className="pg-empty sm">Asigna una cuenta a las facturas pendientes y aparecerán aquí, agrupadas por cuenta.</div>
@@ -217,11 +277,11 @@ export function PagosView({ pendientes, validacion, historial, cuentas, diaPago 
 
         {/* ---------- Columna 3: CONFIRMADOS ---------- */}
         <section className="pg-col">
-          <div className="pg-col-head"><span className="pg-col-tag ok">Confirmados</span><i>{historial.length}</i></div>
+          <div className="pg-col-head"><span className="pg-col-tag ok">Confirmados</span><i>{historialF.length}</i></div>
           <div className="pg-col-body">
-            {!historial.length ? (
-              <div className="pg-empty sm">Los pagos confirmados quedan aquí, con su cuenta y comprobante.</div>
-            ) : historial.map((p) => (
+            {!historialF.length ? (
+              <div className="pg-empty sm">{hayFiltro ? "Sin pagos confirmados en ese periodo." : "Los pagos confirmados quedan aquí, con su cuenta y comprobante."}</div>
+            ) : historialF.map((p) => (
               <div key={p.id} className="pg-conf">
                 <div className="pg-conf-head" onClick={() => setExpPago(toggle(expPago, p.id))}>
                   <span className="pg-caret">{expPago.has(p.id) ? "▾" : "▸"}</span>
