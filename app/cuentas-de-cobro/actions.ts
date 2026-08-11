@@ -3,7 +3,7 @@
 // Recepción PÚBLICA de una cuenta de cobro (proveedor no-DIAN). Sube los documentos
 // a Vercel Blob y registra el envío en `cuentas_cobro` (estado 'recibida'). Sin
 // login: esta ruta está fuera del middleware. Contabilidad la revisa en la bandeja.
-import { put } from "@vercel/blob";
+import { subirAintake } from "@/lib/intake";
 import { getPool } from "@/lib/db";
 
 export type Resultado = { ok: boolean; error?: string };
@@ -18,14 +18,13 @@ export async function enviarCuentaCobro(_prev: Resultado | null, formData: FormD
   const valorRaw = s("valor").replace(/[^\d]/g, "");
   const valor = valorRaw ? Number(valorRaw) : null;
 
-  // Subir documentos a Vercel Blob (link público con sufijo aleatorio = no adivinable).
+  // Subir documentos a Drive (vía la VM). Quedan en CONTABILIDAD/Intake, privados.
   const files = formData.getAll("documentos").filter((f): f is File => f instanceof File && f.size > 0);
   const docs: { nombre: string; path: string; tipo: string }[] = [];
   try {
     for (const f of files.slice(0, 12)) {
-      const safe = f.name.replace(/[^\w.\-]+/g, "_").slice(-80) || "documento";
-      const blob = await put(`cuentas-cobro/${safe}`, f, { access: "public", addRandomSuffix: true });
-      docs.push({ nombre: f.name, path: blob.url, tipo: f.type });
+      const up = await subirAintake(f, "cuentas-de-cobro");
+      docs.push({ nombre: f.name, path: up.url, tipo: f.type });
     }
   } catch (e) {
     return { ok: false, error: "No se pudieron subir los documentos: " + (e as Error).message };

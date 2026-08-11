@@ -3,7 +3,7 @@
 // Recepción PÚBLICA de una cotización. Sube documentos a Vercel Blob y registra en
 // `cotizaciones` (estado 'recibida') con un código COT-####. Luego se le hacen
 // abonos y se cruza con la factura final para no pagar doble.
-import { put } from "@vercel/blob";
+import { subirAintake } from "@/lib/intake";
 import { getPool } from "@/lib/db";
 
 export type Resultado = { ok: boolean; error?: string; codigo?: string };
@@ -22,9 +22,8 @@ export async function enviarCotizacion(_prev: Resultado | null, formData: FormDa
   const docs: { nombre: string; path: string; tipo: string }[] = [];
   try {
     for (const f of files.slice(0, 12)) {
-      const safe = f.name.replace(/[^\w.\-]+/g, "_").slice(-80) || "documento";
-      const blob = await put(`cotizaciones/${safe}`, f, { access: "public", addRandomSuffix: true });
-      docs.push({ nombre: f.name, path: blob.url, tipo: f.type });
+      const up = await subirAintake(f, "cotizaciones");
+      docs.push({ nombre: f.name, path: up.url, tipo: f.type });
     }
   } catch (e) {
     return { ok: false, error: "No se pudieron subir los documentos: " + (e as Error).message };
