@@ -43,8 +43,16 @@ CREATE TRIGGER trg_eventos_no_truncate BEFORE TRUNCATE ON eventos
 """
 
 
+# Reset SOLO DEL TRABAJO: deja las facturas 'por clasificar' y limpia pagos +
+# bitácora, pero CONSERVA todos los maestros (plazos/retenciones/bancos/aprendizaje)
+# y la config. Para handoff sin re-sembrar ni recargar nada. NO re-sincroniza BQ.
+TABLAS_TRABAJO = ["pago_facturas", "pagos", "sync_solicitudes", "dashboard_semana",
+                  "eventos", "factura_estado"]
+
+
 def main() -> int:
-    go = "--si-borrar-todo" in sys.argv
+    go_full = "--si-borrar-todo" in sys.argv
+    go_trabajo = "--solo-trabajo" in sys.argv
     conn = psycopg2.connect(cargar_database_url())
     conn.autocommit = False
     cur = conn.cursor()
@@ -54,10 +62,29 @@ def main() -> int:
     print(f"Estado actual: {n('facturas')} facturas · {n('eventos')} eventos · "
           f"{n('pagos')} pagos · {n('usuarios')} usuarios (se conservan)")
 
-    if not go:
-        print("\n[DRY-RUN] Sin --si-borrar-todo no toco nada.")
-        print("Para resetear de verdad:  python3 scripts/reset_portal.py --si-borrar-todo")
+    if not go_full and not go_trabajo:
+        print("\n[DRY-RUN] Sin bandera no toco nada. Opciones:")
+        print("  Solo trabajo (CONSERVA maestros):  python3 scripts/reset_portal.py --solo-trabajo")
+        print("  Todo desde cero (re-siembra BQ):   python3 scripts/reset_portal.py --si-borrar-todo")
         conn.close(); return 0
+
+    if go_trabajo:
+        try:
+            cur.execute("DROP TRIGGER IF EXISTS trg_eventos_append_only ON eventos")
+            cur.execute("DROP TRIGGER IF EXISTS trg_eventos_no_truncate ON eventos")
+            cur.execute("TRUNCATE " + ", ".join(TABLAS_TRABAJO) + " RESTART IDENTITY")
+            cur.execute("INSERT INTO factura_estado (cufe) SELECT cufe FROM facturas")
+            cur.execute(RECREAR_CANDADOS)
+            conn.commit()
+            print(f"✅ Solo-trabajo: {n('facturas')} facturas a 'capturada' · pagos/bitácora limpios · "
+                  f"maestros y config INTACTOS (nada re-sembrado).")
+            return 0
+        except Exception as e:
+            conn.rollback()
+            print(f"ERROR — ROLLBACK: {e}", file=sys.stderr)
+            return 1
+        finally:
+            conn.close()
 
     try:
         cur.execute("DROP TRIGGER IF EXISTS trg_eventos_append_only ON eventos")
