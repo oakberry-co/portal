@@ -358,4 +358,10 @@ CREATE TABLE IF NOT EXISTS config_pagos (
 );
 INSERT INTO config_pagos (clave, valor) VALUES ('dia_pago', '5') ON CONFLICT (clave) DO NOTHING;
 
+-- Crédito / Débito: hay facturas reportadas que NO se pagan (ej. Éxito). El humano
+-- marca cada factura y el proveedor APRENDE su default. 'debito' = no entra al
+-- flujo de Pagos; 'credito' (o null) = a pagar. La grilla usa COALESCE(estado, maestro).
+ALTER TABLE factura_estado      ADD COLUMN IF NOT EXISTS tipo_pago         TEXT;  -- credito | debito
+ALTER TABLE maestro_proveedores ADD COLUMN IF NOT EXISTS tipo_pago_default TEXT;  -- aprendido por NIT
+
 COMMIT;

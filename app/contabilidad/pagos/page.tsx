@@ -20,7 +20,9 @@ async function cargar(): Promise<{ pendientes: FilaPago[]; validacion: FilaPago[
     SELECT ${CAMPOS}
     FROM factura_estado e JOIN facturas f USING (cufe)
     LEFT JOIN cuentas_bancarias_proveedor cb ON cb.nit = f.nit_proveedor
+    LEFT JOIN maestro_proveedores mp ON mp.nit = f.nit_proveedor
     WHERE e.estado = 'retenciones_ok' AND coalesce(e.pago_estado,'pendiente') <> 'pagado' AND e.cuenta_pago IS NULL
+      AND coalesce(e.tipo_pago, mp.tipo_pago_default, 'credito') <> 'debito'
     ORDER BY semana_fecha, f.nombre_proveedor, f.fecha_emision`);
   // Columna 2 — VALIDACIÓN: cuenta asignada (aprobada_pago), aún no pagadas.
   const validacion = await pool.query<FilaPago>(`

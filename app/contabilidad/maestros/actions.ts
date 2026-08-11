@@ -188,7 +188,7 @@ export async function agregarCuentaBanco(fd: FormData) {
 const EDITABLE: Record<string, { tabla: string; key: string; campos: Record<string, "text" | "num"> }> = {
   conceptos:   { tabla: "maestro_conceptos",   key: "nombre", campos: { cuenta_puc: "text" } },
   destinos:    { tabla: "maestro_destinos",    key: "nombre", campos: { short_code: "text" } },
-  proveedores: { tabla: "maestro_proveedores", key: "nit",    campos: { nombre: "text", concepto_default: "text", destino_default: "text", cuenta_puc_default: "text", plazo_dias: "num" } },
+  proveedores: { tabla: "maestro_proveedores", key: "nit",    campos: { nombre: "text", concepto_default: "text", destino_default: "text", cuenta_puc_default: "text", plazo_dias: "num", tipo_pago_default: "text" } },
   cuentas:     { tabla: "maestro_cuentas_puc", key: "codigo", campos: { nombre: "text" } },
   bancos:      { tabla: "cuentas_bancarias_proveedor", key: "nit", campos: { titular_nombre: "text", titular_apellido: "text", tipo_doc: "text", num_doc: "text", banco: "text", tipo_cuenta: "text", num_cuenta: "text", correo: "text", referencia: "text" } },
 };

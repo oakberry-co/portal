@@ -328,3 +328,41 @@ export async function confirmarRetenciones(formData: FormData) {
     };
   });
 }
+
+/** Marca la factura como Crédito (a pagar → entra a Pagos) o Débito (no se paga →
+ *  NO entra a Pagos, ej. Éxito). El proveedor APRENDE el default para sus próximas
+ *  facturas. Atómico (estado + maestro + bitácora). Devuelve el parche optimista. */
+export async function marcarTipoPago(formData: FormData) {
+  const user = await getCurrentUser();
+  if (!tienePermiso(user.rol, "conciliador")) throw new Error("No autorizado.");
+  const cufe = String(formData.get("cufe") ?? "").trim();
+  const tipo = String(formData.get("tipo") ?? "").trim();
+  if (!cufe) throw new Error("Falta cufe.");
+  if (!["credito", "debito"].includes(tipo)) throw new Error("Tipo inválido (credito|debito).");
+
+  return withTx(async (c) => {
+    const cur = await c.query<{ nit_proveedor: string; nombre_proveedor: string | null; tipo_pago: string | null }>(
+      "SELECT f.nit_proveedor, f.nombre_proveedor, e.tipo_pago FROM factura_estado e JOIN facturas f USING (cufe) WHERE e.cufe = $1 FOR UPDATE",
+      [cufe]);
+    if (cur.rowCount === 0) throw new Error("Factura no encontrada: " + cufe);
+    const { nit_proveedor: nit, nombre_proveedor: nombre, tipo_pago: antes } = cur.rows[0];
+
+    await c.query("UPDATE factura_estado SET tipo_pago = $2, actualizado_en = now() WHERE cufe = $1", [cufe, tipo]);
+
+    // El proveedor aprende: sus próximas facturas heredan este tipo por defecto.
+    if (nit && nit !== "ND") {
+      await c.query(
+        `INSERT INTO maestro_proveedores (nit, nombre, tipo_pago_default, fuente, creado_por)
+         VALUES ($1,$2,$3,'humano',$4)
+         ON CONFLICT (nit) DO UPDATE SET tipo_pago_default = EXCLUDED.tipo_pago_default, fuente = 'humano', actualizado_en = now()`,
+        [nit, nombre, tipo, user.email]);
+    }
+
+    await registrarEvento(c, {
+      cufe, tipo: "set_tipo_pago", campo: "tipo_pago",
+      valorAnterior: { tipo_pago: antes }, valorNuevo: { tipo_pago: tipo },
+      actor: user.email, actorRol: user.rol, origen: "web",
+    });
+    return { tipo_pago: tipo };
+  });
+}

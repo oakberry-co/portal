@@ -3,7 +3,7 @@
 import { memo, useState, useTransition } from "react";
 import { type Estado } from "@/lib/estados";
 import { Combobox } from "./Combobox";
-import { guardarClasificacion } from "./actions";
+import { guardarClasificacion, marcarTipoPago } from "./actions";
 import { RetencionesModal } from "./RetencionesModal";
 
 export type FacturaRow = {
@@ -31,6 +31,7 @@ export type FacturaRow = {
   valor_a_pagar: string | null;
   pago_estado: string | null;
   fecha_pago_prog: string | Date | null;
+  tipo_pago: string | null;
   concepto_sug: string | null;
   destino_sug: string | null;
   confianza: string | null;
@@ -98,6 +99,20 @@ export const FacturaCard = memo(function FacturaCard({
   const movida = !pagada && !!f.fecha_pago_prog;
   const pagoLuz = pagada ? "ok" : movida ? "mid" : "no";
   const pagoTitle = pagada ? "Pagada" : movida ? "Movida de semana (reprogramada)" : "Pendiente por pagar";
+
+  // Crédito/Débito: 'debito' = NO entra a Pagos (no se paga; ej. Éxito). El
+  // proveedor APRENDE su default → sus próximas facturas lo heredan.
+  const esDebito = (f.tipo_pago ?? "credito") === "debito";
+  function onTipo() {
+    const nuevo = esDebito ? "credito" : "debito";
+    start(async () => {
+      try {
+        const fd = new FormData(); fd.set("cufe", f.cufe); fd.set("tipo", nuevo);
+        const patch = await marcarTipoPago(fd);
+        onSaved(f.cufe, patch as FilaPatch);
+      } catch (err) { alert("No se pudo cambiar crédito/débito: " + (err as Error).message); }
+    });
+  }
 
   // Resumen de retenciones: lo confirmado si existe, si no la sugerencia (preview).
   const retenTotal = f.retencion_ok && f.reten_total != null
@@ -212,6 +227,12 @@ export const FacturaCard = memo(function FacturaCard({
         <span className="sem" title={pagoTitle}>
           <i className={"luz " + pagoLuz} />Pago
         </span>
+        <button type="button" className={"cd-toggle " + (esDebito ? "deb" : "cred")} disabled={pending} onClick={onTipo}
+          title={esDebito
+            ? "Débito — NO entra a Pagos (no se paga, ej. Éxito). Clic para volver a Crédito."
+            : "Crédito — a pagar (entra a Pagos). Clic para marcar Débito (no se paga)."}>
+          {esDebito ? "Débito" : "Crédito"}
+        </button>
       </div>
 
       {modal && (
