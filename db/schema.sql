@@ -364,4 +364,63 @@ INSERT INTO config_pagos (clave, valor) VALUES ('dia_pago', '5') ON CONFLICT (cl
 ALTER TABLE factura_estado      ADD COLUMN IF NOT EXISTS tipo_pago         TEXT;  -- credito | debito
 ALTER TABLE maestro_proveedores ADD COLUMN IF NOT EXISTS tipo_pago_default TEXT;  -- aprendido por NIT
 
+-- -----------------------------------------------------------------------------
+-- 11) INTAKE público — cuentas de cobro (no-DIAN) y cotizaciones con abonos.
+--     Dos formularios PÚBLICOS (fuera del login) donde un proveedor sube datos +
+--     documentos (a GCS) + el ÁREA a cobrar. Contabilidad revisa en una bandeja.
+--     Las cotizaciones admiten ABONOS que luego se cruzan con la factura final
+--     (DIAN) para no pagar doble: saldo a pagar = total factura − abonos.
+-- -----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS cuentas_cobro (
+  id             BIGSERIAL PRIMARY KEY,
+  tenant         TEXT NOT NULL DEFAULT 'manelfoods',
+  razon_social   TEXT NOT NULL,
+  tipo_doc       TEXT,
+  num_doc        TEXT NOT NULL,
+  contacto       TEXT,
+  correo         TEXT,
+  telefono       TEXT,
+  area           TEXT,                              -- destino/centro de costo a cobrar
+  concepto       TEXT,
+  descripcion    TEXT,
+  valor          NUMERIC(16,2),
+  banco          TEXT, tipo_cuenta TEXT, num_cuenta TEXT,
+  documentos     JSONB NOT NULL DEFAULT '[]',       -- [{nombre, path, tipo}]
+  estado         TEXT NOT NULL DEFAULT 'recibida',  -- recibida | aprobada | rechazada | pagada
+  nota_revision  TEXT,
+  revisado_por   TEXT, revisado_en TIMESTAMPTZ,
+  creado_en      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS ix_cc_estado ON cuentas_cobro (estado);
+
+CREATE TABLE IF NOT EXISTS cotizaciones (
+  id             BIGSERIAL PRIMARY KEY,
+  tenant         TEXT NOT NULL DEFAULT 'manelfoods',
+  codigo         TEXT UNIQUE,                       -- COT-0001 (se asigna al crear)
+  razon_social   TEXT NOT NULL,
+  nit            TEXT NOT NULL,
+  contacto       TEXT, correo TEXT, telefono TEXT,
+  area           TEXT,
+  concepto       TEXT, descripcion TEXT,
+  valor          NUMERIC(16,2),                     -- valor cotizado
+  documentos     JSONB NOT NULL DEFAULT '[]',
+  estado         TEXT NOT NULL DEFAULT 'recibida',  -- recibida | aprobada | rechazada | facturada | cerrada
+  cufe_factura   TEXT,                              -- factura final DIAN enlazada (el cruce)
+  nota_revision  TEXT, revisado_por TEXT, revisado_en TIMESTAMPTZ,
+  creado_en      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS ix_cot_nit ON cotizaciones (nit);
+
+CREATE TABLE IF NOT EXISTS cotizacion_abonos (
+  id              BIGSERIAL PRIMARY KEY,
+  cotizacion_id   BIGINT NOT NULL REFERENCES cotizaciones(id) ON DELETE CASCADE,
+  monto           NUMERIC(16,2) NOT NULL,
+  fecha           DATE NOT NULL,
+  cuenta_pago     TEXT,
+  comprobante_url TEXT,
+  creado_por      TEXT,
+  creado_en       TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS ix_abono_cot ON cotizacion_abonos (cotizacion_id);
+
 COMMIT;

@@ -770,3 +770,50 @@ button.ghost { background: #fff; color: var(--purple); }
 .pg-cfg-form input, .pg-cfg-form select { width: auto; font-size: 13px; }
 .pg-cfg-form input { min-width: 200px; }
 .pg-config .mst-tabla { min-width: 0; }
+
+/* ============================================================================
+   Intake PÚBLICO (cuentas de cobro / cotizaciones) — cara consumer Oakberry.
+   ============================================================================ */
+.pub {
+  min-height: 100vh; display: grid; place-items: start center; padding: 32px 18px 60px;
+  background:
+    radial-gradient(900px 420px at 100% -10%, #fff2d8 0%, rgba(255,242,216,0) 55%),
+    radial-gradient(760px 420px at -10% 0%, var(--lav-soft) 0%, rgba(245,240,255,0) 55%),
+    var(--cream);
+}
+.pub-card {
+  width: 100%; max-width: 560px; background: var(--card); border: 1px solid var(--border);
+  border-radius: 22px; box-shadow: var(--shadow-lg); padding: 34px 30px 26px; text-align: center;
+}
+.pub-logo { height: 46px; width: auto; margin: 0 auto 14px; display: block; }
+.pub-title { font-family: var(--display); font-weight: 400; font-size: 42px; letter-spacing: .5px;
+  color: var(--purple-deep); margin: 0 0 6px; line-height: 1; }
+.pub-sub { color: var(--lav); font-size: 14px; margin: 0 0 22px; line-height: 1.5; }
+.pub-form { display: flex; flex-direction: column; gap: 12px; text-align: left; }
+.pub-sec { font-family: var(--mono); font-size: 10.5px; text-transform: uppercase; letter-spacing: .1em;
+  color: var(--coral); font-weight: 500; margin: 10px 0 -2px; }
+.pub-form label { display: flex; flex-direction: column; gap: 5px; font-size: 12px; font-weight: 700;
+  color: var(--purple-deep); }
+.pub-form input, .pub-form select, .pub-form textarea {
+  font-weight: 400; font-size: 14px; padding: 10px 12px; border: 1.5px solid var(--border-lav);
+  border-radius: 11px; background: #fff; color: var(--ink); width: 100%; }
+.pub-form textarea { resize: vertical; font-family: var(--sans); }
+.pub-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.pub-row3 { display: grid; grid-template-columns: 1.2fr 1fr 1fr; gap: 12px; }
+.pub-full { width: 100%; }
+.pub-file input { padding: 9px 10px; background: var(--lav-soft); border-style: dashed; cursor: pointer; }
+.pub-btn { margin-top: 8px; background: var(--purple); color: #fff !important; border: none;
+  border-radius: 12px; padding: 14px 20px; font-weight: 800; font-size: 15px; cursor: pointer;
+  text-decoration: none !important; text-align: center; transition: background .15s; }
+.pub-btn:hover { background: var(--purple-deep); }
+.pub-btn:disabled { opacity: .6; cursor: default; }
+.pub-btn.ghost { background: #fff; color: var(--purple) !important; border: 1.5px solid var(--border-lav); }
+.pub-err { background: #fdeef0; color: var(--danger); border: 1px solid rgba(192,57,43,.25);
+  border-radius: 10px; padding: 10px 12px; font-size: 13px; font-weight: 600; }
+.pub-foot { color: var(--lav); font-size: 11px; margin: 20px 0 0; }
+.pub-ok { text-align: center; padding: 14px 4px 6px; }
+.pub-ok-ico { width: 66px; height: 66px; margin: 0 auto 14px; border-radius: 50%; display: grid;
+  place-items: center; font-size: 34px; color: #fff; background: var(--ok); box-shadow: 0 0 0 6px #e6f4ea; }
+.pub-ok h2 { font-size: 24px; color: var(--purple-deep); margin: 0 0 8px; }
+.pub-ok p { color: var(--lav); font-size: 14px; line-height: 1.55; margin: 0 0 18px; }
+@media (max-width: 520px) { .pub-row, .pub-row3 { grid-template-columns: 1fr; } .pub-title { font-size: 36px; } }
