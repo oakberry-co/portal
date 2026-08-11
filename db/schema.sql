@@ -423,4 +423,8 @@ CREATE TABLE IF NOT EXISTS cotizacion_abonos (
 );
 CREATE INDEX IF NOT EXISTS ix_abono_cot ON cotizacion_abonos (cotizacion_id);
 
+-- El CRUCE: cuando una factura DIAN se enlaza a una cotización con abonos, guardamos
+-- el abono aplicado aquí para que Pagos descuente ese monto (saldo = valor − abono).
+ALTER TABLE factura_estado ADD COLUMN IF NOT EXISTS abono_aplicado NUMERIC(16,2) NOT NULL DEFAULT 0;
+
 COMMIT;

@@ -23,6 +23,7 @@ const MENU: { label: string; href?: string }[] = [
   { label: "Maestros", href: "/contabilidad/maestros" },
   { label: "Dashboard", href: "/contabilidad/dashboard" },
   { label: "Cuentas de cobro", href: "/contabilidad/cuentas-de-cobro" },
+  { label: "Cotizaciones", href: "/contabilidad/cotizaciones" },
 ];
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {

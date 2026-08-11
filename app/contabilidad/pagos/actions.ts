@@ -90,10 +90,11 @@ export async function confirmarPago(fd: FormData) {
   await withTx(async (c: PoolClient) => {
     const { rows } = await c.query<{
       cufe: string; nit_proveedor: string; nombre_proveedor: string | null;
-      estado: string; cuenta_pago: string | null; a_pagar: string; pagado: string;
+      estado: string; cuenta_pago: string | null; a_pagar: string; pagado: string; abono: string;
     }>(
       `SELECT e.cufe, f.nit_proveedor, f.nombre_proveedor, e.estado, e.cuenta_pago,
-              coalesce(e.valor_a_pagar, f.total) AS a_pagar, coalesce(e.pago_monto,0) AS pagado
+              coalesce(e.valor_a_pagar, f.total) AS a_pagar, coalesce(e.pago_monto,0) AS pagado,
+              coalesce(e.abono_aplicado,0) AS abono
          FROM factura_estado e JOIN facturas f USING (cufe)
         WHERE e.cufe = ANY($1) ORDER BY f.fecha_emision FOR UPDATE`, [cufes]);
     if (!rows.length) throw new Error("Facturas no encontradas.");
@@ -107,8 +108,8 @@ export async function confirmarPago(fd: FormData) {
     }
 
     const saldos = rows.map((r) => {
-      const aPagar = Number(r.a_pagar), pagado = Number(r.pagado);
-      return { cufe: r.cufe, aPagar, pagado, saldo: Math.max(0, aPagar - pagado) };
+      const aPagar = Number(r.a_pagar), pagado = Number(r.pagado), abono = Number(r.abono);
+      return { cufe: r.cufe, aPagar, pagado, saldo: Math.max(0, aPagar - pagado - abono) };
     });
     const totalSaldo = saldos.reduce((s, x) => s + x.saldo, 0);
     const monto = montoRaw === "" ? totalSaldo : Number(montoRaw);

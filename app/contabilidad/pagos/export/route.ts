@@ -32,7 +32,7 @@ export async function GET(req: NextRequest) {
 
   const { rows } = await pool.query<Fila>(
     `SELECT f.nit_proveedor AS nit, max(f.nombre_proveedor) AS nombre,
-            round(sum(coalesce(e.valor_a_pagar, f.total) - coalesce(e.pago_monto,0)))::float AS monto,
+            round(sum(coalesce(e.valor_a_pagar, f.total) - coalesce(e.pago_monto,0) - coalesce(e.abono_aplicado,0)))::float AS monto,
             max(cb.titular_nombre) titular_nombre, max(cb.titular_apellido) titular_apellido,
             max(cb.tipo_doc) tipo_doc, max(cb.num_doc) num_doc, max(cb.banco) banco,
             max(cb.tipo_cuenta) tipo_cuenta, max(cb.num_cuenta) num_cuenta,
@@ -41,7 +41,7 @@ export async function GET(req: NextRequest) {
        LEFT JOIN cuentas_bancarias_proveedor cb ON cb.nit = f.nit_proveedor
       WHERE e.estado = 'aprobada_pago' AND e.cuenta_pago = $1 AND coalesce(e.pago_estado,'pendiente') <> 'pagado'
       GROUP BY f.nit_proveedor
-     HAVING sum(coalesce(e.valor_a_pagar, f.total) - coalesce(e.pago_monto,0)) > 0
+     HAVING sum(coalesce(e.valor_a_pagar, f.total) - coalesce(e.pago_monto,0) - coalesce(e.abono_aplicado,0)) > 0
       ORDER BY nombre`,
     [cuenta]);
 

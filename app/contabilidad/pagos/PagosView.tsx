@@ -7,7 +7,7 @@ export type FilaPago = {
   cufe: string; nombre_proveedor: string | null; nit_proveedor: string; numero: string;
   fecha_emision: string; fecha_vencimiento: string | null; concepto: string | null; destino: string | null;
   cuenta_pago: string | null; semana_fecha: string; a_pagar: number; pagado: number;
-  pago_estado: string; tiene_banco: boolean;
+  abono_aplicado: number; pago_estado: string; tiene_banco: boolean;
 };
 export type PagoHecho = {
   id: number; nit_proveedor: string; proveedor: string | null; cuenta_pago: string | null;
@@ -19,7 +19,8 @@ export type CuentaPago = { nombre: string; formato: string; activo: boolean };
 
 const cop = new Intl.NumberFormat("es-CO", { style: "currency", currency: "COP", maximumFractionDigits: 0 });
 const $ = (n: number) => cop.format(Math.round(n || 0));
-const saldo = (f: FilaPago) => Math.max(0, f.a_pagar - f.pagado);
+// Saldo = a pagar − ya pagado − abonos de cotización enlazada (nunca doble).
+const saldo = (f: FilaPago) => Math.max(0, f.a_pagar - f.pagado - (f.abono_aplicado || 0));
 const MESES = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
 const dm = (s: string) => { const x = new Date(s); return `${String(x.getUTCDate()).padStart(2, "0")}/${MESES[x.getUTCMonth()]}`; };
 const mesActual = new Date().toISOString().slice(0, 7);

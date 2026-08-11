@@ -838,3 +838,24 @@ button.ghost { background: #fff; color: var(--purple); }
 .cc-act.ghost { background: #fff; color: var(--purple); border: 1px solid var(--border-lav); }
 .cc-act.ghost:hover { border-color: var(--purple); background: var(--lav-soft); }
 @media (max-width: 560px) { .cc-grid { grid-template-columns: 1fr; } }
+
+/* Cotizaciones: código de éxito (público) + bandeja (abonos + cruce) */
+.pub-cot { font-family: var(--mono); font-size: 28px; font-weight: 700; color: var(--purple);
+  background: var(--lav-soft); border: 1.5px dashed var(--border-lav); border-radius: 12px;
+  padding: 12px 20px; margin: 4px auto 14px; display: inline-block; letter-spacing: 1px; }
+.cot-code { font-family: var(--mono); font-size: 12px; color: var(--purple); background: var(--lav-soft);
+  border-radius: 6px; padding: 1px 7px; margin-right: 4px; }
+.cot-abonos { background: var(--cream); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; margin: 10px 0; }
+.cot-abonos-head { font-size: 12.5px; color: var(--ink); }
+.cot-abonos-head b { color: var(--purple-deep); }
+.cot-abono-list { display: flex; flex-wrap: wrap; gap: 8px; margin: 6px 0; font-size: 12px; }
+.cot-abono-list span { background: #fff; border: 1px solid var(--border); border-radius: 6px; padding: 2px 8px; }
+.cot-abono-list i { font-style: normal; font-size: 10.5px; }
+.cot-abono-form { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; align-items: center; }
+.cot-abono-form input { width: auto; font-size: 12.5px; padding: 6px 9px; }
+.cot-abono-form input[name="monto"] { max-width: 120px; }
+.cot-cruce { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 8px 0; font-size: 12.5px;
+  background: #fff; border: 1px solid var(--border-lav); border-radius: 10px; padding: 9px 12px; }
+.cot-cruce.ok { background: #e6f4ea; border-color: rgba(39,174,96,.3); }
+.cot-cruce.ok b { color: #1e7d47; }
+.cot-cruce select { width: auto; font-size: 12.5px; padding: 6px 9px; }

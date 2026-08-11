@@ -10,6 +10,7 @@ const CAMPOS = `
   coalesce(e.fecha_pago_prog, e.fecha_vencimiento, f.fecha_emision)::text AS semana_fecha,
   coalesce(e.valor_a_pagar, f.total)::float AS a_pagar,
   coalesce(e.pago_monto,0)::float AS pagado,
+  coalesce(e.abono_aplicado,0)::float AS abono_aplicado,
   coalesce(e.pago_estado,'pendiente') AS pago_estado,
   (cb.nit IS NOT NULL) AS tiene_banco`;
 
