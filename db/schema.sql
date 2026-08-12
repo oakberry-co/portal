@@ -223,8 +223,11 @@ CREATE TABLE IF NOT EXISTS maestro_cuentas_puc (
 );
 
 -- -----------------------------------------------------------------------------
--- 6) USUARIOS / ROLES — respaldo del Firebase Auth (autoridad de cada acción).
+-- 6) USUARIOS / ROLES — quién entra y con qué autoridad.
 --    Roles: conciliador | pagador | causador | admin
+--    GATE DE ACCESO: desde 2026-08-12 esta tabla es la FUENTE DE VERDAD de quién
+--    puede loguearse (auth.ts callback signIn: allowlist de env O activo aquí).
+--    Agregar/quitar gente = INSERT/UPDATE aquí, SIN editar Vercel ni redeploy.
 -- -----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS usuarios (
   email      TEXT PRIMARY KEY,

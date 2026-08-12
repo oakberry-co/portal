@@ -1,55 +1,47 @@
 // =============================================================================
-//  Auth.js (NextAuth v5) — login con Google, restringido a Oakberry.
-//  Opción A (esta, EN USO). La Opción B (Firebase Auth) quedó documentada en el
-//  README para el futuro; el resto de la app no cambia si algún día se migra:
-//  siempre pide getCurrentUser() -> { email, rol } (ver lib/auth.ts).
+//  Auth.js (NextAuth v5) — login con Google, restringido a Oakberry (Node).
+//  Este módulo corre en Node (rutas /api/auth + getCurrentUser en lib/auth.ts) y
+//  SÍ puede tocar la base. Hace spread de `auth.config.ts` (edge-safe) y le añade
+//  el callback `signIn`, que es la COMPUERTA DE ACCESO.
 //
 //  Compuerta de acceso (2 capas):
-//   1) signIn callback  -> solo dominio corporativo + allowlist pueden autenticar.
-//   2) tabla `usuarios` -> define el rol de cada correo (ver lib/auth.ts).
+//   1) signIn -> puede autenticar quien esté en la allowlist de env (bootstrap)
+//      O activo en la tabla `usuarios` (FUENTE DE VERDAD; se administra desde la
+//      base, sin editar Vercel ni redeploy — un INSERT y ya).
+//   2) tabla `usuarios` -> también define el ROL de cada correo (ver lib/auth.ts).
 //
-//  Variables (Vercel / .env.local):
-//   AUTH_SECRET, AUTH_GOOGLE_ID, AUTH_GOOGLE_SECRET  (Auth.js las lee solo)
-//   AUTH_ALLOWED_DOMAIN (def. manelfoods.com), AUTH_ALLOWED_EMAILS (coma-sep)
+//  El middleware NO usa este archivo (usaría `pg` en el Edge y rompería); usa
+//  `auth.config.ts` directamente. Ver middleware.ts.
 // =============================================================================
 import NextAuth from "next-auth";
-import Google from "next-auth/providers/google";
+import { authConfig, emailEnAllowlist } from "@/auth.config";
+import { getPool } from "@/lib/db";
 
-// Allowlist de correos EXACTOS (coma-separados). Es la compuerta principal.
-const ALLOWED_EMAILS = (process.env.AUTH_ALLOWED_EMAILS ?? "")
-  .split(",")
-  .map((s) => s.trim().toLowerCase())
-  .filter(Boolean);
-// Dominio corporativo OPCIONAL: vacío por defecto = solo manda la allowlist.
-const ALLOWED_DOMAIN = (process.env.AUTH_ALLOWED_DOMAIN ?? "").trim().toLowerCase();
-
-/** ¿Este correo puede autenticar? Allowlist de correos (+ dominio si se define). */
-function emailPermitido(email?: string | null): boolean {
-  if (!email) return false;
-  const e = email.toLowerCase();
-  if (ALLOWED_EMAILS.includes(e)) return true;
-  if (ALLOWED_DOMAIN && e.endsWith("@" + ALLOWED_DOMAIN)) return true;
-  return false;
+/** ¿El correo está ACTIVO en la tabla `usuarios`? Fuente de verdad del acceso.
+ *  try/catch: si la base no responde, NO tumba el login de la allowlist de env. */
+async function emailEnUsuarios(email: string): Promise<boolean> {
+  try {
+    const r = await getPool().query(
+      "SELECT 1 FROM usuarios WHERE lower(email) = $1 AND activo LIMIT 1",
+      [email.toLowerCase()],
+    );
+    return (r.rowCount ?? 0) > 0;
+  } catch {
+    return false;
+  }
 }
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
-  providers: [Google],
-  session: { strategy: "jwt" }, // JWT: necesario para verificar sesión en el middleware (edge)
-  pages: { signIn: "/login" },
+  ...authConfig,
   callbacks: {
-    // Compuerta 1: solo dominio Oakberry + allowlist. Cualquier otro, rechazado.
-    signIn({ user, profile }) {
-      return emailPermitido(profile?.email ?? user?.email);
-    },
-    // Middleware: protege TODO menos /login. Sin sesión -> Auth.js redirige a /login.
-    authorized({ auth, request: { nextUrl } }) {
-      // Fail-closed: en Vercel (prod) el default es 'google' (protegido); solo
-      // local (sin VERCEL) cae a 'dev' = sin compuerta. Explícito siempre gana.
-      if ((process.env.AUTH_MODE ?? (process.env.VERCEL ? "google" : "dev")) === "dev") return true;
-      const logueado = !!auth?.user;
-      const enLogin = nextUrl.pathname.startsWith("/login");
-      if (enLogin) return logueado ? Response.redirect(new URL("/", nextUrl)) : true;
-      return logueado;
+    ...authConfig.callbacks,
+    // Compuerta 1: allowlist de env (bootstrap de admins) O activo en `usuarios`.
+    // Cualquier otro correo, rechazado.
+    async signIn({ user, profile }) {
+      const email = (profile?.email ?? user?.email ?? "").toLowerCase();
+      if (!email) return false;
+      if (emailEnAllowlist(email)) return true;
+      return await emailEnUsuarios(email);
     },
   },
 });
