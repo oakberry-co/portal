@@ -101,10 +101,81 @@ export function codigoBanco(nombre: string | null | undefined): string {
   return best;
 }
 
-/** Código del banco para el archivo de DAVIVIENDA = "Código canales" = el ACH sin
- *  ceros a la izquierda (Bancolombia 007→7, Davivienda 051→51, Caja Social 032→32). */
+// Tabla OFICIAL de Davivienda ("Código canales", entregada por el equipo). Banco
+// (nombre) → código canales. Davivienda no viene en la tabla (es el pagador); se
+// agrega 51 para destinos Davivienda. Fuente: Sheet de códigos Davivienda.
+const DAVIVIENDA: { codigo: string; nombre: string }[] = [
+  { codigo: "1", nombre: "Banco de Bogotá" },
+  { codigo: "2", nombre: "Banco Popular" },
+  { codigo: "6", nombre: "Itaú (antes corpbanca)" },
+  { codigo: "7", nombre: "Bancolombia" },
+  { codigo: "9", nombre: "Citibank" },
+  { codigo: "12", nombre: "Banco GNB Sudameris" },
+  { codigo: "13", nombre: "BBVA Colombia" },
+  { codigo: "14", nombre: "Itaú (Helm bank)" },
+  { codigo: "19", nombre: "Scotiabank Colpatria" },
+  { codigo: "23", nombre: "Banco de Occidente" },
+  { codigo: "31", nombre: "Bancóldex" },
+  { codigo: "32", nombre: "Banco Caja Social BCSC" },
+  { codigo: "40", nombre: "Banco Agrario" },
+  { codigo: "42", nombre: "Banco BNP Paribas" },
+  { codigo: "47", nombre: "Banco Mundo Mujer" },
+  { codigo: "52", nombre: "Banco AV Villas" },
+  { codigo: "53", nombre: "Banco W" },
+  { codigo: "59", nombre: "Bancamia" },
+  { codigo: "60", nombre: "Banco Pichincha" },
+  { codigo: "61", nombre: "Bancoomeva" },
+  { codigo: "62", nombre: "Banco Falabella" },
+  { codigo: "63", nombre: "Banco Finandina" },
+  { codigo: "64", nombre: "Banco Multibank" },
+  { codigo: "65", nombre: "Banco Santander de Negocios Colombia" },
+  { codigo: "66", nombre: "Banco Cooperativo Coopcentral" },
+  { codigo: "67", nombre: "Mibanco" },
+  { codigo: "69", nombre: "Banco Serfinanza" },
+  { codigo: "71", nombre: "Banco J.P. Morgan Colombia" },
+  { codigo: "121", nombre: "Financiera Juriscoop" },
+  { codigo: "151", nombre: "Rappipay Daviplata" },
+  { codigo: "283", nombre: "Cooperativa Financiera de Antioquia CFA" },
+  { codigo: "289", nombre: "Cootrafa Cooperativa Financiera" },
+  { codigo: "291", nombre: "Cofinep Cooperativa Financiera" },
+  { codigo: "292", nombre: "Confiar Cooperativa Financiera" },
+  { codigo: "303", nombre: "Banco Unión" },
+  { codigo: "370", nombre: "Coltefinanciera" },
+  { codigo: "507", nombre: "Nequi" },
+  { codigo: "551", nombre: "Daviplata" },
+  { codigo: "558", nombre: "BAN100" },
+  { codigo: "637", nombre: "IRIS Dann Regional" },
+  { codigo: "801", nombre: "Movii" },
+  { codigo: "70", nombre: "Lulo Bank" },
+  { codigo: "805", nombre: "BTG Pactual" },
+  { codigo: "804", nombre: "Uala Bancar tecnologia" },
+  { codigo: "802", nombre: "Ding Tecnipagos" },
+  { codigo: "286", nombre: "JFK Cooperativa Financiera" },
+  { codigo: "560", nombre: "Pibank" },
+  { codigo: "803", nombre: "Powwi" },
+  { codigo: "811", nombre: "Rappipay" },
+  { codigo: "812", nombre: "Coink" },
+  { codigo: "813", nombre: "Santander Consumer" },
+  { codigo: "814", nombre: "Global66" },
+  { codigo: "808", nombre: "Bold CF" },
+  { codigo: "819", nombre: "Banco Contactar" },
+  { codigo: "809", nombre: "NU" },
+  { codigo: "51", nombre: "Davivienda" },
+];
+const DAVI_BY_NORM = new Map(DAVIVIENDA.map((b) => [norm(b.nombre), b.codigo]));
+
+/** Código del banco para el archivo de DAVIVIENDA = "Código canales" (tabla oficial
+ *  arriba). Si el banco no está, cae al ACH sin ceros a la izquierda. */
 export function codigoBancoDavivienda(nombre: string | null | undefined): string {
-  const c = codigoBanco(nombre);
+  if (!nombre) return "";
+  const n = norm(nombre);
+  if (!n) return "";
+  if (DAVI_BY_NORM.has(n)) return DAVI_BY_NORM.get(n)!;
+  for (const b of DAVIVIENDA) {
+    const bn = norm(b.nombre);
+    if (n === bn || n.includes(bn) || bn.includes(n)) return b.codigo;
+  }
+  const c = codigoBanco(nombre);       // fallback: ACH sin ceros
   return c ? String(Number(c)) : "";
 }
 
