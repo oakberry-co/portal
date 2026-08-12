@@ -714,6 +714,7 @@ button.ghost { background: #fff; color: var(--purple); }
 .pg-col-tag.ok { color: var(--ok); }
 .pg-col-head i { font-style: normal; font-family: var(--mono); font-size: 11px; background: rgba(0,0,0,.06); border-radius: 999px; padding: 1px 8px; color: var(--lav); }
 .pg-col-body { padding: 8px; display: flex; flex-direction: column; gap: 6px; max-height: 72vh; overflow-y: auto; }
+.pg-col-body > * { flex-shrink: 0; }  /* no comprimir tarjetas cuando hay muchas: que la columna haga scroll */
 .pg-empty.sm { padding: 18px 14px; font-size: 12px; }
 .pg-col .pg-prov { border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
 .pg-col .pg-prov-head { padding: 8px 10px; }
