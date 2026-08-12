@@ -29,6 +29,9 @@ export type FacturaRow = {
   reteiva: string | null;
   reteica: string | null;
   valor_a_pagar: string | null;
+  otros_valor: string | null;
+  otros_concepto: string | null;
+  observaciones: string | null;
   pago_estado: string | null;
   fecha_pago_prog: string | Date | null;
   tipo_pago: string | null;
@@ -118,7 +121,8 @@ export const FacturaCard = memo(function FacturaCard({
   const retenTotal = f.retencion_ok && f.reten_total != null
     ? num(f.reten_total)
     : num(f.retefuente_sug) + num(f.reteiva_sug) + num(f.reteica_sug);
-  const valorAPagar = total - retenTotal;
+  const otros = num(f.otros_valor);
+  const valorAPagar = total - retenTotal - otros;
 
   // Vencimiento (día de pago) y si ya toca pagar.
   const venc = f.fecha_vencimiento ? new Date(f.fecha_vencimiento) : null;
@@ -251,6 +255,9 @@ export const FacturaCard = memo(function FacturaCard({
           tarRf={f.ret_rf}
           tarIva={f.ret_iva}
           tarIca={f.ret_ica}
+          otros_valor={f.otros_valor}
+          otros_concepto={f.otros_concepto}
+          observaciones={f.observaciones}
           yaConfirmada={f.retencion_ok}
           onSaved={onSaved}
           onClose={() => setModal(false)}

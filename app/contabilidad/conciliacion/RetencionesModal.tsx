@@ -17,12 +17,13 @@ const pctIni = (amt: string | null, base: number) =>
 export function RetencionesModal({
   cufe, proveedor, subtotal, iva, total,
   retefuente, reteiva, reteica, retefuente_sug, reteiva_sug, reteica_sug,
-  tarRf, tarIva, tarIca, yaConfirmada, onSaved, onClose,
+  tarRf, tarIva, tarIca, otros_valor, otros_concepto, observaciones, yaConfirmada, onSaved, onClose,
 }: {
   cufe: string; proveedor: string; subtotal: number; iva: number; total: number;
   retefuente: string | null; reteiva: string | null; reteica: string | null;
   retefuente_sug: string | null; reteiva_sug: string | null; reteica_sug: string | null;
   tarRf: string | null; tarIva: string | null; tarIca: string | null;
+  otros_valor: string | null; otros_concepto: string | null; observaciones: string | null;
   yaConfirmada: boolean;
   onSaved: (cufe: string, patch: FilaPatch) => void;
   onClose: () => void;
@@ -31,12 +32,15 @@ export function RetencionesModal({
   const [rf, setRf] = useState(pctIni(retefuente ?? retefuente_sug, subtotal) || (tarRf ?? ""));
   const [ri, setRi] = useState(pctIni(reteiva ?? reteiva_sug, iva) || (tarIva ?? ""));
   const [ric, setRic] = useState(pctIni(reteica ?? reteica_sug, subtotal) || (tarIca ?? ""));
+  const [otros, setOtros] = useState(otros_valor && Number(otros_valor) > 0 ? String(Math.round(Number(otros_valor))) : "");
+  const [otrosConcepto, setOtrosConcepto] = useState(otros_concepto ?? "");
 
   const amtRf = Math.round((subtotal * (Number(rf) || 0)) / 100);
   const amtRi = Math.round((iva * (Number(ri) || 0)) / 100);
   const amtRic = Math.round((subtotal * (Number(ric) || 0)) / 100);
   const retenTotal = amtRf + amtRi + amtRic;
-  const valorAPagar = total - retenTotal;
+  const otrosNum = Number(String(otros).replace(/[^\d]/g, "")) || 0;
+  const valorAPagar = total - retenTotal - otrosNum;
 
   async function confirmar(fd: FormData) {
     const patch = await confirmarRetenciones(fd);
@@ -84,13 +88,24 @@ export function RetencionesModal({
                 <td><span className="pct-wrap"><input type="number" min={0} step="0.001" value={ric} onChange={(e) => setRic(e.target.value)} placeholder="0" /><span className="pct-sfx">%</span></span></td>
                 <td className="num">{copN(amtRic)}</td>
               </tr>
+              <tr>
+                <td><input className="ret-otros" name="otros_concepto" value={otrosConcepto} onChange={(e) => setOtrosConcepto(e.target.value)} placeholder="Otros (ej. indemnización)" /></td>
+                <td className="num muted">—</td>
+                <td className="muted" style={{ textAlign: "center", fontSize: 11 }}>descuento</td>
+                <td><input className="ret-otros num" name="otros_valor" value={otros} onChange={(e) => setOtros(e.target.value)} inputMode="numeric" placeholder="$ 0" /></td>
+              </tr>
             </tbody>
           </table>
 
           <div className="modal-tot">
             <span>Total retenciones <b className="num">{copN(retenTotal)}</b></span>
+            {otrosNum > 0 && <span>Otros (−) <b className="num">{copN(otrosNum)}</b></span>}
             <span>Valor a pagar <b className="num accent">{copN(valorAPagar)}</b></span>
           </div>
+
+          <label className="ret-obs">Observaciones
+            <textarea name="observaciones" defaultValue={observaciones ?? ""} rows={2} placeholder="Notas para identificar algo puntual…" />
+          </label>
 
           <div className="modal-foot">
             <button type="button" className="ghost" onClick={onClose}>Cancelar</button>

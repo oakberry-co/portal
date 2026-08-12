@@ -270,6 +270,10 @@ export async function confirmarRetenciones(formData: FormData) {
   const reteiva = monto("reteiva");
   const reteica = monto("reteica");
   const retenTotal = retefuente + reteiva + reteica;
+  // "Otros": descuento manual en pesos (ej. indemnización) + su concepto y observaciones.
+  const otros = monto("otros_valor");
+  const otrosConcepto = String(formData.get("otros_concepto") ?? "").trim() || null;
+  const observaciones = String(formData.get("observaciones") ?? "").trim() || null;
 
   return withTx(async (c) => {
     const cur = await c.query<{
@@ -291,16 +295,17 @@ export async function confirmarRetenciones(formData: FormData) {
     // retención igual (el semáforo Reten se pone verde por retencion_ok) y el
     // estado queda como estaba; si ya estaba clasificada, avanza a retenciones_ok.
     const total = antes.total != null ? Number(antes.total) : 0;
-    const valorAPagar = total - retenTotal;
+    const valorAPagar = total - retenTotal - otros;
     const nuevoEstado = antes.estado === "clasificada" ? "retenciones_ok" : antes.estado;
 
     await c.query(
       `UPDATE factura_estado
           SET retefuente = $2, reteiva = $3, reteica = $4,
               reten_total = $5, valor_a_pagar = $6,
+              otros_valor = $8, otros_concepto = $9, observaciones = $10,
               retencion_ok = TRUE, estado = $7, actualizado_en = now()
         WHERE cufe = $1`,
-      [cufe, retefuente, reteiva, reteica, retenTotal, valorAPagar, nuevoEstado]
+      [cufe, retefuente, reteiva, reteica, retenTotal, valorAPagar, nuevoEstado, otros, otrosConcepto, observaciones]
     );
 
     await registrarEvento(c, {
@@ -325,6 +330,7 @@ export async function confirmarRetenciones(formData: FormData) {
       estado: nuevoEstado, retencion_ok: true,
       retefuente: String(retefuente), reteiva: String(reteiva), reteica: String(reteica),
       reten_total: String(retenTotal), valor_a_pagar: String(valorAPagar),
+      otros_valor: String(otros), otros_concepto: otrosConcepto, observaciones,
     };
   });
 }
