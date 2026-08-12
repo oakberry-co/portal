@@ -101,6 +101,13 @@ export function codigoBanco(nombre: string | null | undefined): string {
   return best;
 }
 
+/** Código del banco para el archivo de DAVIVIENDA = "Código canales" = el ACH sin
+ *  ceros a la izquierda (Bancolombia 007→7, Davivienda 051→51, Caja Social 032→32). */
+export function codigoBancoDavivienda(nombre: string | null | undefined): string {
+  const c = codigoBanco(nombre);
+  return c ? String(Number(c)) : "";
+}
+
 // Tipo de documento y tipo de cuenta guardados en el maestro (códigos cortos)
 // vs. como los quiere cada plantilla del banco.
 export const TIPO_DOC_FULL: Record<string, string> = {
