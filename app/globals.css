@@ -701,14 +701,15 @@ button.ghost { background: #fff; color: var(--purple); }
 /* Conciliación: destino obligatorio antes de clasificar (borde rojo) */
 .c-field.falta .cbx-input { border-color: var(--danger); background: #fff6f6; }
 
-/* Pagos v2 — tablero de 3 columnas (Pendientes → Validación → Confirmados) ---- */
-.container-wide { max-width: 1440px; }
-.pg-board { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; align-items: start; margin-top: 4px; }
+/* Pagos v2 — tablero de 4 columnas (Pendientes → Esta semana → Validación → Confirmados) */
+.container-wide { max-width: 1600px; }
+.pg-board { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; align-items: start; margin-top: 4px; }
 .pg-board.busy { opacity: .55; pointer-events: none; }
 .pg-col { border: 1px solid var(--border); border-radius: 14px; background: var(--card); box-shadow: var(--shadow); overflow: hidden; display: flex; flex-direction: column; }
 .pg-col-head { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; border-bottom: 1px solid var(--border); background: var(--lav-soft); }
 .pg-col-tag { font-weight: 800; font-size: 12px; text-transform: uppercase; letter-spacing: .03em; color: var(--purple-deep); }
 .pg-col-tag.pend { color: var(--coral); }
+.pg-col-tag.encurso { color: var(--purple); }
 .pg-col-tag.val { color: var(--warn); }
 .pg-col-tag.ok { color: var(--ok); }
 .pg-col-head i { font-style: normal; font-family: var(--mono); font-size: 11px; background: rgba(0,0,0,.06); border-radius: 999px; padding: 1px 8px; color: var(--lav); }
@@ -745,6 +746,7 @@ button.ghost { background: #fff; color: var(--purple); }
 .pg-fch { font-size: 10.5px; color: var(--lav); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .pg-venc { margin-left: 3px; }
 .pg-venc-tag { font-size: 10px; font-weight: 700; color: var(--coral); background: rgba(232,89,60,.1); border-radius: 999px; padding: 1px 8px; margin-left: auto; }
+@media (max-width: 1400px) { .pg-board { grid-template-columns: repeat(2, 1fr); } }
 @media (max-width: 980px) { .pg-board { grid-template-columns: 1fr; } .pg-col-body { max-height: none; } }
 .pg-subtabs { margin-bottom: 14px; }
 .pg-hfiltros { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 4px 0 10px; }

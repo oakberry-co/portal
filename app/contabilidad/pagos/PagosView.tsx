@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useMemo, useState, useTransition } from "react";
+import { Fragment, useState, useTransition } from "react";
 import { asignarCuenta, quitarCuenta, confirmarPago, agregarCuentaPago, toggleCuentaPago, guardarDiaPago } from "./actions";
 
 export type FilaPago = {
@@ -73,46 +73,24 @@ export function PagosView({ pendientes, validacion, historial, cuentas, diaPago 
   const [modal, setModal] = useState<{ grupo: Grupo } | null>(null);
   const [pending, start] = useTransition();
   const [vista, setVista] = useState<"tablero" | "historial" | "config">("tablero");
-  const [fAnio, setFAnio] = useState("");
-  const [fMes, setFMes] = useState("");
-  const [fSem, setFSem] = useState("");
 
   const toggle = <T,>(set: Set<T>, k: T) => { const n = new Set(set); n.has(k) ? n.delete(k) : n.add(k); return n; };
   const totalPend = pendientes.reduce((s, f) => s + saldo(f), 0);
   const totalVal = validacion.reduce((s, f) => s + saldo(f), 0);
-  const vencidasPend = pendientes.filter((f) => f.semana_fecha < hoyISO).length;
   const pagadoMes = historial.filter((p) => p.fecha_pago.slice(0, 7) === mesActual).reduce((s, p) => s + p.monto, 0);
 
   const ctasActivas = cuentas.filter((c) => c.activo);
   const cuenta0 = ctasActivas[0]?.nombre ?? "";
 
-  // Filtro de periodo (año/mes/semana) → aplica a Validación y Confirmados.
-  const pasaFiltro = (iso: string) => {
-    if (!iso) return true;
-    const d = iso.slice(0, 10);
-    if (fAnio && d.slice(0, 4) !== fAnio) return false;
-    if (fMes && d.slice(0, 7) !== fMes) return false;
-    if (fSem && semanaISO(iso) !== fSem) return false;
-    return true;
-  };
-  const opciones = useMemo(() => {
-    const anios = new Set<string>(), meses = new Set<string>(), sems = new Set<string>();
-    for (const iso of [...validacion.map((f) => f.semana_fecha), ...historial.map((p) => p.fecha_pago)]) {
-      if (!iso) continue;
-      anios.add(iso.slice(0, 4)); meses.add(iso.slice(0, 7)); sems.add(semanaISO(iso));
-    }
-    const desc = (a: string, b: string) => (a < b ? 1 : -1);
-    return { anios: [...anios].sort(desc), meses: [...meses].sort(desc), sems: [...sems].sort(desc) };
-  }, [validacion, historial]);
-  const hayFiltro = !!(fAnio || fMes || fSem);
+  const porCta = porCuenta(validacion);
 
-  const validacionF = validacion.filter((f) => pasaFiltro(f.semana_fecha));
-  const historialF = historial.filter((p) => pasaFiltro(p.fecha_pago));
-  const porCta = porCuenta(validacionF);
-
-  // Pendientes divididas: semanas pasadas (< semana en curso) y semana en curso (>=).
+  // 4 columnas independientes: pendientes de semanas pasadas · pendientes de esta
+  // semana · validación · confirmados de ESTA semana (lo anterior vive en Historial).
   const gruposPasadas = porProveedor(pendientes.filter((f) => semanaISO(f.semana_fecha) < hoySem));
   const gruposEnCurso = porProveedor(pendientes.filter((f) => semanaISO(f.semana_fecha) >= hoySem));
+  const confSemana = historial.filter((p) => semanaISO(p.fecha_pago) === hoySem);
+  const nPasadas = gruposPasadas.reduce((n, g) => n + g.facturas.length, 0);
+  const nEnCurso = gruposEnCurso.reduce((n, g) => n + g.facturas.length, 0);
 
   // Facturas seleccionadas de un grupo (si ninguna marcada → todas: atajo rápido).
   const seleccion = (g: Grupo) => { const s = g.facturas.filter((f) => sel.has(f.cufe)); return s.length ? s : g.facturas; };
@@ -200,41 +178,28 @@ export function PagosView({ pendientes, validacion, historial, cuentas, diaPago 
         <div className="pg-kpi paid"><i>Pagado este mes</i><b>{$(pagadoMes)}</b><span>{historial.filter((p) => p.fecha_pago.slice(0, 7) === mesActual).length} pago(s)</span></div>
       </div>
 
-      <div className="pg-filtros">
-        <span className="muted mini">Filtrar Validación y Confirmados:</span>
-        <select value={fAnio} onChange={(e) => setFAnio(e.target.value)}><option value="">Año</option>{opciones.anios.map((a) => <option key={a} value={a}>{a}</option>)}</select>
-        <select value={fMes} onChange={(e) => setFMes(e.target.value)}><option value="">Mes</option>{opciones.meses.map((m) => { const [y, mm] = m.split("-"); return <option key={m} value={m}>{MESES[Number(mm) - 1]} {y}</option>; })}</select>
-        <select value={fSem} onChange={(e) => setFSem(e.target.value)}><option value="">Semana</option>{opciones.sems.map((s) => { const [y, w] = s.split("-S"); return <option key={s} value={s}>Sem {w} · {y}</option>; })}</select>
-        {hayFiltro && <button type="button" className="pg-mini" onClick={() => { setFAnio(""); setFMes(""); setFSem(""); }}>Limpiar</button>}
-      </div>
-
       <div className={"pg-board" + (pending ? " busy" : "")}>
-        {/* ---------- Columna 1: PENDIENTES ---------- */}
+        {/* ---------- Columna 1: PAGOS PENDIENTES (semanas pasadas) ---------- */}
         <section className="pg-col">
-          <div className="pg-col-head"><span className="pg-col-tag pend">Pendientes</span>{vencidasPend > 0 && <span className="pg-venc-tag" title="Facturas pasadas de su día de pago">⏰ {vencidasPend}</span>}<i>{pendientes.length}</i></div>
+          <div className="pg-col-head"><span className="pg-col-tag pend">Pagos pendientes</span>{nPasadas > 0 && <span className="pg-venc-tag" title="Facturas de semanas anteriores sin pagar">⏰ atrasadas</span>}<i>{nPasadas}</i></div>
           <div className="pg-col-body">
-            {!pendientes.length ? (
-              <div className="pg-empty sm">Nada pendiente. Aparecen aquí las facturas con retenciones confirmadas.</div>
-            ) : (
-              <>
-                {gruposPasadas.length > 0 && (
-                  <div className="pg-sub">
-                    <div className="pg-sub-tag pasadas">⏰ Semanas pasadas<i>{gruposPasadas.reduce((n, g) => n + g.facturas.length, 0)}</i></div>
-                    {gruposPasadas.map((g) => renderGrupoPend(g, "PA"))}
-                  </div>
-                )}
-                <div className="pg-sub">
-                  <div className="pg-sub-tag encurso">Semana en curso<i>{gruposEnCurso.reduce((n, g) => n + g.facturas.length, 0)}</i></div>
-                  {gruposEnCurso.length ? gruposEnCurso.map((g) => renderGrupoPend(g, "PC")) : <div className="pg-empty sm">Nada en la semana en curso.</div>}
-                </div>
-              </>
-            )}
+            {gruposPasadas.length ? gruposPasadas.map((g) => renderGrupoPend(g, "PA"))
+              : <div className="pg-empty sm">Sin pagos atrasados. 🎉 Aquí caen las facturas de semanas anteriores que aún no se pagan.</div>}
           </div>
         </section>
 
-        {/* ---------- Columna 2: VALIDACIÓN SEMANA EN CURSO ---------- */}
+        {/* ---------- Columna 2: PAGOS DE ESTA SEMANA ---------- */}
         <section className="pg-col">
-          <div className="pg-col-head"><span className="pg-col-tag val">Validación semana en curso</span><i>{validacionF.length}</i></div>
+          <div className="pg-col-head"><span className="pg-col-tag encurso">Pagos de esta semana</span><i>{nEnCurso}</i></div>
+          <div className="pg-col-body">
+            {gruposEnCurso.length ? gruposEnCurso.map((g) => renderGrupoPend(g, "PC"))
+              : <div className="pg-empty sm">Nada por pagar esta semana. Aparecen aquí las facturas con retenciones confirmadas cuyo pago cae esta semana.</div>}
+          </div>
+        </section>
+
+        {/* ---------- Columna 3: VALIDACIÓN SEMANA EN CURSO ---------- */}
+        <section className="pg-col">
+          <div className="pg-col-head"><span className="pg-col-tag val">Validación semana en curso</span><i>{validacion.length}</i></div>
           <div className="pg-col-body">
             {!porCta.length ? (
               <div className="pg-empty sm">Asigna una cuenta a las facturas pendientes y aparecerán aquí, agrupadas por cuenta.</div>
@@ -275,13 +240,13 @@ export function PagosView({ pendientes, validacion, historial, cuentas, diaPago 
           </div>
         </section>
 
-        {/* ---------- Columna 3: CONFIRMADOS ---------- */}
+        {/* ---------- Columna 4: CONFIRMADOS (esta semana) ---------- */}
         <section className="pg-col">
-          <div className="pg-col-head"><span className="pg-col-tag ok">Confirmados</span><i>{historialF.length}</i></div>
+          <div className="pg-col-head"><span className="pg-col-tag ok">Confirmados</span><i>{confSemana.length}</i></div>
           <div className="pg-col-body">
-            {!historialF.length ? (
-              <div className="pg-empty sm">{hayFiltro ? "Sin pagos confirmados en ese periodo." : "Los pagos confirmados quedan aquí, con su cuenta y comprobante."}</div>
-            ) : historialF.map((p) => (
+            {!confSemana.length ? (
+              <div className="pg-empty sm">Los pagos confirmados <b>esta semana</b> quedan aquí. Para semanas anteriores, ve a <b>Historial</b>.</div>
+            ) : confSemana.map((p) => (
               <div key={p.id} className="pg-conf">
                 <div className="pg-conf-head" onClick={() => setExpPago(toggle(expPago, p.id))}>
                   <span className="pg-caret">{expPago.has(p.id) ? "▾" : "▸"}</span>
