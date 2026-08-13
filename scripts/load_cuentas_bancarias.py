@@ -30,24 +30,37 @@ from sync_bq_to_pg import cargar_database_url  # noqa: E402
 SHEET_ID = "16g5hcaSr8wfDibcxEf8tkykUkoUM0OJC"
 GID = "2127601167"
 
-# Código canales Davivienda → nombre de banco (igual que lib/bancos.ts DAVIVIENDA).
+# Código canales Davivienda → nombre de banco EN FORMA CANÓNICA (mayúsculas, nombre
+# oficial). DEBE coincidir EXACTO con la lista desplegable de la hoja "datos" de la
+# plantilla del banco (la validación exige match idéntico: mayúsculas + "BANCO" donde
+# aplica, ej. "BANCO DAVIVIENDA" no "Davivienda"). Alineado a lib/bancos.ts BANCOS.
 COD_NOMBRE = {
-    "1": "Banco de Bogotá", "2": "Banco Popular", "6": "Itaú", "7": "Bancolombia",
-    "9": "Citibank", "12": "Banco GNB Sudameris", "13": "BBVA Colombia", "14": "Itaú",
-    "19": "Scotiabank Colpatria", "23": "Banco de Occidente", "31": "Bancóldex",
-    "32": "Banco Caja Social", "40": "Banco Agrario", "42": "BNP Paribas",
-    "47": "Banco Mundo Mujer", "52": "Banco AV Villas", "53": "Banco W", "59": "Bancamia",
-    "60": "Banco Pichincha", "61": "Bancoomeva", "62": "Banco Falabella", "63": "Banco Finandina",
-    "64": "Multibank", "65": "Banco Santander de Negocios", "66": "Coopcentral", "67": "Mibanco",
-    "69": "Banco Serfinanza", "70": "Lulo Bank", "71": "J.P. Morgan", "121": "Juriscoop",
-    "151": "Rappipay Daviplata", "283": "CFA", "286": "JFK", "289": "Cootrafa", "291": "Cofinep",
-    "292": "Confiar", "303": "Banco Unión", "370": "Coltefinanciera", "507": "Nequi",
-    "551": "Daviplata", "558": "BAN100", "560": "Pibank", "637": "IRIS", "801": "Movii",
-    "802": "Ding", "803": "Powwi", "804": "Uala", "805": "BTG Pactual", "808": "Bold CF",
-    "809": "NU", "811": "Rappipay", "812": "Coink", "813": "Santander Consumer",
-    "814": "Global66", "819": "Banco Contactar", "51": "Davivienda",
+    "1": "BANCO DE BOGOTÁ", "2": "BANCO POPULAR", "6": "BANCO ITAU CORPBANCA COLOMBIA",
+    "7": "BANCOLOMBIA", "9": "BANCO CITIBANK COLOMBIA", "12": "BANCO GNB SUDAMERIS",
+    "13": "BBVA COLOMBIA", "14": "ITAU", "19": "SCOTIABANK COLPATRIA",
+    "23": "BANCO DE OCCIDENTE", "31": "BANCO BANCOLDEX", "32": "CAJA SOCIAL",
+    "40": "BANCO AGRARIO DE COLOMBIA", "42": "BANCO BNP PARIBAS COLOMBIA",
+    "47": "BANCO MUNDO MUJER", "52": "BANCO AV VILLAS", "53": "BANCO W", "59": "BANCAMIA",
+    "60": "BANCO PICHINCHA", "61": "BANCOOMEVA", "62": "BANCO FALABELLA", "63": "BANCO FINANDINA",
+    "64": "BANCO MULTIBANK", "65": "BANCO SANTANDER DE NEGOCIOS COLOMBIA",
+    "66": "BANCO COOPERATIVO COOPCENTRAL", "67": "MIBANCO", "69": "BANCO SERFINANZA S.A.",
+    "70": "LULO BANK S.A.", "71": "BANCO JP MORGAN COLOMBIA S.A", "121": "FINANCIERA JURISCOOP",
+    "151": "RAPPIPAY DAVIPLATA", "283": "COOPERATIVA FINANCIERA ANTIOQUIA",
+    "286": "JFK COOPERATIVA FINANCIERA", "289": "COTRAFA FINANCIERA", "291": "COOFINEP",
+    "292": "CONFIAR", "303": "BANCO UNION", "370": "COLTEFINANCIERA", "507": "NEQUI",
+    "551": "DAVIPLATA", "558": "BAN100", "560": "PIBANK", "637": "IRIS", "801": "MOVII",
+    "802": "DING TECNIPAGOS S.A.", "803": "POWWI", "804": "UALA", "805": "BANCO BTG PACTUAL",
+    "808": "BOLD CF", "809": "NU", "811": "RAPPIPAY", "812": "COINK",
+    "813": "BANCO SANTANDER CONSUMER", "814": "GLOBAL66", "819": "BANCO CONTACTAR",
+    "51": "BANCO DAVIVIENDA",
 }
 TIPO_CUENTA = {"CA": "ahorros", "CC": "corriente", "DP": "deposito"}
+
+# Cédula/NIT del Sheet que NO coincide con el NIT de la factura en DIAN (la persona
+# facturó con otro identificador). Mapea número-del-Sheet → NIT-de-factura para que la
+# cuenta CRUCE en Pagos y no se duplique al re-cargar. num_doc (lo que va al banco)
+# sigue siendo el número del Sheet (la cédula real).
+NIT_OVERRIDE = {"1013668091": "700127394"}  # MOLANO MATEUS MIGUEL (cédula → NIT factura)
 
 
 def main() -> int:
@@ -66,7 +79,7 @@ def main() -> int:
     cur.execute("SELECT DISTINCT nit_proveedor FROM facturas")
     nits_fact = {x[0] for x in cur.fetchall()}
 
-    n, sin_banco, ejemplos = 0, 0, []
+    n, sin_banco, ejemplos, sospechosas = 0, 0, [], []
     for row in filas:
         if len(row) < 7:
             continue
@@ -77,13 +90,21 @@ def main() -> int:
         cuenta = cuenta.replace(".", "").replace("-", "").replace(" ", "")
         if not cuenta:
             continue
+        # GUARD: notación científica ("1,03783E+11") = Excel formateó la celda como
+        # número y truncó el dato. NO se puede cargar (número corrupto): saltar y avisar.
+        if not cuenta.isdigit():
+            sospechosas.append(f"  {numero:12} {nombre[:24]:24} cuenta CORRUPTA={cuenta!r} (formatea la celda del Sheet como TEXTO)")
+            continue
 
         es_nit = tipo_id == "3"
-        # NIT sin DV para la llave (matchea facturas). Prueba número y número[:-1].
-        cand = [numero, numero[:-1]] if es_nit else [numero]
-        nit_key = next((c for c in cand if c in nits_fact), None)
-        if nit_key is None:
-            nit_key = (numero[:-1] if es_nit and len(numero) == 10 else numero)
+        if numero in NIT_OVERRIDE:               # el Sheet trae otro id que la factura
+            nit_key = NIT_OVERRIDE[numero]
+        else:
+            # NIT sin DV para la llave (matchea facturas). Prueba número y número[:-1].
+            cand = [numero, numero[:-1]] if es_nit else [numero]
+            nit_key = next((c for c in cand if c in nits_fact), None)
+            if nit_key is None:
+                nit_key = (numero[:-1] if es_nit and len(numero) == 10 else numero)
 
         banco = COD_NOMBRE.get(codigo, "")
         if not banco:
@@ -104,7 +125,10 @@ def main() -> int:
         if len(ejemplos) < 6:
             ejemplos.append(f"  {nit_key:12} {nombre[:22]:22} {banco[:16]:16} {tc:9} {cuenta}")
 
-    print(f"Cuentas a cargar: {n}  ·  sin banco mapeado: {sin_banco}")
+    if sospechosas:
+        print(f"\n⚠️  {len(sospechosas)} cuenta(s) SALTADAS por número corrupto (notación científica):")
+        print("\n".join(sospechosas))
+    print(f"\nCuentas a cargar: {n}  ·  sin banco mapeado: {sin_banco}")
     print("Muestra:"); print("\n".join(ejemplos))
     if dry:
         conn.rollback(); print("\n[DRY-RUN] ROLLBACK — usa sin --dry-run para persistir.")
