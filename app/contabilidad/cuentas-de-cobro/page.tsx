@@ -1,4 +1,7 @@
 import { getPool } from "@/lib/db";
+import { redirect } from "next/navigation";
+import { getCurrentUser } from "@/lib/auth";
+import { puede } from "@/lib/permisos";
 import { CuentasCobroView, type CuentaCobro } from "./CuentasCobroView";
 
 export const dynamic = "force-dynamic";
@@ -13,6 +16,8 @@ async function cargar(): Promise<CuentaCobro[]> {
 }
 
 export default async function CuentasCobroInboxPage() {
+  const { rol } = await getCurrentUser();
+  if (!puede(rol, "intake")) redirect("/contabilidad/conciliacion");
   let data: CuentaCobro[];
   try {
     data = await cargar();

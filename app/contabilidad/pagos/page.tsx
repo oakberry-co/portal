@@ -1,4 +1,6 @@
 import { getPool } from "@/lib/db";
+import { getCurrentUser } from "@/lib/auth";
+import { puede } from "@/lib/permisos";
 import { PagosView, type FilaPago, type PagoHecho, type CuentaPago } from "./PagosView";
 
 export const dynamic = "force-dynamic";
@@ -59,15 +61,21 @@ export default async function PagosPage() {
   } catch (e) {
     return <div className="container"><h1>💸 Pagos</h1><p className="hint">No se pudo leer la base: {(e as Error).message}</p></div>;
   }
+  const { rol } = await getCurrentUser();
+  const puedePagos = puede(rol, "pagos");  // contador (causador) = false → solo Historial
   return (
     <div className="container container-wide">
       <h1>💸 Pagos</h1>
       <p className="sub">
-        Tablero de pago: <b>Pendientes</b> (asigna la cuenta por factura) →
-        <b> Validación semana en curso</b> (baja el archivo del banco por cuenta) →
-        <b> Confirmados</b> (el banco ya pagó).
+        {puedePagos ? (
+          <>Tablero de pago: <b>Pendientes</b> (asigna la cuenta por factura) →
+          <b> Validación semana en curso</b> (baja el archivo del banco por cuenta) →
+          <b> Confirmados</b> (el banco ya pagó).</>
+        ) : (
+          <>Consolidado de pagos: consulta el <b>Historial</b> y descárgalo en Excel.</>
+        )}
       </p>
-      <PagosView pendientes={data.pendientes} validacion={data.validacion} historial={data.historial} cuentas={data.cuentas} diaPago={data.diaPago} />
+      <PagosView pendientes={data.pendientes} validacion={data.validacion} historial={data.historial} cuentas={data.cuentas} diaPago={data.diaPago} puedePagos={puedePagos} />
     </div>
   );
 }

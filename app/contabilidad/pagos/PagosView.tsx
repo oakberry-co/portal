@@ -63,8 +63,8 @@ function porCuenta(filas: FilaPago[]): { cuenta: string; provs: Grupo[]; total: 
   return [...m.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([cuenta, fs]) => ({ cuenta, provs: porProveedor(fs), total: fs.reduce((s, f) => s + saldo(f), 0) }));
 }
 
-export function PagosView({ pendientes, validacion, historial, cuentas, diaPago }: {
-  pendientes: FilaPago[]; validacion: FilaPago[]; historial: PagoHecho[]; cuentas: CuentaPago[]; diaPago: number;
+export function PagosView({ pendientes, validacion, historial, cuentas, diaPago, puedePagos }: {
+  pendientes: FilaPago[]; validacion: FilaPago[]; historial: PagoHecho[]; cuentas: CuentaPago[]; diaPago: number; puedePagos: boolean;
 }) {
   const [abierto, setAbierto] = useState<Set<string>>(new Set());
   const [sel, setSel] = useState<Set<string>>(new Set());
@@ -72,7 +72,7 @@ export function PagosView({ pendientes, validacion, historial, cuentas, diaPago 
   const [expPago, setExpPago] = useState<Set<number>>(new Set());
   const [modal, setModal] = useState<{ grupo: Grupo } | null>(null);
   const [pending, start] = useTransition();
-  const [vista, setVista] = useState<"tablero" | "historial" | "config">("tablero");
+  const [vista, setVista] = useState<"tablero" | "historial" | "config">(puedePagos ? "tablero" : "historial");
 
   const toggle = <T,>(set: Set<T>, k: T) => { const n = new Set(set); n.has(k) ? n.delete(k) : n.add(k); return n; };
   const totalPend = pendientes.reduce((s, f) => s + saldo(f), 0);
@@ -166,12 +166,12 @@ export function PagosView({ pendientes, validacion, historial, cuentas, diaPago 
   return (
     <div className="pagos">
       <div className="pg-tabs pg-subtabs">
-        <button className={vista === "tablero" ? "on" : ""} onClick={() => setVista("tablero")}>Tablero</button>
+        {puedePagos && <button className={vista === "tablero" ? "on" : ""} onClick={() => setVista("tablero")}>Tablero</button>}
         <button className={vista === "historial" ? "on" : ""} onClick={() => setVista("historial")}>Historial<i>{historial.length}</i></button>
-        <button className={vista === "config" ? "on" : ""} onClick={() => setVista("config")}>⚙ Configuración</button>
+        {puedePagos && <button className={vista === "config" ? "on" : ""} onClick={() => setVista("config")}>⚙ Configuración</button>}
       </div>
 
-      {vista === "tablero" && (<>
+      {puedePagos && vista === "tablero" && (<>
       <div className="pg-kpis">
         <div className="pg-kpi due"><i>Por pagar (total)</i><b>{$(totalPend + totalVal)}</b><span>{pendientes.length + validacion.length} facturas</span></div>
         <div className="pg-kpi"><i>En validación</i><b>{$(totalVal)}</b><span>{validacion.length} factura(s) con cuenta</span></div>
@@ -270,7 +270,7 @@ export function PagosView({ pendientes, validacion, historial, cuentas, diaPago 
 
       {vista === "historial" && <HistorialView historial={historial} cuentas={cuentas} />}
 
-      {vista === "config" && <ConfigView cuentas={cuentas} diaPago={diaPago} />}
+      {puedePagos && vista === "config" && <ConfigView cuentas={cuentas} diaPago={diaPago} />}
 
       {modal && <ModalConfirmar grupo={modal.grupo} onClose={() => setModal(null)} />}
     </div>

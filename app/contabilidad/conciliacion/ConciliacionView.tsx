@@ -19,8 +19,8 @@ function isoWeek(d: Date): string {
 }
 
 export function ConciliacionView({
-  filas, conceptos, destinos,
-}: { filas: FacturaRow[]; conceptos: string[]; destinos: string[] }) {
+  filas, conceptos, destinos, puedeClasificar, puedeExport,
+}: { filas: FacturaRow[]; conceptos: string[]; destinos: string[]; puedeClasificar: boolean; puedeExport: boolean }) {
   const [q, setQ] = useState("");
   const [anio, setAnio] = useState("");
   const [mes, setMes] = useState("");
@@ -147,6 +147,7 @@ export function ConciliacionView({
         {activos ? <button type="button" className="filtro-clear" onClick={limpiar}>Limpiar</button> : null}
       </div>
 
+      {puedeExport && (
       <div className="export-bar">
         <span className="muted mini">Exportar Excel del</span>
         <input type="date" value={desde} onChange={(e) => setDesde(e.target.value)} title="Desde (fecha de emisión)" />
@@ -155,6 +156,7 @@ export function ConciliacionView({
         <a className="export-btn" href={exportHref} title="Descargar informe en Excel">⬇ Excel</a>
         <span className="muted mini">(vacío = todas)</span>
       </div>
+      )}
 
       <p className="sub">
         {activos ? <><strong>{filtradas.length}</strong> de {rows.length} facturas</> : <>{rows.length} facturas</>}
@@ -181,7 +183,7 @@ export function ConciliacionView({
         {visible.length === 0 ? (
           <div className="tabla-vacia muted">Ninguna factura coincide con los filtros.</div>
         ) : (
-          visible.map((f) => <FacturaCard key={f.cufe} f={f} conceptos={conceptos} destinos={destinos} onSaved={onSaved} />)
+          visible.map((f) => <FacturaCard key={f.cufe} f={f} conceptos={conceptos} destinos={destinos} onSaved={onSaved} puedeClasificar={puedeClasificar} />)
         )}
       </div>
 

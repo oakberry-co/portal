@@ -2,13 +2,13 @@
 // Ruta protegida por el middleware (solo sesión válida). Params: ?desde=YYYY-MM-DD&hasta=YYYY-MM-DD
 import ExcelJS from "exceljs";
 import { getPool } from "@/lib/db";
-import { getCurrentUser } from "@/lib/auth";
+import { exigirCap } from "@/lib/auth";
 import { ETIQUETA, type Estado } from "@/lib/estados";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(req: Request) {
-  await getCurrentUser(); // asegura sesión (además del middleware)
+  await exigirCap("clasificar"); // solo quien opera conciliación (admin); el contador NO
 
   const url = new URL(req.url);
   const desde = url.searchParams.get("desde") || null;

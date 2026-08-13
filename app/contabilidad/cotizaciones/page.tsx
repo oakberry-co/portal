@@ -1,4 +1,7 @@
 import { getPool } from "@/lib/db";
+import { redirect } from "next/navigation";
+import { getCurrentUser } from "@/lib/auth";
+import { puede } from "@/lib/permisos";
 import { CotizacionesView, type Cotizacion, type CandidataFactura } from "./CotizacionesView";
 
 export const dynamic = "force-dynamic";
@@ -26,6 +29,8 @@ async function cargar(): Promise<{ cots: Cotizacion[]; candidatos: CandidataFact
 }
 
 export default async function CotizacionesInboxPage() {
+  const { rol } = await getCurrentUser();
+  if (!puede(rol, "intake")) redirect("/contabilidad/conciliacion");
   let data: Awaited<ReturnType<typeof cargar>>;
   try {
     data = await cargar();

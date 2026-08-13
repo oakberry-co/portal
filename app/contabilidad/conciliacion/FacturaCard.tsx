@@ -71,12 +71,13 @@ function semanaISO(d: string | Date | null): string {
 }
 
 export const FacturaCard = memo(function FacturaCard({
-  f, conceptos, destinos, onSaved,
+  f, conceptos, destinos, onSaved, puedeClasificar,
 }: {
   f: FacturaRow;
   conceptos: string[];
   destinos: string[];
   onSaved: (cufe: string, patch: FilaPatch) => void;
+  puedeClasificar: boolean;   // false = contador (solo puede Reten., no clasificar)
 }) {
   const [modal, setModal] = useState(false);
   const [pending, start] = useTransition();
@@ -184,7 +185,7 @@ export const FacturaCard = memo(function FacturaCard({
           <input name="plazo_dias" type="number" min={0} defaultValue={f.plazo_dias ?? f.plazo_sug ?? ""} placeholder="días" disabled={locked} title={f.plazo_sug != null && f.plazo_dias == null ? `Plazo sugerido del proveedor: ${f.plazo_sug} días` : "Plazo (días)"} />
           {venc && <span className={"venc" + (paraPago ? " due" : "")} title={paraPago ? "Ya vencido — para pago" : "Día de pago (recepción + plazo)"}>{paraPago ? "⏰ " : "→ "}{ddmm(venc)}</span>}
         </div>
-        <button type="submit" className="c-btn" disabled={locked || pending} title="Confirmar clasificación">{pending ? "…" : "Clasif."}</button>
+        <button type="submit" className="c-btn" disabled={locked || pending || !puedeClasificar} title={puedeClasificar ? "Confirmar clasificación" : "Solo lectura para tu rol (contador)"}>{pending ? "…" : "Clasif."}</button>
       </form>
 
       <div className="c-pagar">
@@ -231,7 +232,7 @@ export const FacturaCard = memo(function FacturaCard({
         <span className="sem" title={pagoTitle}>
           <i className={"luz " + pagoLuz} />Pago
         </span>
-        <button type="button" className={"cd-toggle " + (esDebito ? "deb" : "cred")} disabled={pending} onClick={onTipo}
+        <button type="button" className={"cd-toggle " + (esDebito ? "deb" : "cred")} disabled={pending || !puedeClasificar} onClick={onTipo}
           title={esDebito
             ? "Débito — NO entra a Pagos (no se paga, ej. Éxito). Clic para volver a Crédito."
             : "Crédito — a pagar (entra a Pagos). Clic para marcar Débito (no se paga)."}>

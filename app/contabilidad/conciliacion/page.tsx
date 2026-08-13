@@ -2,6 +2,8 @@ import { getPool } from "@/lib/db";
 import { ETIQUETA } from "@/lib/estados";
 import { ConciliacionView } from "./ConciliacionView";
 import { SyncPanel } from "./SyncPanel";
+import { getCurrentUser } from "@/lib/auth";
+import { puede } from "@/lib/permisos";
 import type { FacturaRow } from "./FacturaCard";
 
 export const dynamic = "force-dynamic"; // siempre lee el estado vivo
@@ -92,12 +94,14 @@ export default async function ConciliacionPage() {
   }
 
   const { filas, conceptos, destinos, sync } = data;
+  const { rol } = await getCurrentUser();
+  const puedeClasificar = puede(rol, "clasificar");  // contador (causador) = false
 
   return (
     <div className="container">
       <h1>🧾 Conciliación de pagos</h1>
       <SyncPanel ultima={sync.ultima} nuevas={sync.nuevas} pendiente={sync.pendiente} />
-      <ConciliacionView filas={filas} conceptos={conceptos} destinos={destinos} />
+      <ConciliacionView filas={filas} conceptos={conceptos} destinos={destinos} puedeClasificar={puedeClasificar} puedeExport={puedeClasificar} />
 
       <p className="chain-note">
         🔒 Cada guardado escribe el cambio <em>y</em> su evento en la misma transacción; la bitácora

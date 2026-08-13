@@ -2,12 +2,12 @@
 // Params opcionales: ?desde=YYYY-MM-DD&hasta=YYYY-MM-DD&cuenta=Rappi
 import ExcelJS from "exceljs";
 import { getPool } from "@/lib/db";
-import { getCurrentUser } from "@/lib/auth";
+import { exigirCap } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(req: Request) {
-  await getCurrentUser();
+  await exigirCap("export_historial");  // admin + contador (causador)
 
   const url = new URL(req.url);
   const desde = url.searchParams.get("desde") || null;

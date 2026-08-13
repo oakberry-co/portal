@@ -7,6 +7,7 @@
 //    llama getCurrentUser() y recibe { email, rol }. Ver README "Auth: Opción B".
 import { auth } from "@/auth";
 import { getPool } from "@/lib/db";
+import { puede, type Cap } from "@/lib/permisos";
 
 export type Rol = "conciliador" | "pagador" | "causador" | "admin";
 export type Usuario = { email: string; rol: Rol };
@@ -40,8 +41,9 @@ export async function getCurrentUserOrNull(): Promise<Usuario | null> {
   return { email, rol: await rolDe(email) };
 }
 
-/** Rol del correo según la tabla `usuarios`. Si no está (o la base no responde),
- *  cae al rol por defecto — nunca otorga más permiso del mínimo. */
+/** Rol del correo. (1) Si está en `usuarios`, ese rol MANDA. (2) Si no, todo
+ *  @manelfoods.com es admin (equipo interno = acceso total). (3) Cualquier otro
+ *  cae al mínimo. */
 async function rolDe(email: string): Promise<Rol> {
   try {
     const r = await getPool().query<{ rol: Rol }>(
@@ -50,12 +52,23 @@ async function rolDe(email: string): Promise<Rol> {
     );
     if (r.rowCount && r.rows[0]?.rol) return r.rows[0].rol;
   } catch {
-    // base ausente o error transitorio -> rol por defecto (no bloquea el login)
+    // base ausente o error transitorio -> sigue a los defaults (no bloquea el login)
   }
+  if (email.toLowerCase().endsWith("@manelfoods.com")) return "admin";  // equipo interno
   return DEFAULT_ROL;
 }
 
-/** ¿El rol tiene al menos el permiso pedido? admin puede todo. */
+/** ¿El rol tiene al menos el permiso pedido? admin puede todo. (Legado — el
+ *  enforcement nuevo es por capacidad: `exigirCap` / lib/permisos.) */
 export function tienePermiso(rol: Rol, requerido: Rol): boolean {
   return rol === "admin" || rol === requerido;
+}
+
+/** SERVIDOR: exige una capacidad (ver lib/permisos) o lanza. Devuelve el usuario
+ *  autenticado. Úsala al inicio de cada server action y route handler que muta o
+ *  exporta datos. La UI oculta lo mismo por comodidad, pero ESTO es la seguridad. */
+export async function exigirCap(cap: Cap): Promise<Usuario> {
+  const u = await getCurrentUser();
+  if (!puede(u.rol, cap)) throw new Error(`No autorizado (falta permiso: ${cap}).`);
+  return u;
 }

@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { withTx } from "@/lib/db";
 import { registrarEvento } from "@/lib/eventos";
-import { getCurrentUser, tienePermiso } from "@/lib/auth";
+import { exigirCap } from "@/lib/auth";
 import type { PoolClient } from "pg";
 
 // Tablero de pagos (3 columnas):
@@ -16,9 +16,7 @@ const done = () => revalidatePath("/contabilidad/pagos");
 const cufesDe = (fd: FormData) => String(fd.get("cufes") ?? "").split(",").map((s) => s.trim()).filter(Boolean);
 
 async function guardPagador() {
-  const user = await getCurrentUser();
-  if (!tienePermiso(user.rol, "pagador")) throw new Error("No autorizado: se requiere rol pagador.");
-  return user;
+  return exigirCap("pagos");  // operar el tablero de pagos (asignar/confirmar/config)
 }
 
 /** Asigna la cuenta propia (Rappi/Davivienda/PSE) a las facturas seleccionadas y

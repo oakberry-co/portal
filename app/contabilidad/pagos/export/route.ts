@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getPool } from "@/lib/db";
 import { getCurrentUserOrNull } from "@/lib/auth";
+import { puede } from "@/lib/permisos";
 import { codigoBanco, codigoBancoDavivienda, TIPO_DOC_FULL, TIPO_CUENTA_FULL, csvRow } from "@/lib/bancos";
 
 export const dynamic = "force-dynamic";
@@ -22,6 +23,7 @@ const limpiaDoc = (s: string) => s.replace(/[.\-\s]/g, "");
 export async function GET(req: NextRequest) {
   const user = await getCurrentUserOrNull();
   if (!user) return NextResponse.json({ error: "No autorizado." }, { status: 401 });
+  if (!puede(user.rol, "pagos")) return NextResponse.json({ error: "No autorizado (pagos)." }, { status: 403 });
 
   const cuenta = (req.nextUrl.searchParams.get("cuenta") ?? "").trim();
   if (!cuenta) return NextResponse.json({ error: "Falta ?cuenta=" }, { status: 400 });

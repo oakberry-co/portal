@@ -3,12 +3,10 @@
 import { revalidatePath } from "next/cache";
 import { withTx } from "@/lib/db";
 import { registrarEvento } from "@/lib/eventos";
-import { getCurrentUser, tienePermiso } from "@/lib/auth";
+import { exigirCap } from "@/lib/auth";
 
 async function guard() {
-  const user = await getCurrentUser();
-  if (!tienePermiso(user.rol, "conciliador")) throw new Error("No autorizado.");
-  return user;
+  return exigirCap("intake");
 }
 
 const ESTADOS: Record<string, string> = {

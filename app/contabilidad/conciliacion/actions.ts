@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { withTx } from "@/lib/db";
 import { registrarEvento } from "@/lib/eventos";
-import { getCurrentUser, tienePermiso } from "@/lib/auth";
+import { exigirCap } from "@/lib/auth";
 import type { PoolClient } from "pg";
 
 // Si el valor no existe en el maestro, lo crea (autoridad humana) y lo registra.
@@ -28,7 +28,7 @@ async function asegurarDestino(c: PoolClient, nombre: string, actor: string) {
  *  en su ciclo (≤10 min), patrón watcher; NO montamos la app sobre BQ. Colapsa:
  *  si ya hay una pendiente, no apila otra (evita disparos repetidos). */
 export async function solicitarSync() {
-  const user = await getCurrentUser();
+  const user = await exigirCap("ver_conciliacion");
   await withTx(async (c) => {
     const p = await c.query("SELECT 1 FROM sync_solicitudes WHERE estado = 'pendiente' LIMIT 1");
     if (p.rowCount === 0) {
@@ -42,10 +42,7 @@ export async function solicitarSync() {
 
 /** Guarda concepto + destino + plazo de una factura. Estado + bitácora, atómico. */
 export async function guardarClasificacion(formData: FormData) {
-  const user = await getCurrentUser();
-  if (!tienePermiso(user.rol, "conciliador")) {
-    throw new Error("No autorizado: se requiere rol conciliador.");
-  }
+  const user = await exigirCap("clasificar");
 
   const cufe = String(formData.get("cufe") ?? "").trim();
   const concepto = String(formData.get("concepto") ?? "").trim() || null;
@@ -152,10 +149,7 @@ export async function guardarClasificacion(formData: FormData) {
  *  Avanza a 'retenciones_ok' cuando la clasificación está completa; si va parcial,
  *  guarda lo que haya sin forzar el avance. Todo con su evento en la bitácora. */
 export async function validarFactura(formData: FormData) {
-  const user = await getCurrentUser();
-  if (!tienePermiso(user.rol, "conciliador")) {
-    throw new Error("No autorizado: se requiere rol conciliador.");
-  }
+  const user = await exigirCap("clasificar");
 
   const cufe = String(formData.get("cufe") ?? "").trim();
   if (!cufe) throw new Error("Falta cufe.");
@@ -250,11 +244,7 @@ export async function validarFactura(formData: FormData) {
  *  clasificada: guarda los montos + total + valor a pagar, avanza a
  *  'retenciones_ok' y deja el evento. Atómico (estado + bitácora en la misma tx). */
 export async function confirmarRetenciones(formData: FormData) {
-  const user = await getCurrentUser();
-  // Transición clasificada -> retenciones_ok (ROL_REQUERIDO["clasificada"] = conciliador).
-  if (!tienePermiso(user.rol, "conciliador")) {
-    throw new Error("No autorizado: se requiere rol conciliador.");
-  }
+  const user = await exigirCap("retenciones");
 
   const cufe = String(formData.get("cufe") ?? "").trim();
   if (!cufe) throw new Error("Falta cufe.");
@@ -339,8 +329,7 @@ export async function confirmarRetenciones(formData: FormData) {
  *  NO entra a Pagos, ej. Éxito). El proveedor APRENDE el default para sus próximas
  *  facturas. Atómico (estado + maestro + bitácora). Devuelve el parche optimista. */
 export async function marcarTipoPago(formData: FormData) {
-  const user = await getCurrentUser();
-  if (!tienePermiso(user.rol, "conciliador")) throw new Error("No autorizado.");
+  const user = await exigirCap("tipo_pago");
   const cufe = String(formData.get("cufe") ?? "").trim();
   const tipo = String(formData.get("tipo") ?? "").trim();
   if (!cufe) throw new Error("Falta cufe.");

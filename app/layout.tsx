@@ -2,6 +2,7 @@ import "./globals.css";
 import type { Metadata } from "next";
 import { Bebas_Neue, Montserrat, DM_Mono } from "next/font/google";
 import { getCurrentUserOrNull } from "@/lib/auth";
+import { puede, type Cap } from "@/lib/permisos";
 import { signOut } from "@/auth";
 import { AsistenteFloating } from "./AsistenteFloating";
 
@@ -15,15 +16,16 @@ export const metadata: Metadata = {
 };
 
 // La cáscara: cada entrada es un módulo. Sin href = aún no disponible ("pronto").
-const MENU: { label: string; href?: string }[] = [
-  { label: "Conciliación", href: "/contabilidad/conciliacion" },
-  { label: "Pagos", href: "/contabilidad/pagos" },
-  { label: "Causación" },
-  { label: "Bancos" },
-  { label: "Maestros", href: "/contabilidad/maestros" },
-  { label: "Dashboard", href: "/contabilidad/dashboard" },
-  { label: "Cuentas de cobro", href: "/contabilidad/cuentas-de-cobro" },
-  { label: "Cotizaciones", href: "/contabilidad/cotizaciones" },
+// `cap` = capacidad que se necesita para VERLO (el contador solo ve lo suyo).
+const MENU: { label: string; href?: string; cap: Cap }[] = [
+  { label: "Conciliación", href: "/contabilidad/conciliacion", cap: "ver_conciliacion" },
+  { label: "Pagos", href: "/contabilidad/pagos", cap: "ver_pagos" },
+  { label: "Causación", cap: "clasificar" },
+  { label: "Bancos", cap: "pagos" },
+  { label: "Maestros", href: "/contabilidad/maestros", cap: "maestros" },
+  { label: "Dashboard", href: "/contabilidad/dashboard", cap: "dashboard" },
+  { label: "Cuentas de cobro", href: "/contabilidad/cuentas-de-cobro", cap: "intake" },
+  { label: "Cotizaciones", href: "/contabilidad/cotizaciones", cap: "intake" },
 ];
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
@@ -37,7 +39,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
               <span className="nav-dot" />Oakberry<span className="nav-thin">· Portal</span>
             </a>
             <nav className="nav-menu">
-              {MENU.map((m) =>
+              {MENU.filter((m) => puede(user.rol, m.cap)).map((m) =>
                 m.href ? (
                   <a key={m.label} href={m.href} className="nav-link">{m.label}</a>
                 ) : (
@@ -54,7 +56,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
           </header>
         )}
         {children}
-        {user && <AsistenteFloating />}
+        {user && puede(user.rol, "asistente") && <AsistenteFloating />}
       </body>
     </html>
   );

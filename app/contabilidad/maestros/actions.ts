@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { withTx } from "@/lib/db";
 import { registrarEvento } from "@/lib/eventos";
-import { getCurrentUser, tienePermiso } from "@/lib/auth";
+import { exigirCap } from "@/lib/auth";
 
 /** Los maestros se alimentan de dos lados: (1) manualmente aquí, (2) de lo que se
  *  hace en la grilla de conciliación (al clasificar, al usar "+agregar"). Todo lo
@@ -19,9 +19,7 @@ const N = (fd: FormData, k: string): number | null => {
 };
 
 async function guard() {
-  const user = await getCurrentUser();
-  if (!tienePermiso(user.rol, "conciliador")) throw new Error("No autorizado.");
-  return user;
+  return exigirCap("maestros");
 }
 const done = () => revalidatePath("/contabilidad/maestros");
 

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { getCurrentUserOrNull } from "@/lib/auth";
+import { puede } from "@/lib/permisos";
 import { SYSTEM, MODELO, TOOL_SCHEMAS, TOOLS } from "@/lib/asistente";
 
 export const dynamic = "force-dynamic";
@@ -11,6 +12,7 @@ export const maxDuration = 60;
 export async function POST(req: NextRequest) {
   const user = await getCurrentUserOrNull();
   if (!user) return NextResponse.json({ error: "No autorizado." }, { status: 401 });
+  if (!puede(user.rol, "asistente")) return NextResponse.json({ error: "No autorizado (asistente)." }, { status: 403 });
   if (!process.env.ANTHROPIC_API_KEY) {
     return NextResponse.json({ error: "Falta ANTHROPIC_API_KEY en el servidor (pégala en Vercel)." }, { status: 503 });
   }

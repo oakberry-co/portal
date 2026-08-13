@@ -35,12 +35,14 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   ...authConfig,
   callbacks: {
     ...authConfig.callbacks,
-    // Compuerta 1: allowlist de env (bootstrap de admins) O activo en `usuarios`.
-    // Cualquier otro correo, rechazado.
+    // Compuerta 1: allowlist de env (bootstrap) O CUALQUIER @manelfoods.com (equipo
+    // interno = acceso total, ver rolDe) O activo en `usuarios` (externos como el
+    // contador, agregados uno por uno). Cualquier otro correo, rechazado.
     async signIn({ user, profile }) {
       const email = (profile?.email ?? user?.email ?? "").toLowerCase();
       if (!email) return false;
       if (emailEnAllowlist(email)) return true;
+      if (email.endsWith("@manelfoods.com")) return true;
       return await emailEnUsuarios(email);
     },
   },

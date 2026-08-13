@@ -1,4 +1,7 @@
 import { getPool } from "@/lib/db";
+import { redirect } from "next/navigation";
+import { getCurrentUser } from "@/lib/auth";
+import { puede } from "@/lib/permisos";
 
 export const dynamic = "force-dynamic";
 
@@ -48,6 +51,8 @@ async function cargar(): Promise<Fila[]> {
 }
 
 export default async function DashboardPage() {
+  const { rol } = await getCurrentUser();
+  if (!puede(rol, "dashboard")) redirect("/contabilidad/conciliacion");
   let filas: Fila[];
   try {
     filas = await cargar();
