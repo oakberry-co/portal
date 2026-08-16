@@ -26,6 +26,7 @@ const MENU: { label: string; href?: string; cap: Cap }[] = [
   { label: "Dashboard", href: "/contabilidad/dashboard", cap: "dashboard" },
   { label: "Cuentas de cobro", href: "/contabilidad/cuentas-de-cobro", cap: "intake" },
   { label: "Cotizaciones", href: "/contabilidad/cotizaciones", cap: "intake" },
+  { label: "Configuración", href: "/contabilidad/configuracion", cap: "usuarios" },
 ];
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {

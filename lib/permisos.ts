@@ -8,11 +8,11 @@ import type { Rol } from "@/lib/auth";
 export type Cap =
   | "ver_conciliacion" | "clasificar" | "retenciones" | "tipo_pago"
   | "ver_pagos" | "pagos" | "export_historial"
-  | "maestros" | "intake" | "dashboard" | "asistente";
+  | "maestros" | "intake" | "dashboard" | "asistente" | "usuarios";
 
 const TODAS: Cap[] = [
   "ver_conciliacion", "clasificar", "retenciones", "tipo_pago",
-  "ver_pagos", "pagos", "export_historial", "maestros", "intake", "dashboard", "asistente",
+  "ver_pagos", "pagos", "export_historial", "maestros", "intake", "dashboard", "asistente", "usuarios",
 ];
 
 // Rol → qué puede hacer. Manel (interno) = admin = TODO.
