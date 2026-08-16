@@ -948,3 +948,11 @@ button.ghost { background: #fff; color: var(--purple); }
   background: var(--lav-soft); color: var(--purple); font-size: 11px; font-weight: 700; }
 .sop-cmd { background: #f6f4fa; border: 1px solid var(--border-lav); border-radius: 10px;
   padding: 10px 12px; font-size: 12px; overflow-x: auto; }
+
+/* Tarea humana pendiente en Soportes: destinos sin carpeta de archivo. */
+.sop-tarea { background: #fff8e6; border: 1px solid rgba(212,160,23,.35); border-radius: 12px;
+  padding: 14px 16px; margin: 4px 0 18px; font-size: 13.5px; color: #6b4d05; line-height: 1.55; }
+.sop-tarea a { color: #8a6100 !important; text-decoration: underline; }
+.sop-tarea-lista { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.tag-sr { background: #fff; border: 1px solid rgba(212,160,23,.4); border-radius: 999px;
+  padding: 3px 10px; font-size: 12px; color: #8a6100; }

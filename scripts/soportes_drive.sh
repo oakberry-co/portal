@@ -43,8 +43,16 @@ fi
 
 cd "$PORTAL"
 for M in $MESES; do
-    echo "=== $(date '+%F %T') - soportes $M ===" >> "$LOG"
+    # 1) LEER el árbol: lo que compras archivó a mano entra al portal.
+    echo "=== $(date '+%F %T') - soportes $M (ingest) ===" >> "$LOG"
     $PYTHON scripts/ingest_soportes_drive.py --mes "$M" --commit --sembrar-destino \
+        --actor cron_soportes >> "$LOG" 2>&1
+
+    # 2) ESCRIBIR el árbol: lo que el equipo clasificó en el portal se archiva
+    #    solo, en la carpeta que dice su destino. Va DESPUÉS del ingest a
+    #    propósito: así no re-archiva lo que compras acababa de poner a mano.
+    echo "=== $(date '+%F %T') - soportes $M (archivar) ===" >> "$LOG"
+    $PYTHON scripts/archivar_en_drive.py --mes "$M" --commit \
         --actor cron_soportes >> "$LOG" 2>&1
 done
 echo "=== $(date '+%F %T') - done ===" >> "$LOG"
