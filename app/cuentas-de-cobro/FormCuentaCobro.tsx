@@ -2,8 +2,10 @@
 
 import { useActionState } from "react";
 import { enviarCuentaCobro, type Resultado } from "./actions";
+import { CasillasDocumentos } from "../CasillasDocumentos";
+import { AREAS } from "@/lib/areas";
 
-export function FormCuentaCobro({ areas }: { areas: string[] }) {
+export function FormCuentaCobro() {
   const [estado, action, pending] = useActionState<Resultado | null, FormData>(enviarCuentaCobro, null);
 
   if (estado?.ok) {
@@ -45,10 +47,10 @@ export function FormCuentaCobro({ areas }: { areas: string[] }) {
 
       <div className="pub-sec">El cobro</div>
       <div className="pub-row">
-        <label>Área donde se cobra
+        <label>Área con la que trataste
           <select name="area" defaultValue="">
             <option value="">Selecciona…</option>
-            {areas.map((a) => <option key={a} value={a}>{a}</option>)}
+            {AREAS.map((a) => <option key={a} value={a}>{a}</option>)}
           </select>
         </label>
         <label>Valor a cobrar (COP)<input name="valor" inputMode="numeric" placeholder="$ 0" /></label>
@@ -71,9 +73,8 @@ export function FormCuentaCobro({ areas }: { areas: string[] }) {
       </div>
 
       <div className="pub-sec">Documentos</div>
-      <label className="pub-full pub-file">Sube tu cuenta de cobro, RUT, cédula, certificación bancaria… (PDF o imágenes)
-        <input name="documentos" type="file" multiple accept=".pdf,image/*" />
-      </label>
+      <p className="pub-hint">Toca cada uno para adjuntarlo. PDF o foto.</p>
+      <CasillasDocumentos />
 
       {estado?.error && <div className="pub-err">{estado.error}</div>}
       <button className="pub-btn" type="submit" disabled={pending}>{pending ? "Enviando…" : "Enviar cuenta de cobro"}</button>

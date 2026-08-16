@@ -12,6 +12,14 @@ export const { auth: middleware } = NextAuth(authConfig);
 
 // Las rutas de intake PÚBLICO (cuentas-de-cobro, cotizaciones) quedan fuera del
 // candado: un proveedor externo entra sin login a subir su documentación.
+//
+// `robots.txt`, `sitemap.xml` y las tarjetas `/og/*` TAMBIÉN quedan fuera, y no
+// por comodidad: si el middleware los intercepta, el crawler pide directivas,
+// recibe un 307 a /login y concluye "sin directivas" -> campo libre para indexar
+// los dos intakes públicos. El candado de sesión no protege lo que YA es
+// público; el robots es lo que lo declara. Ver `app/robots.ts` (Disallow total).
 export const config = {
-  matcher: ["/((?!api/auth|cuentas-de-cobro|cotizaciones|_next/static|_next/image|favicon.ico).*)"],
+  matcher: [
+    "/((?!api/auth|cuentas-de-cobro|cotizaciones|robots.txt|sitemap.xml|og/|_next/static|_next/image|favicon.ico).*)",
+  ],
 };

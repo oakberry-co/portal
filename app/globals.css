@@ -822,6 +822,54 @@ button.ghost { background: #fff; color: var(--purple); }
 .pub-row3 { display: grid; grid-template-columns: 1.2fr 1fr 1fr; gap: 12px; }
 .pub-full { width: 100%; }
 .pub-file input { padding: 9px 10px; background: var(--lav-soft); border-style: dashed; cursor: pointer; }
+.pub-hint { font-size: 12px; color: var(--lav); margin: -2px 0 2px; }
+
+/* --- Casillas de documentos (una por tipo) ---------------------------------
+   Dos columnas en desktop, UNA en celular. Cada casilla es un área tocable
+   grande (>= 56px de alto) porque la mayoría de proveedores llega por móvil y
+   ahí un <input type=file> pelado es un blanco imposible de acertar. */
+.pub-docs { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.pub-doc {
+  display: flex !important; flex-direction: row !important; align-items: center; gap: 11px;
+  padding: 12px 13px; border: 1.5px dashed var(--border-lav); border-radius: 12px;
+  background: var(--lav-soft); cursor: pointer; min-height: 56px; position: relative;
+  transition: border-color .15s, background .15s;
+}
+.pub-doc:hover { border-color: var(--purple); }
+.pub-doc:focus-within { outline: 2px solid var(--purple); outline-offset: 2px; }
+.pub-doc input[type="file"] {
+  position: absolute; width: 1px; height: 1px; opacity: 0; padding: 0; border: 0;
+}
+.pub-doc-ico {
+  flex: none; width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center;
+  font-size: 17px; font-weight: 700; line-height: 1;
+  background: #fff; color: var(--purple); border: 1.5px solid var(--border-lav);
+}
+.pub-doc-txt { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.pub-doc-txt b { font-size: 12.5px; font-weight: 700; color: var(--purple-deep); }
+.pub-doc-txt i {
+  font-style: normal; font-size: 11px; font-weight: 400; color: var(--lav);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.pub-doc.puesto { border-style: solid; border-color: var(--ok); background: #f0f9f3; }
+.pub-doc.puesto .pub-doc-ico { background: var(--ok); color: #fff; border-color: var(--ok); }
+.pub-doc.puesto .pub-doc-txt i { color: #1e7d47; font-weight: 600; }
+
+/* --- Requiere adelanto ---------------------------------------------------- */
+.pub-check {
+  display: flex; flex-wrap: wrap; align-items: flex-end; gap: 14px;
+  padding: 12px 14px; border: 1.5px solid var(--border-lav); border-radius: 12px;
+  background: var(--lav-soft);
+}
+.pub-switch {
+  flex-direction: row !important; align-items: center; gap: 9px; cursor: pointer;
+  font-size: 13px !important; margin: 0;
+}
+.pub-switch input[type="checkbox"] {
+  width: 20px !important; height: 20px; flex: none; padding: 0 !important; margin: 0;
+  accent-color: var(--purple); cursor: pointer;
+}
+.pub-pct { flex: 1; min-width: 120px; }
 .pub-btn { margin-top: 8px; background: var(--purple); color: #fff !important; border: none;
   border-radius: 12px; padding: 14px 20px; font-weight: 800; font-size: 15px; cursor: pointer;
   text-decoration: none !important; text-align: center; transition: background .15s; }
@@ -841,7 +889,10 @@ button.ghost { background: #fff; color: var(--purple); }
   place-items: center; font-size: 34px; color: #fff; background: var(--ok); box-shadow: 0 0 0 6px #e6f4ea; }
 .pub-ok h2 { font-size: 24px; color: var(--purple-deep); margin: 0 0 8px; }
 .pub-ok p { color: var(--lav); font-size: 14px; line-height: 1.55; margin: 0 0 18px; }
-@media (max-width: 520px) { .pub-row, .pub-row3 { grid-template-columns: 1fr; } .pub-title { font-size: 36px; } }
+@media (max-width: 520px) {
+  .pub-row, .pub-row3, .pub-docs { grid-template-columns: 1fr; }
+  .pub-title { font-size: 36px; }
+}
 
 /* Bandeja de cuentas de cobro (revisión) */
 .cc-list { display: flex; flex-direction: column; gap: 12px; margin-top: 6px; }
@@ -856,6 +907,12 @@ button.ghost { background: #fff; color: var(--purple); }
 .cc-docs { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0; }
 .cc-doc { background: var(--lav-soft); border: 1px solid var(--border-lav); border-radius: 8px; padding: 5px 10px; font-size: 12px; color: var(--purple) !important; text-decoration: none !important; font-weight: 600; }
 .cc-doc:hover { border-color: var(--purple); }
+/* Adjunto que el proveedor mandó pero NO llegó a Drive: hay que pedírselo. */
+.cc-doc.falta { background: #fdeef0; border-color: rgba(192,57,43,.28); color: var(--danger) !important; }
+/* El proveedor pidió adelanto — se ve antes de programar el pago. */
+.cc-adelanto { display: inline-block; margin: 4px 0 2px; padding: 5px 11px; border-radius: 8px;
+  background: #fff8e6; border: 1px solid rgba(212,160,23,.35); color: #8a6100;
+  font-size: 12.5px; font-weight: 600; }
 .cc-nota { font-size: 12.5px; color: var(--lav); background: var(--cream-2); border-radius: 8px; padding: 7px 10px; margin: 6px 0; }
 .cc-acts { display: flex; gap: 8px; margin-top: 12px; }
 .cc-act { background: var(--purple); color: #fff; border: none; border-radius: 9px; padding: 8px 16px; font-weight: 700; font-size: 12.5px; cursor: pointer; }
@@ -891,3 +948,11 @@ button.ghost { background: #fff; color: var(--purple); }
   background: var(--lav-soft); color: var(--purple); font-size: 11px; font-weight: 700; }
 .sop-cmd { background: #f6f4fa; border: 1px solid var(--border-lav); border-radius: 10px;
   padding: 10px 12px; font-size: 12px; overflow-x: auto; }
+
+/* Tarea humana pendiente en Soportes: destinos sin carpeta de archivo. */
+.sop-tarea { background: #fff8e6; border: 1px solid rgba(212,160,23,.35); border-radius: 12px;
+  padding: 14px 16px; margin: 4px 0 18px; font-size: 13.5px; color: #6b4d05; line-height: 1.55; }
+.sop-tarea a { color: #8a6100 !important; text-decoration: underline; }
+.sop-tarea-lista { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.tag-sr { background: #fff; border: 1px solid rgba(212,160,23,.4); border-radius: 999px;
+  padding: 3px 10px; font-size: 12px; color: #8a6100; }

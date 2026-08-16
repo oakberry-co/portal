@@ -2,13 +2,17 @@
 
 import { useState, type ReactNode } from "react";
 import { revisarCuentaCobro } from "./actions";
+import { etiquetaClase } from "@/lib/areas";
+
+/** Nombre del documento por su clase; los viejos (sin clase) caen al genérico. */
+const etiquetaDoc = (clase?: string) => (clase && clase !== "otro" ? etiquetaClase(clase) : "Documento");
 
 export type CuentaCobro = {
   id: number; razon_social: string; tipo_doc: string | null; num_doc: string;
   contacto: string | null; correo: string | null; telefono: string | null; area: string | null;
   concepto: string | null; descripcion: string | null; valor: number | null;
   banco: string | null; tipo_cuenta: string | null; num_cuenta: string | null;
-  documentos: { nombre: string; path: string; tipo: string }[];
+  documentos: { nombre: string; path: string; tipo: string; clase?: string; estado?: string }[];
   estado: string; nota_revision: string | null; revisado_por: string | null; creado_en: string;
 };
 
@@ -72,9 +76,17 @@ export function CuentasCobroView({ items }: { items: CuentaCobro[] }) {
 
               {c.documentos?.length > 0 && (
                 <div className="cc-docs">
-                  {c.documentos.map((d, i) => (
-                    <a key={i} href={d.path} target="_blank" rel="noopener noreferrer" className="cc-doc">📎 {d.nombre}</a>
-                  ))}
+                  {c.documentos.map((d, i) =>
+                    d.estado === "pendiente" ? (
+                      <span key={i} className="cc-doc falta" title={"No llegó a Drive: " + d.nombre}>
+                        ⚠️ {etiquetaDoc(d.clase)} — no subió
+                      </span>
+                    ) : (
+                      <a key={i} href={d.path} target="_blank" rel="noopener noreferrer" className="cc-doc">
+                        📎 {etiquetaDoc(d.clase)}
+                      </a>
+                    )
+                  )}
                 </div>
               )}
 

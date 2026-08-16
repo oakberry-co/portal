@@ -26,6 +26,7 @@ type Discrepancia = {
   destino_portal: string | null; destino_drive: string | null;
   drive_url: string | null;
 };
+type SinRuta = { nombre: string; short_code: string | null; facturas: number };
 
 const MESES = ["", "enero", "febrero", "marzo", "abril", "mayo", "junio", "julio",
                "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
@@ -76,7 +77,19 @@ async function cargar() {
      ORDER BY f.fecha_emision DESC
      LIMIT 200`);
 
-  return { meses: meses.rows, huerfanos: huerfanos.rows, discrepancias: discrepancias.rows };
+  // La tarea humana pendiente: un destino sin `drive_carpeta` no se puede
+  // archivar solo. Se lista con cuántas facturas cuelgan de él, para priorizar.
+  const sinRuta = await pool.query<SinRuta>(`
+    SELECT d.nombre, d.short_code, count(e.cufe)::int AS facturas
+      FROM maestro_destinos d
+      LEFT JOIN factura_estado e ON upper(e.destino) = upper(d.nombre)
+     WHERE d.activo AND d.drive_carpeta IS NULL
+     GROUP BY d.nombre, d.short_code
+    HAVING count(e.cufe) > 0
+     ORDER BY count(e.cufe) DESC`);
+
+  return { meses: meses.rows, huerfanos: huerfanos.rows,
+           discrepancias: discrepancias.rows, sinRuta: sinRuta.rows };
 }
 
 export default async function SoportesPage() {
@@ -94,7 +107,7 @@ export default async function SoportesPage() {
       </div>
     );
   }
-  const { meses, huerfanos, discrepancias } = datos;
+  const { meses, huerfanos, discrepancias, sinRuta } = datos;
 
   if (!meses.length) {
     return (
@@ -116,11 +129,29 @@ export default async function SoportesPage() {
     <div className="container">
       <h1>📎 Soportes</h1>
       <p className="sub">
-        El archivo que <b>compras</b> lleva a mano en Drive (<code>COMPRAS / AÑO / MES / DESTINO</code>),
-        conectado a las facturas del portal. Cada PDF enlazado aparece como 📎 en la grilla de Conciliación.
-        Lo <b>huérfano</b> no es un error: casi siempre son cuentas de cobro, importaciones o documentos que
-        nunca pasaron por la DIAN.
+        El árbol de Drive (<code>COMPRAS / AÑO / MES / DESTINO</code>) y el portal, en los dos sentidos.
+        Lo que compras archiva a mano <b>entra</b> y aparece como 📎 en Conciliación; y lo que el equipo
+        <b> clasifica</b> en el portal <b>se archiva solo</b> en la carpeta de su destino, con el nombre de
+        siempre. Clasificar es archivar: ya no hay que guardar el PDF aparte.
+        Lo <b>huérfano</b> no es un error — casi siempre son cuentas de cobro, importaciones o documentos
+        que nunca pasaron por la DIAN.
       </p>
+
+      {sinRuta.length > 0 && (
+        <div className="sop-tarea">
+          <b>⚠️ {sinRuta.length} destinos no tienen carpeta asignada</b> — sus facturas se clasifican
+          pero <b>no se archivan solas</b>, porque nadie ha dicho a qué carpeta van. Se arregla en{" "}
+          <a href="/contabilidad/maestros">Maestros</a>, poniéndoles la carpeta (o unificándolos con el
+          destino que ya la tiene).
+          <div className="sop-tarea-lista">
+            {sinRuta.map((d) => (
+              <span key={d.nombre} className="tag-sr">
+                {d.nombre}{d.short_code ? ` (${d.short_code})` : ""} · <b>{d.facturas}</b>
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="dsh-cards">
         <div className="dsh-card"><i>PDFs en Drive</i><b>{T.archivos.toLocaleString("es-CO")}</b><span>{meses.length} meses ingeridos</span></div>

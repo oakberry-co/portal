@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { AsistenteChat } from "@/app/contabilidad/asistente/AsistenteChat";
+import { AsistenteChat } from "./contabilidad/asistente/AsistenteChat";
 
 /** Burbuja flotante del copiloto, siempre abajo a la derecha en todo el portal. */
 export function AsistenteFloating() {

@@ -414,6 +414,16 @@ CREATE TABLE IF NOT EXISTS cotizaciones (
 );
 CREATE INDEX IF NOT EXISTS ix_cot_nit ON cotizaciones (nit);
 
+-- El número que el PROVEEDOR le puso a su cotización (distinto de `codigo`, que es
+-- el COT-#### que asignamos nosotros). Sirve para hablar el mismo idioma con él y
+-- para cruzar cuando su factura final referencia su propio consecutivo.
+ALTER TABLE cotizaciones ADD COLUMN IF NOT EXISTS numero_cotizacion TEXT;
+
+-- Anticipo: el proveedor declara si necesita adelanto y cuánto (% del valor). Se
+-- captura acá para que Pagos lo vea ANTES de programar el pago, no después.
+ALTER TABLE cotizaciones ADD COLUMN IF NOT EXISTS requiere_adelanto BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE cotizaciones ADD COLUMN IF NOT EXISTS adelanto_pct NUMERIC(5,2);
+
 CREATE TABLE IF NOT EXISTS cotizacion_abonos (
   id              BIGSERIAL PRIMARY KEY,
   cotizacion_id   BIGINT NOT NULL REFERENCES cotizaciones(id) ON DELETE CASCADE,
@@ -471,6 +481,20 @@ CREATE TABLE IF NOT EXISTS factura_soportes (
   visto_en         TIMESTAMPTZ NOT NULL DEFAULT now(),
   actualizado_en   TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+-- De dónde salió el soporte:
+--   'compras' = lo encontramos archivado a mano en el árbol de Drive;
+--   'portal'  = lo archivamos NOSOTROS al clasificar la factura (carril nuevo).
+-- Distinguirlos importa: el archivador solo puede borrar/rehacer lo suyo, y la
+-- cobertura "archivado automático" se mide sin contar lo que ya estaba.
+ALTER TABLE factura_soportes ADD COLUMN IF NOT EXISTS origen TEXT NOT NULL DEFAULT 'compras';
+
+-- LA RUTA DE ARCHIVO que le corresponde a este destino dentro del mes, relativa a
+-- COMPRAS/AÑO/MES/ — 'BOG001' para propias y transversales, 'FRANQUICIADOS/PER001'
+-- para franquicias. No es un dato inventado: se sembró de dónde el equipo VENÍA
+-- guardando cada destino (moda de `factura_soportes.drive_path`). Es lo que
+-- convierte una clasificación en una carpeta: clasificar = archivar.
+ALTER TABLE maestro_destinos ADD COLUMN IF NOT EXISTS drive_carpeta TEXT;
+
 CREATE INDEX IF NOT EXISTS ix_soporte_cufe    ON factura_soportes (cufe);
 CREATE INDEX IF NOT EXISTS ix_soporte_periodo ON factura_soportes (anio, mes);
 CREATE INDEX IF NOT EXISTS ix_soporte_numero  ON factura_soportes (numero_norm);
