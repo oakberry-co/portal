@@ -25,14 +25,19 @@ function config() {
   return { url: process.env.INTAKE_UPLOAD_URL, secret: process.env.INTAKE_UPLOAD_SECRET };
 }
 
-/** Sube UN archivo. Lanza si falla — el llamador decide si eso tumba el envío. */
-export async function subirAintake(file: File, tipo: string): Promise<{ url: string; nombre: string }> {
+/** Sube UN archivo. Lanza si falla — el llamador decide si eso tumba el envío.
+ *
+ *  OJO con `tipo`: el relay de la VM lo mapea contra una lista CERRADA
+ *  ('cuentas-de-cobro' | 'cotizaciones') para elegir la subcarpeta de Drive, y
+ *  cualquier otra cosa cae en `Intake/Otros`. No meterle la clase de documento
+ *  acá — para eso está `nombre`, que la pone al frente del archivo. */
+export async function subirAintake(file: File, tipo: string, nombre?: string): Promise<{ url: string; nombre: string }> {
   const { url, secret } = config();
   if (!url || !secret) throw new Error("Falta configurar la subida a Drive (INTAKE_UPLOAD_URL / INTAKE_UPLOAD_SECRET en Vercel).");
 
   const fd = new FormData();
   fd.set("tipo", tipo);
-  fd.set("file", file, file.name);
+  fd.set("file", file, nombre ?? file.name);
   const r = await fetch(url, { method: "POST", headers: { "X-Intake-Secret": secret }, body: fd });
   if (!r.ok) throw new Error("La subida falló (" + r.status + "): " + (await r.text()).slice(0, 200));
   const j = (await r.json()) as { url?: string; name?: string };
@@ -50,7 +55,10 @@ export async function subirDocumentos(archivos: ArchivoClasificado[], tipo: stri
   let fallidos = 0;
   for (const { file: f, clase } of archivos) {
     try {
-      const up = await subirAintake(f, tipo + "/" + clase);
+      // La clase va al FRENTE del nombre ('rut__cedula-juan.pdf') para que quien
+      // abra la carpeta en Drive sepa qué es sin abrir el archivo. La carpeta la
+      // decide `tipo`, que debe quedar tal cual (ver subirAintake).
+      const up = await subirAintake(f, tipo, clase === "otro" ? f.name : `${clase}__${f.name}`);
       docs.push({ nombre: f.name, path: up.url, tipo: f.type, clase, estado: "subido" });
     } catch (e) {
       fallidos++;
