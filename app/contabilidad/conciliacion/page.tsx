@@ -36,7 +36,8 @@ async function cargar(): Promise<{ filas: FacturaRow[]; conceptos: string[]; des
             p.confianza, mp.plazo_dias AS plazo_sug,
             COALESCE(e.tipo_pago, mp.tipo_pago_default) AS tipo_pago,
             p.retefuente_sug, p.reteiva_sug, p.reteica_sug,
-            mr.ret_rf::text AS ret_rf, mr.ret_ica::text AS ret_ica, mr.ret_iva::text AS ret_iva
+            mr.ret_rf::text AS ret_rf, mr.ret_ica::text AS ret_ica, mr.ret_iva::text AS ret_iva,
+            vs.soporte_url, vs.n_soportes, vs.destino_drive
        FROM facturas f
        JOIN factura_estado e USING (cufe)
        LEFT JOIN factura_propuesta p USING (cufe)
@@ -48,6 +49,7 @@ async function cargar(): Promise<{ filas: FacturaRow[]; conceptos: string[]; des
                 max(CASE WHEN tipo='ReteIVA'    THEN tarifa END) AS ret_iva
          FROM maestro_retenciones GROUP BY nit_proveedor
        ) mr ON mr.nit_proveedor = f.nit_proveedor
+       LEFT JOIN v_factura_soportes vs USING (cufe)
       ORDER BY (e.estado = 'capturada') DESC, f.fecha_emision DESC`
   );
   const c = await pool.query<{ nombre: string }>("SELECT nombre FROM maestro_conceptos WHERE activo ORDER BY nombre");

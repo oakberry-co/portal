@@ -389,6 +389,9 @@ button.ghost { background: #fff; color: var(--purple); }
 .ic:hover { border-color: var(--purple); background: var(--lav-soft); }
 .ic.off { opacity: .38; cursor: not-allowed; }
 .ic.dian { font-size: 9.5px; letter-spacing: .02em; }
+/* 📎 soporte de compras (Drive). Verde: es el respaldo que el equipo ya archivó. */
+.ic.sop { font-size: 11px; border-color: rgba(30,142,62,.35); background: #eef8f1; }
+.ic.sop:hover { border-color: var(--ok); background: #e3f4e8; }
 
 /* exportar a Excel por rango de fechas */
 .export-bar { display: flex; align-items: center; gap: 8px; margin: 2px 0 4px; flex-wrap: wrap; }
@@ -827,6 +830,11 @@ button.ghost { background: #fff; color: var(--purple); }
 .pub-btn.ghost { background: #fff; color: var(--purple) !important; border: 1.5px solid var(--border-lav); }
 .pub-err { background: #fdeef0; color: var(--danger); border: 1px solid rgba(192,57,43,.25);
   border-radius: 10px; padding: 10px 12px; font-size: 13px; font-weight: 600; }
+/* Aviso: el envío SÍ quedó, pero algún adjunto no llegó a Drive. Ámbar, no rojo:
+   no es culpa del proveedor y no debe leerse como "se perdió el envío". */
+.pub-aviso { background: #fff8e6; color: #8a6100; border: 1px solid rgba(212,160,23,.35);
+  border-radius: 10px; padding: 10px 12px; font-size: 13px; font-weight: 600;
+  text-align: left; margin: 12px 0; }
 .pub-foot { color: var(--lav); font-size: 11px; margin: 20px 0 0; }
 .pub-ok { text-align: center; padding: 14px 4px 6px; }
 .pub-ok-ico { width: 66px; height: 66px; margin: 0 auto 14px; border-radius: 50%; display: grid;
@@ -876,3 +884,10 @@ button.ghost { background: #fff; color: var(--purple); }
 .cot-cruce.ok { background: #e6f4ea; border-color: rgba(39,174,96,.3); }
 .cot-cruce.ok b { color: #1e7d47; }
 .cot-cruce select { width: auto; font-size: 12.5px; padding: 6px 9px; }
+
+/* ---- Soportes (archivo de compras en Drive) ------------------------------- */
+.sop-h2 { font-size: 15px; color: var(--purple-deep); margin: 26px 0 6px; }
+.sop-n { display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 999px;
+  background: var(--lav-soft); color: var(--purple); font-size: 11px; font-weight: 700; }
+.sop-cmd { background: #f6f4fa; border: 1px solid var(--border-lav); border-radius: 10px;
+  padding: 10px 12px; font-size: 12px; overflow-x: auto; }

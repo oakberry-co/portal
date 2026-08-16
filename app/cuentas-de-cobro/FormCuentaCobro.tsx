@@ -12,6 +12,7 @@ export function FormCuentaCobro({ areas }: { areas: string[] }) {
         <div className="pub-ok-ico">✓</div>
         <h2>¡Recibido!</h2>
         <p>Tu cuenta de cobro llegó a Oakberry. El equipo de contabilidad la revisa y te contacta. Gracias 💜</p>
+        {estado.aviso && <p className="pub-aviso">⚠️ {estado.aviso}</p>}
         <a className="pub-btn ghost" href="/cuentas-de-cobro">Enviar otra</a>
       </div>
     );

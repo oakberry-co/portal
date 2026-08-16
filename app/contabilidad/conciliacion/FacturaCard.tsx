@@ -18,6 +18,10 @@ export type FacturaRow = {
   total: string | null;
   responsabilidad_dian: string | null;
   link_drive: string | null;
+  // Soporte archivado a mano por compras en Drive (tabla `factura_soportes`).
+  soporte_url: string | null;
+  n_soportes: number | null;
+  destino_drive: string | null;
   estado: Estado;
   concepto: string | null;
   destino: string | null;
@@ -218,6 +222,15 @@ export const FacturaCard = memo(function FacturaCard({
              title="Descargar el PDF de la factura del proveedor">PDF</a>
         ) : (
           <span className="ic pdf off" title="Sin PDF del proveedor — usa el documento DIAN">PDF</span>
+        )}
+        {/* Soporte archivado a mano por compras en Drive (COMPRAS/AÑO/MES/DESTINO).
+            Es otra cosa que el PDF del buzón DIAN: trae la clasificación por tienda. */}
+        {f.soporte_url && (
+          <a className="ic sop" href={f.soporte_url} target="_blank" rel="noopener noreferrer"
+             title={`Soporte archivado por compras${f.destino_drive ? ` — carpeta ${f.destino_drive}` : ""}` +
+                    (f.n_soportes && f.n_soportes > 1 ? ` (${f.n_soportes} archivos)` : "")}>
+            📎{f.n_soportes && f.n_soportes > 1 ? f.n_soportes : ""}
+          </a>
         )}
       </div>
 

@@ -430,4 +430,70 @@ CREATE INDEX IF NOT EXISTS ix_abono_cot ON cotizacion_abonos (cotizacion_id);
 -- el abono aplicado aquí para que Pagos descuente ese monto (saldo = valor − abono).
 ALTER TABLE factura_estado ADD COLUMN IF NOT EXISTS abono_aplicado NUMERIC(16,2) NOT NULL DEFAULT 0;
 
+-- -----------------------------------------------------------------------------
+-- 12) SOPORTES DE DRIVE — el archivo HUMANO de compras, conectado al portal.
+--     El equipo guarda los PDF en Drive bajo COMPRAS/AÑO/MES/DESTINO/, con el
+--     nombre "(FC-1-9135) Amande_A12623_29072026_PER001.pdf". Eso es una fuente
+--     de verdad paralela (la clasificación por tienda que hace compras a mano) y
+--     el respaldo visual de cada factura.
+--
+--     Por qué tabla y no una columna en `facturas`:
+--       · una factura puede tener VARIOS soportes (multi-destino, anexos);
+--       · un PDF puede NO ser factura DIAN (cuentas de cobro, importaciones)
+--         -> con una columna esos huérfanos se pierden en silencio;
+--       · `facturas.link_drive` ya está ocupado por el carril DIAN (XML/PDF del
+--         buzón, lo llena drive_links.py). Mezclarlos borra la trazabilidad.
+--     Identidad = drive_file_id: re-correr el ingest NO duplica (Regla 3).
+-- -----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS factura_soportes (
+  drive_file_id    TEXT PRIMARY KEY,                 -- id estable del archivo en Drive
+  tenant           TEXT NOT NULL DEFAULT 'manelfoods',
+  drive_nombre     TEXT NOT NULL,
+  drive_url        TEXT NOT NULL,
+  drive_path       TEXT NOT NULL,                    -- 'FRANQUICIADOS/PER001' | 'GENERAL'
+  anio             INT  NOT NULL,
+  mes              INT  NOT NULL,                    -- 1..12 (de la carpeta, no del nombre)
+  destino_carpeta  TEXT,                             -- hoja del path: 'PER001' | 'GENERAL'
+  -- Lo parseado del nombre (tolerante: cualquiera puede ser NULL — Regla 19).
+  doc_tipo         TEXT,                             -- FC | CC | NC | ND | NULL
+  doc_id           TEXT,                             -- '1-9135' del prefijo entre paréntesis
+  proveedor_txt    TEXT,
+  numero_txt       TEXT,
+  numero_norm      TEXT,                             -- upper, sin espacios/puntos/guiones
+  fecha_txt        TEXT,
+  fecha_doc        DATE,                             -- NULL si la fecha del nombre es inválida
+  destinos_txt     TEXT[],                           -- multi-destino: BOG001_BOG004_...
+  -- El match contra la factura DIAN.
+  cufe             TEXT REFERENCES facturas(cufe) ON DELETE SET NULL,
+  match_metodo     TEXT,                             -- numero+nit | numero+fecha | numero | NULL
+  match_confianza  TEXT NOT NULL DEFAULT 'huerfano', -- alta | media | huerfano
+  match_nota       TEXT,                             -- por qué quedó ambiguo/huérfano
+  visto_en         TIMESTAMPTZ NOT NULL DEFAULT now(),
+  actualizado_en   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS ix_soporte_cufe    ON factura_soportes (cufe);
+CREATE INDEX IF NOT EXISTS ix_soporte_periodo ON factura_soportes (anio, mes);
+CREATE INDEX IF NOT EXISTS ix_soporte_numero  ON factura_soportes (numero_norm);
+CREATE INDEX IF NOT EXISTS ix_soporte_destino ON factura_soportes (destino_carpeta);
+
+-- Vista de navegación: 1 fila por factura con sus soportes (para el chip 📎 de la
+-- grilla) + el destino que dice la carpeta, para contrastarlo con el humano SIN
+-- pisarlo (Regla 13: la vista compara, el humano decide).
+CREATE OR REPLACE VIEW v_factura_soportes AS
+SELECT
+  f.cufe,
+  COUNT(s.drive_file_id)                                   AS n_soportes,
+  MIN(s.drive_url)                                         AS soporte_url,
+  STRING_AGG(DISTINCT s.destino_carpeta, ', ' ORDER BY s.destino_carpeta) AS destino_drive,
+  BOOL_OR(s.match_confianza = 'alta')                      AS soporte_confiable,
+  e.destino                                                AS destino_portal,
+  (e.destino IS NOT NULL
+   AND MIN(s.destino_carpeta) IS NOT NULL
+   AND COUNT(DISTINCT s.destino_carpeta) = 1
+   AND UPPER(TRIM(e.destino)) <> UPPER(MIN(s.destino_carpeta))) AS destino_discrepa
+FROM facturas f
+JOIN factura_soportes s ON s.cufe = f.cufe
+LEFT JOIN factura_estado e ON e.cufe = f.cufe
+GROUP BY f.cufe, e.destino;
+
 COMMIT;

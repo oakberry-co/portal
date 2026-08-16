@@ -14,6 +14,7 @@ export function FormCotizacion({ areas }: { areas: string[] }) {
         <p>Guárdala con este código y ponlo en tu factura final cuando la emitas:</p>
         <div className="pub-cot">{estado.codigo}</div>
         <p>El equipo de Oakberry la revisa y te contacta. Gracias 💜</p>
+        {estado.aviso && <p className="pub-aviso">⚠️ {estado.aviso}</p>}
         <a className="pub-btn ghost" href="/cotizaciones">Enviar otra</a>
       </div>
     );

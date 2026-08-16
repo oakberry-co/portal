@@ -3,10 +3,10 @@
 // Recepción PÚBLICA de una cotización. Sube documentos a Vercel Blob y registra en
 // `cotizaciones` (estado 'recibida') con un código COT-####. Luego se le hacen
 // abonos y se cruza con la factura final para no pagar doble.
-import { subirAintake } from "@/lib/intake";
+import { subirDocumentos, avisoDocs } from "@/lib/intake";
 import { getPool } from "@/lib/db";
 
-export type Resultado = { ok: boolean; error?: string; codigo?: string };
+export type Resultado = { ok: boolean; error?: string; codigo?: string; aviso?: string };
 
 export async function enviarCotizacion(_prev: Resultado | null, formData: FormData): Promise<Resultado> {
   const s = (k: string) => String(formData.get(k) ?? "").trim();
@@ -18,16 +18,10 @@ export async function enviarCotizacion(_prev: Resultado | null, formData: FormDa
   const valorRaw = s("valor").replace(/[^\d]/g, "");
   const valor = valorRaw ? Number(valorRaw) : null;
 
+  // Los documentos van a Drive, pero su falla NO tumba el envío: la cotización
+  // se registra igual y lo que no subió queda marcado 'pendiente'.
   const files = formData.getAll("documentos").filter((f): f is File => f instanceof File && f.size > 0);
-  const docs: { nombre: string; path: string; tipo: string }[] = [];
-  try {
-    for (const f of files.slice(0, 12)) {
-      const up = await subirAintake(f, "cotizaciones");
-      docs.push({ nombre: f.name, path: up.url, tipo: f.type });
-    }
-  } catch (e) {
-    return { ok: false, error: "No se pudieron subir los documentos: " + (e as Error).message };
-  }
+  const { docs, fallidos } = await subirDocumentos(files.slice(0, 12), "cotizaciones");
 
   try {
     const pool = getPool();
@@ -40,7 +34,7 @@ export async function enviarCotizacion(_prev: Resultado | null, formData: FormDa
     const id = r.rows[0].id;
     const codigo = "COT-" + String(id).padStart(4, "0");
     await pool.query("UPDATE cotizaciones SET codigo = $2 WHERE id = $1", [id, codigo]);
-    return { ok: true, codigo };
+    return { ok: true, codigo, aviso: avisoDocs(fallidos) };
   } catch (e) {
     return { ok: false, error: "No se pudo registrar la cotización: " + (e as Error).message };
   }

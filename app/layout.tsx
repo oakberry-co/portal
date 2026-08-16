@@ -23,6 +23,7 @@ const MENU: { label: string; href?: string; cap: Cap }[] = [
   { label: "Causación", cap: "clasificar" },
   { label: "Bancos", cap: "pagos" },
   { label: "Maestros", href: "/contabilidad/maestros", cap: "maestros" },
+  { label: "Soportes", href: "/contabilidad/soportes", cap: "ver_conciliacion" },
   { label: "Dashboard", href: "/contabilidad/dashboard", cap: "dashboard" },
   { label: "Cuentas de cobro", href: "/contabilidad/cuentas-de-cobro", cap: "intake" },
   { label: "Cotizaciones", href: "/contabilidad/cotizaciones", cap: "intake" },

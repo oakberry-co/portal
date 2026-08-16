@@ -1,12 +1,13 @@
 "use server";
 
 // Recepción PÚBLICA de una cuenta de cobro (proveedor no-DIAN). Sube los documentos
-// a Vercel Blob y registra el envío en `cuentas_cobro` (estado 'recibida'). Sin
-// login: esta ruta está fuera del middleware. Contabilidad la revisa en la bandeja.
-import { subirAintake } from "@/lib/intake";
+// a Drive (vía el relay de la VM) y registra el envío en `cuentas_cobro` (estado
+// 'recibida'). Sin login: esta ruta está fuera del middleware. Contabilidad la
+// revisa en la bandeja.
+import { subirDocumentos, avisoDocs } from "@/lib/intake";
 import { getPool } from "@/lib/db";
 
-export type Resultado = { ok: boolean; error?: string };
+export type Resultado = { ok: boolean; error?: string; aviso?: string };
 
 export async function enviarCuentaCobro(_prev: Resultado | null, formData: FormData): Promise<Resultado> {
   const s = (k: string) => String(formData.get(k) ?? "").trim();
@@ -19,16 +20,9 @@ export async function enviarCuentaCobro(_prev: Resultado | null, formData: FormD
   const valor = valorRaw ? Number(valorRaw) : null;
 
   // Subir documentos a Drive (vía la VM). Quedan en CONTABILIDAD/Intake, privados.
+  // Su falla NO tumba el envío: el proveedor ya llenó el formulario.
   const files = formData.getAll("documentos").filter((f): f is File => f instanceof File && f.size > 0);
-  const docs: { nombre: string; path: string; tipo: string }[] = [];
-  try {
-    for (const f of files.slice(0, 12)) {
-      const up = await subirAintake(f, "cuentas-de-cobro");
-      docs.push({ nombre: f.name, path: up.url, tipo: f.type });
-    }
-  } catch (e) {
-    return { ok: false, error: "No se pudieron subir los documentos: " + (e as Error).message };
-  }
+  const { docs, fallidos } = await subirDocumentos(files.slice(0, 12), "cuentas-de-cobro");
 
   try {
     await getPool().query(
@@ -42,5 +36,5 @@ export async function enviarCuentaCobro(_prev: Resultado | null, formData: FormD
   } catch (e) {
     return { ok: false, error: "No se pudo registrar el envío: " + (e as Error).message };
   }
-  return { ok: true };
+  return { ok: true, aviso: avisoDocs(fallidos) };
 }
