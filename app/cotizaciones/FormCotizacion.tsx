@@ -1,10 +1,15 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import { enviarCotizacion, type Resultado } from "./actions";
+import { CasillasDocumentos } from "../CasillasDocumentos";
+import { AREAS } from "@/lib/areas";
 
-export function FormCotizacion({ areas }: { areas: string[] }) {
+export function FormCotizacion() {
   const [estado, action, pending] = useActionState<Resultado | null, FormData>(enviarCotizacion, null);
+  // El % solo aparece si pidió adelanto: preguntarlo siempre invita a llenarlo
+  // "por si acaso" y termina siendo un compromiso de pago que nadie acordó.
+  const [adelanto, setAdelanto] = useState(false);
 
   if (estado?.ok) {
     return (
@@ -37,23 +42,39 @@ export function FormCotizacion({ areas }: { areas: string[] }) {
 
       <div className="pub-sec">La cotización</div>
       <div className="pub-row">
-        <label>Área
+        <label>Número de tu cotización
+          <input name="numero_cotizacion" placeholder="El consecutivo que tú le pusiste" />
+        </label>
+        <label>Área con la que trataste
           <select name="area" defaultValue="">
             <option value="">Selecciona…</option>
-            {areas.map((a) => <option key={a} value={a}>{a}</option>)}
+            {AREAS.map((a) => <option key={a} value={a}>{a}</option>)}
           </select>
         </label>
-        <label>Valor cotizado (COP)<input name="valor" inputMode="numeric" placeholder="$ 0" /></label>
       </div>
+      <label className="pub-full">Valor cotizado (COP)<input name="valor" inputMode="numeric" placeholder="$ 0" /></label>
       <label className="pub-full">Concepto<input name="concepto" placeholder="¿Qué cotizas?" /></label>
       <label className="pub-full">Descripción / detalle
         <textarea name="descripcion" rows={2} placeholder="Detalle de la propuesta" />
       </label>
 
+      <div className="pub-check">
+        <label className="pub-switch">
+          <input name="requiere_adelanto" type="checkbox" checked={adelanto}
+                 onChange={(e) => setAdelanto(e.target.checked)} />
+          <span>Requiere adelanto</span>
+        </label>
+        {adelanto && (
+          <label className="pub-pct">% de adelanto *
+            <input name="adelanto_pct" required inputMode="decimal" min={1} max={100}
+                   type="number" step="1" placeholder="50" />
+          </label>
+        )}
+      </div>
+
       <div className="pub-sec">Documentos</div>
-      <label className="pub-full pub-file">Sube tu cotización, portafolio, RUT… (PDF o imágenes)
-        <input name="documentos" type="file" multiple accept=".pdf,image/*" />
-      </label>
+      <p className="pub-hint">Toca cada uno para adjuntarlo. PDF o foto.</p>
+      <CasillasDocumentos />
 
       {estado?.error && <div className="pub-err">{estado.error}</div>}
       <button className="pub-btn" type="submit" disabled={pending}>{pending ? "Enviando…" : "Enviar cotización"}</button>

@@ -11,6 +11,7 @@ async function cargar(): Promise<{ cots: Cotizacion[]; candidatos: CandidataFact
   const cots = await pool.query<Cotizacion>(`
     SELECT cot.id, cot.codigo, cot.razon_social, cot.nit, cot.contacto, cot.correo, cot.telefono,
            cot.area, cot.concepto, cot.descripcion, cot.valor::float AS valor, cot.documentos,
+           cot.numero_cotizacion, cot.requiere_adelanto, cot.adelanto_pct::float AS adelanto_pct,
            cot.estado, cot.cufe_factura, cot.nota_revision, cot.revisado_por, cot.creado_en::text AS creado_en,
            coalesce((SELECT sum(monto) FROM cotizacion_abonos a WHERE a.cotizacion_id = cot.id),0)::float AS abono_total,
            coalesce((SELECT json_agg(json_build_object('monto', monto, 'fecha', fecha::text, 'cuenta', cuenta_pago) ORDER BY fecha)

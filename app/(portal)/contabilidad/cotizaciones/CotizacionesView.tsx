@@ -2,12 +2,18 @@
 
 import { useMemo, useState, type ReactNode } from "react";
 import { revisarCotizacion, agregarAbono, enlazarFactura, quitarEnlace } from "./actions";
+import { etiquetaClase } from "@/lib/areas";
+
+/** Nombre del documento por su clase; los viejos (sin clase) caen al genérico. */
+const etiquetaDoc = (clase?: string) => (clase && clase !== "otro" ? etiquetaClase(clase) : "Documento");
 
 export type Cotizacion = {
   id: number; codigo: string | null; razon_social: string; nit: string;
   contacto: string | null; correo: string | null; telefono: string | null;
   area: string | null; concepto: string | null; descripcion: string | null; valor: number | null;
-  documentos: { nombre: string; path: string; tipo: string }[];
+  documentos: { nombre: string; path: string; tipo: string; clase?: string; estado?: string }[];
+  numero_cotizacion: string | null;
+  requiere_adelanto: boolean; adelanto_pct: number | null;
   estado: string; cufe_factura: string | null; nota_revision: string | null;
   revisado_por: string | null; creado_en: string;
   abono_total: number; abonos: { monto: number; fecha: string; cuenta: string | null }[];
@@ -57,13 +63,36 @@ export function CotizacionesView({ cots, candidatos }: { cots: Cotizacion[]; can
                 <div className="cc-head">
                   <div>
                     <div className="cc-nom">{c.codigo ? <span className="cot-code">{c.codigo}</span> : null} {c.razon_social}</div>
-                    <div className="muted mini">NIT {c.nit}{c.area ? ` · ${c.area}` : ""}{c.concepto ? ` · ${c.concepto}` : ""}</div>
+                    <div className="muted mini">
+                      NIT {c.nit}{c.area ? ` · ${c.area}` : ""}{c.concepto ? ` · ${c.concepto}` : ""}
+                      {c.numero_cotizacion ? ` · su n° ${c.numero_cotizacion}` : ""}
+                    </div>
                   </div>
                   <div className="cc-valor">{$(c.valor)}<span className="muted mini" style={{ display: "block", fontWeight: 400 }}>cotizado</span></div>
                 </div>
 
+                {/* El proveedor pidió adelanto: se ve ANTES de programar el pago. */}
+                {c.requiere_adelanto && (
+                  <div className="cc-adelanto">
+                    Pide adelanto del <b>{c.adelanto_pct ?? "?"}%</b>
+                    {c.valor != null && c.adelanto_pct != null && (
+                      <span> · {$(Math.round((c.valor * Number(c.adelanto_pct)) / 100))}</span>
+                    )}
+                  </div>
+                )}
+
                 {c.documentos?.length > 0 && (
-                  <div className="cc-docs">{c.documentos.map((d, i) => <a key={i} href={d.path} target="_blank" rel="noopener noreferrer" className="cc-doc">📎 {d.nombre}</a>)}</div>
+                  <div className="cc-docs">{c.documentos.map((d, i) =>
+                    d.estado === "pendiente" ? (
+                      <span key={i} className="cc-doc falta" title={"No llegó a Drive: " + d.nombre}>
+                        ⚠️ {etiquetaDoc(d.clase)} — no subió
+                      </span>
+                    ) : (
+                      <a key={i} href={d.path} target="_blank" rel="noopener noreferrer" className="cc-doc">
+                        📎 {etiquetaDoc(d.clase)}
+                      </a>
+                    )
+                  )}</div>
                 )}
 
                 {/* Abonos */}

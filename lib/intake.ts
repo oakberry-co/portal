@@ -5,16 +5,20 @@
 //        INTAKE_UPLOAD_SECRET (secreto compartido con la VM)
 
 /** Un documento del intake tal como queda en `documentos` (JSONB).
+ *  `clase` = qué documento es (rut, cedula, certificacion_bancaria, soporte), para
+ *  que la bandeja pueda decir "falta el RUT" en vez de listar archivos sueltos.
  *  `path` vacío + estado 'pendiente' = el archivo NO llegó a Drive (el proveedor
  *  sí quedó registrado; el equipo le pide el adjunto por correo). */
 export type DocIntake = {
   nombre: string;
   path: string;
   tipo: string;
+  clase: string;
   estado: "subido" | "pendiente";
   error?: string;
 };
 
+export type ArchivoClasificado = { file: File; clase: string };
 export type ResultadoSubida = { docs: DocIntake[]; fallidos: number };
 
 function config() {
@@ -41,21 +45,36 @@ export async function subirAintake(file: File, tipo: string): Promise<{ url: str
  *  llenó 2 minutos de formulario: si Drive falla, se guarda igual y el documento
  *  queda marcado `pendiente` para que el equipo lo pida. La alternativa —lo que
  *  hacía antes— era perder el envío completo. */
-export async function subirDocumentos(files: File[], tipo: string): Promise<ResultadoSubida> {
+export async function subirDocumentos(archivos: ArchivoClasificado[], tipo: string): Promise<ResultadoSubida> {
   const docs: DocIntake[] = [];
   let fallidos = 0;
-  for (const f of files) {
+  for (const { file: f, clase } of archivos) {
     try {
-      const up = await subirAintake(f, tipo);
-      docs.push({ nombre: f.name, path: up.url, tipo: f.type, estado: "subido" });
+      const up = await subirAintake(f, tipo + "/" + clase);
+      docs.push({ nombre: f.name, path: up.url, tipo: f.type, clase, estado: "subido" });
     } catch (e) {
       fallidos++;
-      docs.push({ nombre: f.name, path: "", tipo: f.type, estado: "pendiente",
+      docs.push({ nombre: f.name, path: "", tipo: f.type, clase, estado: "pendiente",
                   error: (e as Error).message.slice(0, 200) });
       console.error("[intake] no se pudo subir '" + f.name + "':", e);
     }
   }
   return { docs, fallidos };
+}
+
+/** Saca del formulario los archivos de cada casilla tipada (certificación, RUT,
+ *  cédula, soporte) más los sueltos de `documentos`, ya clasificados y con tope. */
+export function archivosDelForm(formData: FormData, clases: readonly { name: string; clase: string }[],
+                                max = 12): ArchivoClasificado[] {
+  const salida: ArchivoClasificado[] = [];
+  const tomar = (campo: string, clase: string) => {
+    for (const v of formData.getAll(campo)) {
+      if (v instanceof File && v.size > 0) salida.push({ file: v, clase });
+    }
+  };
+  for (const c of clases) tomar(c.name, c.clase);
+  tomar("documentos", "otro");
+  return salida.slice(0, max);
 }
 
 /** Mensaje para el proveedor cuando algún adjunto no llegó a Drive. Se le dice
