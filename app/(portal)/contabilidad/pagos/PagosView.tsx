@@ -216,7 +216,7 @@ export function PagosView({ pendientes, validacion, historial, cuentas, diaPago,
                     <div key={key} className="pg-prov val">
                       <div className="pg-prov-head" onClick={() => setAbierto(toggle(abierto, key))}>
                         <span className="pg-caret">{abierto.has(key) ? "▾" : "▸"}</span>
-                        <span className="pg-prov-nom">{g.nombre}{!g.tiene_banco && <span className="pg-nobank" title="Sin cuenta bancaria en el maestro — el CSV saldrá incompleto">⚠ sin cuenta</span>}</span>
+                        <span className="pg-prov-nom">{g.nombre}{!g.tiene_banco && <span className="pg-nobank" title="Sin cuenta bancaria: NO entra al archivo del banco. Pídele al proveedor su certificación bancaria por el portal público.">⚠ sin cuenta · no entra al CSV</span>}</span>
                         <span className="pg-prov-tot">{$(g.total)}</span>
                       </div>
                       {abierto.has(key) && (

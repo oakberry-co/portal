@@ -47,6 +47,15 @@ export async function GET(req: NextRequest) {
       ORDER BY nombre`,
     [cuenta]);
 
+  // CANDADO DEL ARCHIVO DEL BANCO: un proveedor SIN número de cuenta no puede
+  // salir en el CSV. Antes salía igual con el campo vacío (`num_cuenta ?? ""`):
+  // una línea rota que el banco rechaza o —peor— que alguien "arregla" a mano
+  // escribiendo una cuenta al vuelo, que es justo el agujero que estamos
+  // cerrando. Para un proveedor del intake la ÚNICA forma de tener cuenta es
+  // que su certificación bancaria se haya leído bien.
+  const sinCuenta = rows.filter((r) => !(r.num_cuenta ?? "").trim());
+  const pagables = rows.filter((r) => (r.num_cuenta ?? "").trim());
+
   const nombre = (r: Fila) => (r.titular_nombre ?? r.nombre ?? "").trim();
   const apellido = (r: Fila) => (r.titular_apellido ?? "").trim();
   const doc = (r: Fila) => (r.tipo_doc ?? "NIT");
@@ -56,20 +65,20 @@ export async function GET(req: NextRequest) {
   const lines: string[] = [];
   if (formato === "rappi") {
     lines.push(csvRow(["NOMBRE", "APELLIDOS", "TIPO DE DOCUMENTO", "NÚMERO DE DOCUMENTO", "BANCO", "CÓDIGO DE BANCO", "TIPO DE CUENTA", "NÚMERO DE CUENTA", "MONTO"]));
-    for (const r of rows) lines.push(csvRow([
+    for (const r of pagables) lines.push(csvRow([
       nombre(r), apellido(r), TIPO_DOC_FULL[doc(r)] ?? doc(r), numDoc(r),
       r.banco ?? "", codigoBanco(r.banco), tipoCta(r), r.num_cuenta ?? "", Math.round(r.monto),
     ]));
   } else if (formato === "davivienda") {
     lines.push(csvRow(["Tipo de Identificación", "Número de Identificación", "Nombre", "Apellido", "Código del Banco", "Tipo de Producto o Servicio", "Número del Producto o Servicio", "Valor del pago o de la recarga", "Referencia (Opcional)", "Correo Electronico (Opcional)", "Descripción o Detalle (Opcional)"]));
-    for (const r of rows) lines.push(csvRow([
+    for (const r of pagables) lines.push(csvRow([
       doc(r), numDoc(r), nombre(r), apellido(r), codigoBancoDavivienda(r.banco),
       tipoCta(r), r.num_cuenta ?? "", Math.round(r.monto), r.referencia ?? "", r.correo ?? "", "",
     ]));
   } else {
     // PSE / genérico: CSV legible para que quien pague vea línea por línea.
     lines.push(csvRow(["Proveedor", "NIT", "Banco", "Tipo de cuenta", "Número de cuenta", "Titular", "Documento", "Valor a pagar"]));
-    for (const r of rows) lines.push(csvRow([
+    for (const r of pagables) lines.push(csvRow([
       r.nombre ?? "", r.nit, r.banco ?? "", tipoCta(r), r.num_cuenta ?? "",
       (nombre(r) + " " + apellido(r)).trim(), `${doc(r)} ${numDoc(r)}`.trim(), Math.round(r.monto),
     ]));
@@ -78,10 +87,20 @@ export async function GET(req: NextRequest) {
   const csv = "﻿" + lines.join("\r\n") + "\r\n"; // BOM (Excel) + CRLF
   const fecha = new Date().toISOString().slice(0, 10);
   const slug = cuenta.toLowerCase().normalize("NFD").replace(/[^a-z0-9]/g, "");
-  return new NextResponse(csv, {
-    headers: {
-      "Content-Type": "text/csv; charset=utf-8",
-      "Content-Disposition": `attachment; filename="pagos_${slug}_${fecha}.csv"`,
-    },
-  });
+
+  // Lo excluido NUNCA se calla: un archivo con menos líneas de las esperadas se
+  // lee como "ya está todo pagado". Va en el nombre del archivo (que el humano
+  // SÍ ve) y en un header para quien lo consuma por programa.
+  const cabeceras: Record<string, string> = {
+    "Content-Type": "text/csv; charset=utf-8",
+    "Content-Disposition": `attachment; filename="pagos_${slug}_${fecha}`
+      + (sinCuenta.length ? `_FALTAN-${sinCuenta.length}` : "") + `.csv"`,
+    "X-Proveedores-Incluidos": String(pagables.length),
+    "X-Proveedores-Sin-Cuenta": String(sinCuenta.length),
+  };
+  if (sinCuenta.length) {
+    console.warn("[pagos/export] fuera del archivo por no tener cuenta bancaria: "
+      + sinCuenta.map((r) => `${r.nombre ?? r.nit} (${r.nit})`).join(", "));
+  }
+  return new NextResponse(csv, { headers: cabeceras });
 }
