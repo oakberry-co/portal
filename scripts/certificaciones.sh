@@ -1,0 +1,39 @@
+#!/bin/bash
+# Portal — lee las certificaciones bancarias que llegan por los portales públicos
+# y extrae la cuenta oficial del proveedor. Corre en la VM (ahí viven tesseract,
+# poppler y las credenciales de Drive; en Vercel no existe ninguno de los tres).
+#
+# Regla 17: el cron ES parte del módulo. Sin esto, el proveedor sube su
+# certificación, nadie la lee, la cuenta nunca queda certificada y no puede
+# entrar al archivo del banco — una trampa armada que solo se descubre el día
+# del pago.
+#
+# Cada 15 min en horas de oficina: el proveedor que acaba de enviar ve su estado
+# resuelto el mismo rato, no al otro día.
+set -e
+
+PORTAL="/home/daniel/proyectos/portal"
+PYTHON="/usr/bin/python3"
+LOGDIR="/home/daniel/proyectos/datawarehouse/logs"
+LOG="$LOGDIR/certificaciones_$(date +%Y%m%d).log"
+LOCKFILE="/tmp/oakberry_certificaciones.lock"
+
+mkdir -p "$LOGDIR"
+
+if [ -f "$LOCKFILE" ]; then
+    PID=$(cat "$LOCKFILE" 2>/dev/null)
+    if kill -0 "$PID" 2>/dev/null; then
+        echo "=== $(date '+%F %T') - ya corriendo (PID $PID), salto ===" >> "$LOG"
+        exit 0
+    fi
+    rm -f "$LOCKFILE"
+fi
+echo $$ > "$LOCKFILE"
+trap 'rm -f "$LOCKFILE"' EXIT
+
+cd "$PORTAL"
+echo "=== $(date '+%F %T') - leer certificaciones ===" >> "$LOG"
+$PYTHON scripts/leer_certificaciones.py --commit >> "$LOG" 2>&1
+echo "=== $(date '+%F %T') - done ===" >> "$LOG"
+
+find "$LOGDIR" -name "certificaciones_*.log" -mtime +30 -delete 2>/dev/null || true
