@@ -4,7 +4,7 @@
 // a Drive (vía el relay de la VM) y registra el envío en `cuentas_cobro` (estado
 // 'recibida'). Sin login: esta ruta está fuera del middleware. Contabilidad la
 // revisa en la bandeja.
-import { subirDocumentos, avisoDocs, archivosDelForm, registrarCertificacion } from "@/lib/intake";
+import { subirDocumentos, avisoDocs, archivosDelForm, registrarCertificacion, etiquetaEnvio } from "@/lib/intake";
 import { AREAS, CLASES_DOC, PLAZO_CUENTA_COBRO_DIAS } from "@/lib/areas";
 import { getPool } from "@/lib/db";
 
@@ -28,7 +28,8 @@ export async function enviarCuentaCobro(_prev: Resultado | null, formData: FormD
   // Subir documentos a Drive (vía la VM). Quedan en CONTABILIDAD/Intake, privados.
   // Su falla NO tumba el envío: el proveedor ya llenó el formulario.
   const { docs, fallidos } = await subirDocumentos(
-    archivosDelForm(formData, CLASES_DOC), "cuentas-de-cobro");
+    archivosDelForm(formData, CLASES_DOC), "cuentas-de-cobro",
+    { nit: numDoc, razon, envio: etiquetaEnvio() });
 
   // banco/tipo_cuenta/num_cuenta ya NO se piden: la cuenta sale de la
   // certificación bancaria que lee el sistema (columnas se dejan por historia).

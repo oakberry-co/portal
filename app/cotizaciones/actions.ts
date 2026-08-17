@@ -3,7 +3,7 @@
 // Recepción PÚBLICA de una cotización. Sube documentos a Drive (vía el relay de la
 // VM) y registra en `cotizaciones` (estado 'recibida') con un código COT-####.
 // Luego se le hacen abonos y se cruza con la factura final para no pagar doble.
-import { subirDocumentos, avisoDocs, archivosDelForm, registrarCertificacion } from "@/lib/intake";
+import { subirDocumentos, avisoDocs, archivosDelForm, registrarCertificacion, etiquetaEnvio } from "@/lib/intake";
 import { AREAS, CLASES_DOC } from "@/lib/areas";
 import { getPool } from "@/lib/db";
 
@@ -37,7 +37,8 @@ export async function enviarCotizacion(_prev: Resultado | null, formData: FormDa
   // Los documentos van a Drive, pero su falla NO tumba el envío: la cotización
   // se registra igual y lo que no subió queda marcado 'pendiente'.
   const { docs, fallidos } = await subirDocumentos(
-    archivosDelForm(formData, CLASES_DOC), "cotizaciones");
+    archivosDelForm(formData, CLASES_DOC), "cotizaciones",
+    { nit, razon, envio: etiquetaEnvio() });
 
   try {
     const pool = getPool();

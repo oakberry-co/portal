@@ -21,6 +21,20 @@ export type DocIntake = {
 export type ArchivoClasificado = { file: File; clase: string };
 export type ResultadoSubida = { docs: DocIntake[]; fallidos: number };
 
+/** Quién manda: define en qué carpeta de Drive caen sus documentos. */
+export type Remitente = { nit: string | null; razon: string; envio: string };
+
+/** Etiqueta de la carpeta del envío. Fecha y hora de BOGOTÁ (la VM vive en UTC:
+ *  sin esto, todo lo enviado después de las 7pm se archivaría al día siguiente). */
+export function etiquetaEnvio(): string {
+  const f = new Intl.DateTimeFormat("es-CO", {
+    timeZone: "America/Bogota", year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", hour12: false,
+  }).formatToParts(new Date());
+  const p = (t: string) => f.find((x) => x.type === t)?.value ?? "00";
+  return `${p("year")}-${p("month")}-${p("day")} ${p("hour")}${p("minute")}`;
+}
+
 function config() {
   return { url: process.env.INTAKE_UPLOAD_URL, secret: process.env.INTAKE_UPLOAD_SECRET };
 }
@@ -31,12 +45,17 @@ function config() {
  *  ('cuentas-de-cobro' | 'cotizaciones') para elegir la subcarpeta de Drive, y
  *  cualquier otra cosa cae en `Intake/Otros`. No meterle la clase de documento
  *  acá — para eso está `nombre`, que la pone al frente del archivo. */
-export async function subirAintake(file: File, tipo: string, nombre?: string): Promise<{ url: string; nombre: string }> {
+export async function subirAintake(file: File, tipo: string, nombre?: string,
+                                   quien?: Remitente): Promise<{ url: string; nombre: string }> {
   const { url, secret } = config();
   if (!url || !secret) throw new Error("Falta configurar la subida a Drive (INTAKE_UPLOAD_URL / INTAKE_UPLOAD_SECRET en Vercel).");
 
   const fd = new FormData();
   fd.set("tipo", tipo);
+  // El relay usa esto para armar `Intake/<tipo>/<NIT — Razón social>/<envío>/`.
+  if (quien?.nit) fd.set("nit", quien.nit);
+  if (quien?.razon) fd.set("razon", quien.razon);
+  if (quien?.envio) fd.set("envio", quien.envio);
   fd.set("file", file, nombre ?? file.name);
   const r = await fetch(url, { method: "POST", headers: { "X-Intake-Secret": secret }, body: fd });
   if (!r.ok) throw new Error("La subida falló (" + r.status + "): " + (await r.text()).slice(0, 200));
@@ -50,7 +69,8 @@ export async function subirAintake(file: File, tipo: string, nombre?: string): P
  *  llenó 2 minutos de formulario: si Drive falla, se guarda igual y el documento
  *  queda marcado `pendiente` para que el equipo lo pida. La alternativa —lo que
  *  hacía antes— era perder el envío completo. */
-export async function subirDocumentos(archivos: ArchivoClasificado[], tipo: string): Promise<ResultadoSubida> {
+export async function subirDocumentos(archivos: ArchivoClasificado[], tipo: string,
+                                      quien?: Remitente): Promise<ResultadoSubida> {
   const docs: DocIntake[] = [];
   let fallidos = 0;
   for (const { file: f, clase } of archivos) {
@@ -58,7 +78,7 @@ export async function subirDocumentos(archivos: ArchivoClasificado[], tipo: stri
       // La clase va al FRENTE del nombre ('rut__cedula-juan.pdf') para que quien
       // abra la carpeta en Drive sepa qué es sin abrir el archivo. La carpeta la
       // decide `tipo`, que debe quedar tal cual (ver subirAintake).
-      const up = await subirAintake(f, tipo, clase === "otro" ? f.name : `${clase}__${f.name}`);
+      const up = await subirAintake(f, tipo, clase === "otro" ? f.name : `${clase}__${f.name}`, quien);
       docs.push({ nombre: f.name, path: up.url, tipo: f.type, clase, estado: "subido" });
     } catch (e) {
       fallidos++;
