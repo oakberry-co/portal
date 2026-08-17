@@ -1,15 +1,12 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState } from "react";
 import { enviarCotizacion, type Resultado } from "./actions";
 import { CasillasDocumentos } from "../CasillasDocumentos";
-import { AREAS } from "@/lib/areas";
+import { AREAS, PLAZOS_NEGOCIADOS } from "@/lib/areas";
 
 export function FormCotizacion() {
   const [estado, action, pending] = useActionState<Resultado | null, FormData>(enviarCotizacion, null);
-  // El % solo aparece si pidió adelanto: preguntarlo siempre invita a llenarlo
-  // "por si acaso" y termina siendo un compromiso de pago que nadie acordó.
-  const [adelanto, setAdelanto] = useState(false);
 
   if (estado?.ok) {
     return (
@@ -58,19 +55,26 @@ export function FormCotizacion() {
         <textarea name="descripcion" rows={2} placeholder="Detalle de la propuesta" />
       </label>
 
-      <div className="pub-check">
-        <label className="pub-switch">
-          <input name="requiere_adelanto" type="checkbox" checked={adelanto}
-                 onChange={(e) => setAdelanto(e.target.checked)} />
-          <span>Requiere adelanto</span>
+      {/* El adelanto es OBLIGATORIO: este formulario existe solo para cotizaciones
+          con anticipo. Sin anticipo no hay nada que pagar por adelantado y el
+          trámite es la factura, que ya tiene su propio carril. */}
+      <div className="pub-row">
+        <label>% de adelanto *
+          <input name="adelanto_pct" required inputMode="decimal" min={1} max={100}
+                 type="number" step="1" placeholder="50" />
         </label>
-        {adelanto && (
-          <label className="pub-pct">% de adelanto *
-            <input name="adelanto_pct" required inputMode="decimal" min={1} max={100}
-                   type="number" step="1" placeholder="50" />
-          </label>
-        )}
+        <label>Plazo del saldo
+          <select name="plazo_dias" defaultValue="30">
+            {PLAZOS_NEGOCIADOS.map((p) => (
+              <option key={p.valor} value={p.valor}>{p.label}</option>
+            ))}
+          </select>
+        </label>
       </div>
+      <p className="pub-hint">
+        ¿No hay anticipo? Entonces no necesitas registrar la cotización: mándanos
+        directamente la factura a <b>compras@manelfoods.com</b>.
+      </p>
 
       <div className="pub-sec">Documentos</div>
       <p className="pub-hint">Toca cada uno para adjuntarlo. PDF o foto.</p>

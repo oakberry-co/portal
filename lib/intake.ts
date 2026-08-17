@@ -85,6 +85,31 @@ export function archivosDelForm(formData: FormData, clases: readonly { name: str
   return salida.slice(0, max);
 }
 
+/** Encola la certificación bancaria para que el lector la procese en la VM.
+ *
+ *  Se guarda la fila apenas llega el documento; NO se lee acá porque el OCR vive
+ *  en la VM (tesseract, poppler) y no en el runtime de Vercel. El lector corre
+ *  por cron, extrae banco/cuenta/titular y decide si la cuenta sirve. Hasta ese
+ *  momento el proveedor queda en 'pendiente' y no se puede aprobar. */
+export async function registrarCertificacion(
+  pool: { query: (q: string, v?: unknown[]) => Promise<unknown> },
+  origenTipo: "cuenta_cobro" | "cotizacion", origenId: number,
+  nit: string | null, docs: DocIntake[],
+): Promise<void> {
+  const cert = docs.find((d) => d.clase === "certificacion_bancaria" && d.estado === "subido");
+  if (!cert?.path) return;
+  const fileId = /\/d\/([A-Za-z0-9_-]{20,})/.exec(cert.path)?.[1] ?? null;
+  try {
+    await pool.query(
+      `INSERT INTO certificacion_bancaria (origen_tipo, origen_id, nit, drive_url, drive_file_id)
+       VALUES ($1,$2,$3,$4,$5)`,
+      [origenTipo, origenId, nit, cert.path, fileId]);
+  } catch (e) {
+    // Que no tumbe el envío del proveedor: la fila se puede recrear después.
+    console.error("[intake] no se pudo encolar la certificación:", e);
+  }
+}
+
 /** Mensaje para el proveedor cuando algún adjunto no llegó a Drive. Se le dice
  *  la verdad (su envío SÍ quedó) en vez de fallar en silencio o botarlo. */
 export function avisoDocs(fallidos: number): string | undefined {

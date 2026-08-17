@@ -60,20 +60,14 @@ export function FormCuentaCobro() {
         <textarea name="descripcion" rows={2} placeholder="Detalle del servicio o producto" />
       </label>
 
-      <div className="pub-sec">¿A dónde te pagamos?</div>
-      <div className="pub-row3">
-        <label>Banco<input name="banco" placeholder="Ej. Bancolombia" /></label>
-        <label>Tipo de cuenta
-          <select name="tipo_cuenta" defaultValue="">
-            <option value="">—</option><option value="ahorros">Ahorros</option>
-            <option value="corriente">Corriente</option><option value="deposito">Depósito</option>
-          </select>
-        </label>
-        <label>N° de cuenta<input name="num_cuenta" inputMode="numeric" placeholder="Número" /></label>
-      </div>
-
+      {/* Los campos de banco/cuenta se quitaron a propósito (2026-08-17): la cuenta
+          la lee el sistema de la CERTIFICACIÓN del banco. Teclearla era el punto
+          por donde entraban los errores de dígito y el fraude. */}
       <div className="pub-sec">Documentos</div>
-      <p className="pub-hint">Toca cada uno para adjuntarlo. PDF o foto.</p>
+      <p className="pub-hint">
+        Toca cada uno para adjuntarlo. PDF o foto. <b>Tu cuenta la tomamos de la
+        certificación bancaria</b>, así que no tienes que escribirla.
+      </p>
       <CasillasDocumentos />
 
       {estado?.error && <div className="pub-err">{estado.error}</div>}

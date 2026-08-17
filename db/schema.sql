@@ -421,8 +421,62 @@ ALTER TABLE cotizaciones ADD COLUMN IF NOT EXISTS numero_cotizacion TEXT;
 
 -- Anticipo: el proveedor declara si necesita adelanto y cuánto (% del valor). Se
 -- captura acá para que Pagos lo vea ANTES de programar el pago, no después.
+-- Desde 2026-08-17 el adelanto es OBLIGATORIO en el portal público: este módulo
+-- existe solo para cotizaciones con anticipo. Sin anticipo no hay nada que pagar
+-- por adelantado y el trámite normal es la factura DIAN, que ya tiene su carril.
 ALTER TABLE cotizaciones ADD COLUMN IF NOT EXISTS requiere_adelanto BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE cotizaciones ADD COLUMN IF NOT EXISTS adelanto_pct NUMERIC(5,2);
+-- Días negociados para el SALDO (informativo: precarga el plazo de la factura).
+ALTER TABLE cotizaciones ADD COLUMN IF NOT EXISTS plazo_dias INT;
+
+-- -----------------------------------------------------------------------------
+-- 13) LA CUENTA LA CERTIFICA EL BANCO, NO EL PROVEEDOR
+--
+-- Antes el proveedor TECLEABA banco/tipo/número en el formulario y eso viajaba
+-- hasta el CSV del pago masivo. Un dígito mal escrito manda plata a una cuenta
+-- ajena, y un estafador puede escribir la que quiera. Desde 2026-08-17 el
+-- proveedor solo sube la CERTIFICACIÓN BANCARIA (emitida por el banco) y el
+-- sistema la lee: lo extraído es la cuenta oficial.
+--
+-- Candado: un proveedor sin cuenta certificada NO entra al CSV de pago masivo.
+-- -----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS certificacion_bancaria (
+  id             BIGSERIAL PRIMARY KEY,
+  origen_tipo    TEXT NOT NULL,          -- 'cuenta_cobro' | 'cotizacion'
+  origen_id      BIGINT NOT NULL,
+  nit            TEXT,
+  drive_url      TEXT NOT NULL,          -- el PDF/foto tal como llegó
+  drive_file_id  TEXT,
+  -- Lo que el lector sacó del documento (NULL = no se pudo leer).
+  banco          TEXT,
+  tipo_cuenta    TEXT,                   -- ahorros | corriente
+  num_cuenta     TEXT,
+  titular        TEXT,
+  titular_doc    TEXT,
+  -- Veredicto. 'valida' habilita el pago; el resto lo bloquea y dispara correo.
+  estado         TEXT NOT NULL DEFAULT 'pendiente',
+                 -- pendiente | valida | ilegible | no_es_certificacion | no_coincide
+  motivo         TEXT,                   -- por qué se rechazó (va en el correo)
+  metodo         TEXT,                   -- texto_pdf | ocr
+  texto_crudo    TEXT,                   -- evidencia de lo leído (auditoría)
+  avisado_en     TIMESTAMPTZ,            -- cuándo se le escribió al proveedor
+  leido_en       TIMESTAMPTZ,
+  creado_en      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS ix_cert_origen ON certificacion_bancaria (origen_tipo, origen_id);
+CREATE INDEX IF NOT EXISTS ix_cert_estado ON certificacion_bancaria (estado);
+CREATE INDEX IF NOT EXISTS ix_cert_nit    ON certificacion_bancaria (nit);
+
+-- La cuenta de pago queda marcada con su procedencia: solo 'certificacion' puede
+-- ir al CSV del banco. 'humano' es lo que el equipo cargó a mano históricamente.
+ALTER TABLE cuentas_bancarias_proveedor ADD COLUMN IF NOT EXISTS certificacion_id BIGINT;
+ALTER TABLE cuentas_bancarias_proveedor ADD COLUMN IF NOT EXISTS certificada BOOLEAN NOT NULL DEFAULT FALSE;
+
+-- Plazo de las cuentas de cobro: 30 días desde que el proveedor la sube.
+ALTER TABLE cuentas_cobro ADD COLUMN IF NOT EXISTS fecha_pago_prog DATE;
+-- Enlace al pago que generó su aprobación (para no crear dos por la misma).
+ALTER TABLE cuentas_cobro ADD COLUMN IF NOT EXISTS pago_id BIGINT;
+ALTER TABLE cotizaciones  ADD COLUMN IF NOT EXISTS pago_id BIGINT;
 
 CREATE TABLE IF NOT EXISTS cotizacion_abonos (
   id              BIGSERIAL PRIMARY KEY,
