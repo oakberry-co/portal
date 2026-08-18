@@ -4,7 +4,7 @@ import { useMemo, useState, type ReactNode } from "react";
 import { revisarCotizacion, agregarAbono, enlazarFactura, quitarEnlace } from "./actions";
 import { docsFaltantes } from "@/lib/areas";
 import { bloqueoAprobacion, type CertEstado, type CuentaMaestro } from "@/lib/certificaciones";
-import { DocsIntake, PanelCuenta, type DocIntake } from "../_intake/PanelCuenta";
+import { CorreosIntake, DocsIntake, PanelCuenta, type CorreoEnviado, type DocIntake } from "../_intake/PanelCuenta";
 
 export type Cotizacion = {
   id: number; codigo: string | null; razon_social: string; nit: string;
@@ -16,7 +16,7 @@ export type Cotizacion = {
   estado: string; cufe_factura: string | null; nota_revision: string | null;
   revisado_por: string | null; creado_en: string;
   cuenta_pago: string | null; pago_id: number | null;
-  cert: CertEstado | null; cuenta: CuentaMaestro;
+  cert: CertEstado | null; cuenta: CuentaMaestro; correos: CorreoEnviado[];
   abono_total: number; abonos: { monto: number; fecha: string; cuenta: string | null }[];
   fact_numero: string | null; fact_total: number | null;
 };
@@ -130,6 +130,7 @@ export function CotizacionesView({ cots, candidatos }: { cots: Cotizacion[]; can
                   )
                 ) : null}
 
+                <CorreosIntake correos={c.correos} />
                 {c.nota_revision && <div className="cc-nota">📝 {c.nota_revision}</div>}
 
                 <div className="cc-acts">

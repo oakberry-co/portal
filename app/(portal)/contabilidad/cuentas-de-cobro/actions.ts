@@ -7,6 +7,7 @@ import { exigirCap } from "@/lib/auth";
 import { docsFaltantes, type DocGuardado, PLAZO_CUENTA_COBRO_DIAS } from "@/lib/areas";
 import { bloqueoAprobacion, type CertEstado, type CuentaMaestro } from "@/lib/certificaciones";
 import { aplicarCuentaCertificada } from "@/lib/cuenta-certificada";
+import { encolarCorreo } from "@/lib/correos";
 import type { PoolClient } from "pg";
 
 async function guard() {
@@ -25,11 +26,11 @@ const ESTADOS: Record<string, string> = {
  *  La bandeja ya los muestra, pero eso es la UI: entre que la página se pintó y
  *  alguien hizo clic pudieron llegar el documento que faltaba, o el veredicto
  *  del lector. Lo que decide es este SELECT, no lo que el navegador creía. */
-async function exigirAprobable(c: PoolClient, id: number): Promise<number> {
-  const { rows } = await c.query<{
+async function exigirAprobable(c: PoolClient, id: number): Promise<Aprobable> {
+  const { rows } = await c.query<Aprobable & {
     documentos: DocGuardado[]; cert: CertEstado | null; cuenta: CuentaMaestro;
   }>(
-    `SELECT cc.documentos,
+    `SELECT cc.documentos, cc.razon_social, cc.correo, cc.valor::float AS valor,
             to_jsonb(cert) AS cert,
             to_jsonb(cb)   AS cuenta
        FROM cuentas_cobro cc
@@ -47,8 +48,13 @@ async function exigirAprobable(c: PoolClient, id: number): Promise<number> {
   if (!r) throw new Error("Cuenta de cobro no encontrada.");
   const bloqueo = bloqueoAprobacion(docsFaltantes(r.documentos), r.cert, r.cuenta);
   if (bloqueo) throw new Error(bloqueo);
-  return r.cert!.id;
+  return { ...r, certId: r.cert!.id };
 }
+
+/** Lo que hace falta para aprobar Y para escribirle al proveedor. */
+type Aprobable = {
+  razon_social: string; correo: string | null; valor: number | null; certId: number;
+};
 
 /** Revisa una cuenta de cobro: aprobar / rechazar / devolver a revisión.
  *
@@ -69,8 +75,17 @@ export async function revisarCuentaCobro(fd: FormData) {
       // documento estaba leído pero su cuenta NO vivía en el maestro del que
       // sale el archivo del banco. Va en la MISMA transacción que el cambio de
       // estado — aprobado sin cuenta sería un pago que nunca puede salir.
-      const certId = await exigirAprobable(c, id);
-      await aplicarCuentaCertificada(c, certId, user);
+      const ap = await exigirAprobable(c, id);
+      await aplicarCuentaCertificada(c, ap.certId, user);
+      // El correo que le pide la factura. Va en esta misma transacción: si algo
+      // falla no queda ni la aprobación ni el correo (y si SES está caído, el
+      // correo se reintenta sin perder la aprobación).
+      await encolarCorreo(c, {
+        tipo: "aprobacion", origenTipo: "cuenta_cobro", origenId: id,
+        para: ap.correo, actor: user.email,
+        datos: { ref: `CC-${id}`, proveedor: ap.razon_social, valor: ap.valor,
+                 plazo_dias: PLAZO_CUENTA_COBRO_DIAS },
+      });
     }
     if (accion === "reabrir") {
       // Un pago registrado no se deshace devolviendo el envío a la bandeja: el

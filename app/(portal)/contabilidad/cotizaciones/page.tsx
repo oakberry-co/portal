@@ -19,6 +19,7 @@ async function cargar(): Promise<{ cots: Cotizacion[]; candidatos: CandidataFact
            cot.plazo_dias, cot.estado, cot.cufe_factura, cot.nota_revision, cot.revisado_por,
            cot.creado_en::text AS creado_en, cot.cuenta_pago, cot.pago_id,
            to_jsonb(cert) AS cert, to_jsonb(cb) AS cuenta,
+           coalesce(cor.lista, '[]') AS correos,
            coalesce((SELECT sum(monto) FROM cotizacion_abonos a WHERE a.cotizacion_id = cot.id),0)::float AS abono_total,
            coalesce((SELECT json_agg(json_build_object('monto', monto, 'fecha', fecha::text, 'cuenta', cuenta_pago) ORDER BY fecha)
                      FROM cotizacion_abonos a WHERE a.cotizacion_id = cot.id), '[]') AS abonos,
@@ -29,6 +30,11 @@ async function cargar(): Promise<{ cots: Cotizacion[]; candidatos: CandidataFact
       LEFT JOIN LATERAL (
         SELECT y.banco, y.tipo_cuenta, y.num_cuenta, y.certificada
           FROM cuentas_bancarias_proveedor y WHERE y.nit = cot.nit) cb ON TRUE
+      LEFT JOIN LATERAL (
+        SELECT json_agg(json_build_object('tipo', tipo, 'estado', estado,
+                        'enviado_en', enviado_en::text, 'error', left(error, 120))
+                        ORDER BY id) AS lista
+          FROM correo_saliente WHERE origen_tipo = 'cotizacion' AND origen_id = cot.id) cor ON TRUE
      ORDER BY cot.creado_en DESC LIMIT 500`);
   const cand = await pool.query<CandidataFactura>(`
     SELECT f.cufe, f.numero, f.nit_proveedor AS nit, f.total::float AS total

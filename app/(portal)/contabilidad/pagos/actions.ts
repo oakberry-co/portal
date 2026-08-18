@@ -5,6 +5,7 @@ import { withTx } from "@/lib/db";
 import { registrarEvento } from "@/lib/eventos";
 import { exigirCap } from "@/lib/auth";
 import { syncAbono } from "@/lib/abonos";
+import { encolarCorreo } from "@/lib/correos";
 import type { PoolClient } from "pg";
 
 // Tablero de pagos (3 columnas):
@@ -225,15 +226,17 @@ export async function confirmarPagoIntake(fd: FormData) {
   await withTx(async (c: PoolClient) => {
     const q = tipo === "cuenta_cobro"
       ? `SELECT id, razon_social AS nombre, num_doc AS nit, estado, cuenta_pago, pago_id,
-                coalesce(valor,0) AS debido, 'CC-' || id AS ref
+                correo, coalesce(valor,0) AS debido, 0 AS saldo, 'CC-' || id AS ref
            FROM cuentas_cobro WHERE id = $1 FOR UPDATE`
       : `SELECT id, razon_social AS nombre, nit, estado, cuenta_pago, pago_id,
-                round(coalesce(valor,0) * coalesce(adelanto_pct,0) / 100) AS debido,
+                correo, round(coalesce(valor,0) * coalesce(adelanto_pct,0) / 100) AS debido,
+                coalesce(valor,0) - round(coalesce(valor,0) * coalesce(adelanto_pct,0) / 100) AS saldo,
                 coalesce(codigo, 'COT-' || id) AS ref
            FROM cotizaciones WHERE id = $1 FOR UPDATE`;
     const { rows } = await c.query<{
-      id: number; nombre: string; nit: string; estado: string;
-      cuenta_pago: string | null; pago_id: number | null; debido: string; ref: string;
+      id: number; nombre: string; nit: string; estado: string; correo: string | null;
+      cuenta_pago: string | null; pago_id: number | null; debido: string;
+      saldo: string; ref: string;
     }>(q, [id]);
     const s = rows[0];
     if (!s) throw new Error("Solicitud no encontrada.");
@@ -267,6 +270,17 @@ export async function confirmarPagoIntake(fd: FormData) {
         [id, monto, fecha, s.cuenta_pago, comprobante, user.email]);
       await syncAbono(c, id);
     }
+
+    // "Ya te pagamos": va en el MISMO HILO del correo de aprobación (el emisor
+    // encadena por Message-ID) con el soporte adjunto. Si no hay comprobante, el
+    // correo le dice que revise su cuenta — pero se manda igual: el proveedor
+    // tiene que saber que salió la plata.
+    await encolarCorreo(c, {
+      tipo: "pago_hecho", origenTipo: tipo, origenId: id,
+      para: s.correo, actor: user.email, adjuntoUrl: comprobante,
+      datos: { ref: s.ref, proveedor: s.nombre, monto, fecha,
+               saldo: tipo === "cotizacion" ? Number(s.saldo) : 0 },
+    });
 
     await registrarEvento(c, {
       cufe: null, tipo: "confirma_pago_intake", campo: "pago",

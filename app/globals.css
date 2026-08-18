@@ -959,6 +959,12 @@ button.ghost { background: #fff; color: var(--purple); }
 .cc-cambio-acts { display: flex; gap: 8px; margin-top: 9px; flex-wrap: wrap; }
 .cc-bloqueo { margin-top: 8px; background: #fdeef0; border: 1px solid rgba(192,57,43,.25);
   border-radius: 11px; padding: 10px 13px; font-size: 12.5px; color: var(--danger); line-height: 1.5; }
+/* Qué se le ha escrito al proveedor: el loop humano cerrado, a la vista. */
+.cc-correos { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 2px; }
+.cc-correo { font-size: 11.5px; border-radius: 999px; padding: 3px 11px; font-weight: 600;
+  background: var(--cream-2); color: var(--lav); border: 1px solid var(--border); }
+.cc-correo.enviado { background: #e6f4ea; color: #1e7d47; border-color: rgba(39,174,96,.28); }
+.cc-correo.fallido { background: #fdeef0; color: var(--danger); border-color: rgba(192,57,43,.28); }
 .cc-enpagos { font-size: 12px; font-weight: 700; color: var(--purple); background: var(--lav-soft);
   border-radius: 999px; padding: 4px 12px; }
 .cc-act.ghost { background: #fff; color: var(--purple); border: 1px solid var(--border-lav); }

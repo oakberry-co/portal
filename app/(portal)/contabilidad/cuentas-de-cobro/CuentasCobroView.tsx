@@ -4,7 +4,7 @@ import { useState, type ReactNode } from "react";
 import { revisarCuentaCobro } from "./actions";
 import { docsFaltantes } from "@/lib/areas";
 import { bloqueoAprobacion, type CertEstado, type CuentaMaestro } from "@/lib/certificaciones";
-import { DocsIntake, PanelCuenta, type DocIntake } from "../_intake/PanelCuenta";
+import { CorreosIntake, DocsIntake, PanelCuenta, type CorreoEnviado, type DocIntake } from "../_intake/PanelCuenta";
 
 export type CuentaCobro = {
   id: number; razon_social: string; tipo_doc: string | null; num_doc: string;
@@ -13,7 +13,7 @@ export type CuentaCobro = {
   documentos: DocIntake[];
   estado: string; nota_revision: string | null; revisado_por: string | null; creado_en: string;
   fecha_pago_prog: string | null; cuenta_pago: string | null; pago_id: number | null;
-  cert: CertEstado | null; cuenta: CuentaMaestro;
+  cert: CertEstado | null; cuenta: CuentaMaestro; correos: CorreoEnviado[];
 };
 
 const cop = new Intl.NumberFormat("es-CO", { style: "currency", currency: "COP", maximumFractionDigits: 0 });
@@ -85,6 +85,7 @@ export function CuentasCobroView({ items }: { items: CuentaCobro[] }) {
                 <DocsIntake docs={c.documentos ?? []} />
                 <PanelCuenta cert={c.cert} cuenta={c.cuenta} bloqueo={c.estado === "recibida" ? bloqueo : null} />
 
+                <CorreosIntake correos={c.correos} />
                 {c.nota_revision && <div className="cc-nota">📝 {c.nota_revision}</div>}
                 {c.revisado_por && <div className="muted mini">Revisó: {c.revisado_por.split("@")[0]}</div>}
 

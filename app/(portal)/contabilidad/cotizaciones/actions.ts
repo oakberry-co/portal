@@ -8,6 +8,7 @@ import { docsFaltantes, type DocGuardado } from "@/lib/areas";
 import { bloqueoAprobacion, type CertEstado, type CuentaMaestro } from "@/lib/certificaciones";
 import { syncAbono } from "@/lib/abonos";
 import { aplicarCuentaCertificada } from "@/lib/cuenta-certificada";
+import { encolarCorreo } from "@/lib/correos";
 import type { PoolClient } from "pg";
 
 async function guard() {
@@ -26,12 +27,13 @@ const ESTADOS: Record<string, string> = {
  *  aprobar (la bandeja los muestra, pero decide el servidor), más el que es
  *  propio de este módulo: sin adelanto no hay nada que llevar a Pagos — una
  *  cotización sin anticipo se paga por su factura, que ya tiene su carril. */
-async function exigirAprobable(c: PoolClient, id: number): Promise<number> {
-  const { rows } = await c.query<{
+async function exigirAprobable(c: PoolClient, id: number): Promise<Aprobable> {
+  const { rows } = await c.query<Aprobable & {
     documentos: DocGuardado[]; cert: CertEstado | null; cuenta: CuentaMaestro;
     valor: string | null; adelanto_pct: string | null; requiere_adelanto: boolean;
   }>(
     `SELECT cot.documentos, cot.valor, cot.adelanto_pct, cot.requiere_adelanto,
+            cot.razon_social, cot.correo, cot.codigo, cot.plazo_dias,
             to_jsonb(cert) AS cert, to_jsonb(cb) AS cuenta
        FROM cotizaciones cot
        LEFT JOIN LATERAL (
@@ -52,8 +54,16 @@ async function exigirAprobable(c: PoolClient, id: number): Promise<number> {
     throw new Error("Esta cotización no tiene adelanto (valor y %) — no hay monto que pasar a Pagos. "
                   + "Sin anticipo el trámite es la factura del proveedor.");
   }
-  return r.cert!.id;
+  return { ...r, certId: r.cert!.id,
+           adelanto: Math.round(Number(r.valor) * Number(r.adelanto_pct) / 100) };
 }
+
+/** Lo que hace falta para aprobar Y para escribirle al proveedor. */
+type Aprobable = {
+  razon_social: string; correo: string | null; codigo: string | null;
+  valor: string | null; adelanto_pct: string | null; plazo_dias: number | null;
+  certId: number; adelanto: number;
+};
 
 export async function revisarCotizacion(fd: FormData) {
   const user = await guard();
@@ -66,8 +76,15 @@ export async function revisarCotizacion(fd: FormData) {
     if (accion === "aprobar") {
       // Igual que en cuentas de cobro: aprobar escribe la cuenta certificada en
       // el maestro, en la misma transacción.
-      const certId = await exigirAprobable(c, id);
-      await aplicarCuentaCertificada(c, certId, user);
+      const ap = await exigirAprobable(c, id);
+      await aplicarCuentaCertificada(c, ap.certId, user);
+      await encolarCorreo(c, {
+        tipo: "aprobacion", origenTipo: "cotizacion", origenId: id,
+        para: ap.correo, actor: user.email,
+        datos: { ref: ap.codigo ?? `COT-${id}`, proveedor: ap.razon_social,
+                 valor: Number(ap.valor), adelanto: ap.adelanto,
+                 adelanto_pct: Number(ap.adelanto_pct), plazo_dias: ap.plazo_dias },
+      });
     }
     if (accion === "reabrir") {
       const { rows } = await c.query<{ pago_id: number | null }>(

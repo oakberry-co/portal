@@ -628,4 +628,51 @@ CREATE INDEX IF NOT EXISTS ix_cot_pago ON cotizaciones  (pago_id);
 ALTER TABLE certificacion_bancaria ADD COLUMN IF NOT EXISTS aplicada        BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE certificacion_bancaria ADD COLUMN IF NOT EXISTS cuenta_anterior TEXT;
 
+-- -----------------------------------------------------------------------------
+-- 15) CORREO AL PROVEEDOR — cola en la base, envía la VM
+--
+-- Tres correos cierran el ciclo del intake: "tu certificación no sirve",
+-- "aprobamos, mándanos la factura" y "ya te pagamos, aquí está el soporte".
+-- Sin ellos el proveedor queda esperando sin saber por qué (Regla 18: un loop
+-- humano que no cierra quema la confianza peor que no pedir nada).
+--
+-- Por qué una COLA y no mandar desde el portal:
+--   · las llaves de SES viven en la VM (Secret Manager), no en Vercel;
+--   · el correo se encola en la MISMA transacción que aprueba o paga -> si la
+--     transacción se cae no sale correo, y si SES falla no se pierde la
+--     aprobación: se reintenta (Regla 8: lo fallido es reintentable);
+--   · el TEXTO lo arma el que envía, no el que encola -> cambiar la redacción
+--     no exige un deploy, y el lector de certificaciones (Python) y el portal
+--     (TypeScript) mandan exactamente el mismo correo.
+--
+-- El canal es la propia base, igual que `sync_solicitudes`: sin puertos nuevos.
+-- -----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS correo_saliente (
+  id            BIGSERIAL PRIMARY KEY,
+  tipo          TEXT NOT NULL,        -- certificacion_invalida | aprobacion | pago_hecho
+  origen_tipo   TEXT NOT NULL,        -- cuenta_cobro | cotizacion
+  origen_id     BIGINT NOT NULL,
+  para          TEXT NOT NULL,
+  cc            TEXT,
+  datos         JSONB NOT NULL DEFAULT '{}',   -- lo que necesita la plantilla
+  adjunto_url   TEXT,                 -- soporte de pago (Drive) que va adjunto
+  -- MISMO HILO: el correo del pago responde al de la aprobación. Se guarda el
+  -- Message-ID que devolvió SES para poder encadenar In-Reply-To/References.
+  hilo_ref      TEXT,
+  message_id    TEXT,
+  asunto        TEXT,                 -- lo escribe el emisor al renderizar (auditoría)
+  estado        TEXT NOT NULL DEFAULT 'pendiente',  -- pendiente | enviado | fallido | cancelado
+  intentos      INT  NOT NULL DEFAULT 0,
+  error         TEXT,
+  creado_por    TEXT,
+  creado_en     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  enviado_en    TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS ix_correo_pendiente ON correo_saliente (estado, creado_en);
+CREATE INDEX IF NOT EXISTS ix_correo_origen    ON correo_saliente (origen_tipo, origen_id);
+-- Un correo por hecho: si alguien reabre y vuelve a aprobar, el proveedor no
+-- recibe el mismo aviso dos veces (el ON CONFLICT del emisor se apoya en esto).
+CREATE UNIQUE INDEX IF NOT EXISTS ux_correo_hecho
+  ON correo_saliente (tipo, origen_tipo, origen_id);
+
 COMMIT;

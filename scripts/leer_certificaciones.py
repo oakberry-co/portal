@@ -221,6 +221,40 @@ def descargar(token: str, file_id: str) -> tuple[str, bool] | None:
 RE_ID_DRIVE = re.compile(r"/d/([A-Za-z0-9_-]{20,})")
 
 
+ORIGEN_TABLA = {"cuenta_cobro": ("cuentas_cobro", "num_doc"),
+                "cotizacion": ("cotizaciones", "nit")}
+
+
+def encolar_aviso(cur, cid: int, otipo: str, oid: int, motivo: str) -> bool:
+    """Le pide al proveedor el documento REAL del banco.
+
+    Sin este correo el proveedor sube un papel que no sirve, no se entera, y su
+    solicitud se queda quieta para siempre esperando una cuenta que nunca va a
+    llegar (Regla 18: el loop humano tiene que cerrar).
+
+    Idempotente por partida doble: `avisado_en` marca que ya se avisó y el
+    índice único de `correo_saliente` impide el duplicado aunque se relea la
+    misma certificación.
+    """
+    tabla, _ = ORIGEN_TABLA.get(otipo, (None, None))
+    if not tabla:
+        return False
+    cur.execute(f"SELECT razon_social, correo FROM {tabla} WHERE id=%s", (oid,))
+    fila = cur.fetchone()
+    if not fila or not (fila[1] or "").strip():
+        return False                      # no dejó correo: la bandeja lo muestra
+    cur.execute("""INSERT INTO correo_saliente
+                     (tipo, origen_tipo, origen_id, para, datos, creado_por)
+                   VALUES ('certificacion_invalida', %s, %s, %s,
+                           jsonb_build_object('proveedor', %s::text, 'motivo', %s::text),
+                           'lector_certificaciones')
+                   ON CONFLICT (tipo, origen_tipo, origen_id) DO NOTHING""",
+                (otipo, oid, fila[1].strip(), fila[0], motivo))
+    encolado = cur.rowcount > 0
+    cur.execute("UPDATE certificacion_bancaria SET avisado_en=now() WHERE id=%s", (cid,))
+    return encolado
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -287,6 +321,15 @@ def main() -> int:
                         WHERE id=%s""",
                     (d["banco"], d["tipo_cuenta"], d["num_cuenta"], d["titular_doc"],
                      estado, motivo, metodo, texto[:8000], cid))
+
+        # Certificación que no sirve -> se le pide al proveedor la de verdad.
+        if estado in ("ilegible", "no_es_certificacion"):
+            try:
+                if encolar_aviso(cur, cid, otipo, oid, motivo or estado):
+                    res["aviso_encolado"] += 1
+            except Exception as e:                    # Regla 12: un correo que
+                print(f"    (no se pudo encolar el aviso: {e})")   # falla no
+                                                      # tumba la lectura del lote
 
         # El lector NO escribe la cuenta en el maestro. A propósito.
         #

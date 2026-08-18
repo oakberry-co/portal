@@ -41,6 +41,35 @@ function ChipDoc({ doc, etiqueta }: { doc: DocIntake; etiqueta: string }) {
   return <a href={doc.path} target="_blank" rel="noopener noreferrer" className="cc-doc">📎 {etiqueta}</a>;
 }
 
+/** Qué se le ha escrito al proveedor. Sin esto, el equipo no sabe si el
+ *  proveedor ya se enteró y termina escribiéndole por WhatsApp "por si acaso"
+ *  (Regla 18: el loop humano tiene que cerrar Y verse). */
+export type CorreoEnviado = { tipo: string; estado: string; enviado_en: string | null; error: string | null };
+
+const NOMBRE_CORREO: Record<string, string> = {
+  certificacion_invalida: "le pedimos la certificación real",
+  aprobacion: "le avisamos que aprobamos y le pedimos la factura",
+  pago_hecho: "le avisamos que le pagamos",
+};
+
+export function CorreosIntake({ correos }: { correos: CorreoEnviado[] }) {
+  if (!correos?.length) return null;
+  const dia = (s: string | null) =>
+    s ? new Date(s).toLocaleDateString("es-CO", { day: "2-digit", month: "short" }) : "";
+  return (
+    <div className="cc-correos">
+      {correos.map((c, i) => (
+        <span key={i} className={"cc-correo " + c.estado}
+              title={c.error ?? (c.estado === "enviado" ? "Enviado por correo" : "En cola de envío")}>
+          {c.estado === "enviado" ? "✉️" : c.estado === "fallido" ? "⚠️" : "🕓"}{" "}
+          {NOMBRE_CORREO[c.tipo] ?? c.tipo}
+          {c.estado === "enviado" ? ` · ${dia(c.enviado_en)}` : c.estado === "fallido" ? " · no salió" : " · en cola"}
+        </span>
+      ))}
+    </div>
+  );
+}
+
 /** La cuenta a la que se pagaría + por qué no se puede aprobar todavía. */
 export function PanelCuenta({ cert, cuenta, bloqueo }: {
   cert: CertEstado | null; cuenta: CuentaMaestro; bloqueo: string | null;

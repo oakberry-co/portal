@@ -18,12 +18,18 @@ async function cargar(): Promise<CuentaCobro[]> {
             cc.documentos, cc.estado, cc.nota_revision, cc.revisado_por,
             cc.creado_en::text AS creado_en, cc.fecha_pago_prog::text AS fecha_pago_prog,
             cc.cuenta_pago, cc.pago_id,
-            to_jsonb(cert) AS cert, to_jsonb(cb) AS cuenta
+            to_jsonb(cert) AS cert, to_jsonb(cb) AS cuenta,
+            coalesce(cor.lista, '[]') AS correos
        FROM cuentas_cobro cc
        ${sqlCertificacion("cuenta_cobro", "cc.id")}
        LEFT JOIN LATERAL (
          SELECT y.banco, y.tipo_cuenta, y.num_cuenta, y.certificada
            FROM cuentas_bancarias_proveedor y WHERE y.nit = cc.num_doc) cb ON TRUE
+       LEFT JOIN LATERAL (
+         SELECT json_agg(json_build_object('tipo', tipo, 'estado', estado,
+                            'enviado_en', enviado_en::text, 'error', left(error, 120))
+                            ORDER BY id) AS lista
+           FROM correo_saliente WHERE origen_tipo = 'cuenta_cobro' AND origen_id = cc.id) cor ON TRUE
       ORDER BY cc.creado_en DESC LIMIT 500`);
   return r.rows;
 }
