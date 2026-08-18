@@ -4,7 +4,7 @@ import { ConciliacionView } from "./ConciliacionView";
 import { SyncPanel } from "./SyncPanel";
 import { getCurrentUser } from "@/lib/auth";
 import { puede } from "@/lib/permisos";
-import type { FacturaRow } from "./FacturaCard";
+import type { CotConAbono, FacturaRow } from "./FacturaCard";
 
 export const dynamic = "force-dynamic"; // siempre lee el estado vivo
 
@@ -22,7 +22,7 @@ function hora(d: Date): string {
   return d.toLocaleString("es-CO", { timeZone: "America/Bogota", hour: "2-digit", minute: "2-digit" });
 }
 
-async function cargar(): Promise<{ filas: FacturaRow[]; conceptos: string[]; destinos: string[]; sync: SyncStatus }> {
+async function cargar(): Promise<{ filas: FacturaRow[]; conceptos: string[]; destinos: string[]; sync: SyncStatus; cotizaciones: CotConAbono[] }> {
   const pool = getPool();
   const filas = await pool.query<FacturaRow>(
     `SELECT f.cufe, f.nombre_proveedor, f.nit_proveedor, f.numero, f.fecha_emision,
@@ -31,6 +31,8 @@ async function cargar(): Promise<{ filas: FacturaRow[]; conceptos: string[]; des
             e.retencion_ok, e.reten_total, e.retefuente, e.reteiva, e.reteica, e.valor_a_pagar,
             e.otros_valor, e.otros_concepto, e.observaciones,
             e.pago_estado, e.fecha_pago_prog,
+            coalesce(e.abono_aplicado,0)::float AS abono_aplicado,
+            cot.id AS cot_id, cot.codigo AS cot_codigo,
             COALESCE(p.concepto_sug, mp.concepto_default) AS concepto_sug,
             COALESCE(p.destino_sug, mp.destino_default) AS destino_sug,
             p.confianza, mp.plazo_dias AS plazo_sug,
@@ -50,8 +52,20 @@ async function cargar(): Promise<{ filas: FacturaRow[]; conceptos: string[]; des
          FROM maestro_retenciones GROUP BY nit_proveedor
        ) mr ON mr.nit_proveedor = f.nit_proveedor
        LEFT JOIN v_factura_soportes vs USING (cufe)
+       -- La cotización cuyo adelanto ya se aplicó a esta factura (el cruce).
+       LEFT JOIN cotizaciones cot ON cot.cufe_factura = f.cufe
       ORDER BY (e.estado = 'capturada') DESC, f.fecha_emision DESC`
   );
+  // Cotizaciones con abono que todavía no se cruzaron con su factura: es lo que
+  // ofrece el botón "Abono" de la grilla. Sin abono no hay nada que descontar.
+  const cots = await pool.query<CotConAbono>(`
+    SELECT cot.id, coalesce(cot.codigo, 'COT-' || cot.id) AS codigo, cot.razon_social, cot.nit,
+           cot.valor::float AS valor,
+           coalesce((SELECT sum(monto) FROM cotizacion_abonos a WHERE a.cotizacion_id = cot.id),0)::float AS abonado
+      FROM cotizaciones cot
+     WHERE cot.cufe_factura IS NULL
+       AND EXISTS (SELECT 1 FROM cotizacion_abonos a WHERE a.cotizacion_id = cot.id)
+     ORDER BY cot.creado_en DESC LIMIT 300`);
   const c = await pool.query<{ nombre: string }>("SELECT nombre FROM maestro_conceptos WHERE activo ORDER BY nombre");
   const d = await pool.query<{ nombre: string }>("SELECT nombre FROM maestro_destinos WHERE activo ORDER BY nombre");
 
@@ -70,7 +84,7 @@ async function cargar(): Promise<{ filas: FacturaRow[]; conceptos: string[]; des
       : null,
   };
 
-  return { filas: filas.rows, conceptos: c.rows.map((r) => r.nombre), destinos: d.rows.map((r) => r.nombre), sync };
+  return { cotizaciones: cots.rows, filas: filas.rows, conceptos: c.rows.map((r) => r.nombre), destinos: d.rows.map((r) => r.nombre), sync };
 }
 
 export default async function ConciliacionPage() {
@@ -95,7 +109,7 @@ export default async function ConciliacionPage() {
     );
   }
 
-  const { filas, conceptos, destinos, sync } = data;
+  const { filas, conceptos, destinos, sync, cotizaciones } = data;
   const { rol } = await getCurrentUser();
   const puedeClasificar = puede(rol, "clasificar");  // contador (causador) = false
 
@@ -103,7 +117,7 @@ export default async function ConciliacionPage() {
     <div className="container">
       <h1>🧾 Conciliación de pagos</h1>
       <SyncPanel ultima={sync.ultima} nuevas={sync.nuevas} pendiente={sync.pendiente} />
-      <ConciliacionView filas={filas} conceptos={conceptos} destinos={destinos} puedeClasificar={puedeClasificar} puedeExport={puedeClasificar} />
+      <ConciliacionView filas={filas} conceptos={conceptos} destinos={destinos} cotizaciones={cotizaciones} puedeClasificar={puedeClasificar} puedeExport={puedeClasificar} />
 
       <p className="chain-note">
         🔒 Cada guardado escribe el cambio <em>y</em> su evento en la misma transacción; la bitácora

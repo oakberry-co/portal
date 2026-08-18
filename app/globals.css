@@ -84,6 +84,34 @@ code {
 .nav-link:hover { background: var(--lav-soft); }
 .nav-link.soon { color: var(--lav) !important; cursor: default; }
 .nav-link.soon:hover { background: transparent; }
+
+/* --- Menú agrupado (Dashboard · Contabilidad · Causaciones · Configuraciones) --
+   Al esconder enlaces en un desplegable se pierde el "dónde estoy", así que el
+   grupo de la página actual va marcado y su ítem resaltado. */
+.nav-grupo { position: relative; }
+.nav-btn { background: none; border: none; font: inherit; cursor: pointer;
+  display: inline-flex; align-items: center; gap: 5px; }
+.nav-caret { font-size: 9px; opacity: .6; }
+.nav-btn.on { background: var(--lav-soft); }
+.nav-link.activo { color: var(--purple-deep) !important; background: var(--lav-soft); font-weight: 800; }
+.nav-drop {
+  position: absolute; top: calc(100% + 6px); left: 0; z-index: 40; min-width: 232px;
+  background: #fff; border: 1px solid var(--border); border-radius: 12px;
+  box-shadow: 0 12px 32px rgba(47,42,58,.14); padding: 6px; display: flex; flex-direction: column;
+}
+.nav-drop-item {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 9px 11px; border-radius: 8px; font-size: 13px; font-weight: 600;
+  color: var(--ink) !important; text-decoration: none !important; white-space: nowrap;
+}
+.nav-drop-item:hover { background: var(--lav-soft); text-decoration: none !important; }
+.nav-drop-item.activo { background: var(--lav-soft); color: var(--purple-deep) !important; font-weight: 800; }
+.nav-drop-item.soon { color: var(--lav) !important; cursor: default; }
+.nav-drop-item.soon:hover { background: transparent; }
+.nav-drop-item.soon i {
+  font-style: normal; font-size: 9px; text-transform: uppercase; letter-spacing: .06em;
+  background: var(--cream-2); color: var(--lav); border-radius: 999px; padding: 2px 7px;
+}
 .nav-link.soon i {
   font-style: normal; font-family: var(--mono); font-size: 8.5px; text-transform: uppercase;
   letter-spacing: .08em; color: var(--lav);
@@ -310,6 +338,30 @@ button.ghost { background: #fff; color: var(--purple); }
 .cd-toggle { font-size: 8.5px; font-weight: 700; padding: 2px 7px; border-radius: 999px; cursor: pointer; border: 1px solid; margin-top: 2px; width: fit-content; }
 .cd-toggle.cred { color: var(--ok); background: rgba(39,174,96,.1); border-color: rgba(39,174,96,.3); }
 .cd-toggle.deb { color: var(--coral); background: rgba(232,89,60,.1); border-color: rgba(232,89,60,.35); }
+/* ABONO: no es un tercer estado de crédito/débito (la factura sigue siendo
+   crédito). Es el cruce con la cotización cuyo adelanto ya se pagó, por eso
+   solo aparece en crédito y muestra el monto que se va a descontar. */
+.cd-toggle.abono { background: #fff; color: var(--lav) !important; border: 1px solid var(--border-lav); }
+.cd-toggle.abono:hover:not(:disabled) { border-color: var(--purple); color: var(--purple) !important; }
+.cd-toggle.abono.on { background: #fff8e6; color: #8a6100 !important; border-color: rgba(212,160,23,.45); font-weight: 800; }
+
+/* Modal del cruce factura ↔ cotización abonada */
+.ab-ayuda, .ab-vacio { font-size: 13px; color: var(--lav); line-height: 1.55; margin: 0 18px 12px; }
+.ab-lista { display: flex; flex-direction: column; gap: 6px; margin: 0 18px 18px; max-height: 46vh; overflow-y: auto; }
+.ab-item { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 10px;
+  width: 100%; text-align: left; background: #fff; border: 1px solid var(--border); border-radius: 10px;
+  padding: 10px 12px; cursor: pointer; font: inherit; }
+.ab-item:hover:not(:disabled) { border-color: var(--purple); background: var(--lav-soft); }
+.ab-cod { font-size: 11px; color: var(--purple); background: var(--lav-soft); border-radius: 6px; padding: 2px 7px; }
+.ab-nom { font-size: 13px; font-weight: 700; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ab-nom i { font-style: normal; font-weight: 400; font-size: 11px; color: var(--coral); }
+.ab-mto { text-align: right; font-size: 12px; color: var(--lav); white-space: nowrap; }
+.ab-mto b { display: block; color: #8a6100; font-size: 13px; }
+.ab-mto i { font-style: normal; font-size: 10.5px; }
+.ab-cruzada { margin: 0 18px 18px; background: #fff8e6; border: 1px solid rgba(212,160,23,.35);
+  border-radius: 12px; padding: 13px 15px; font-size: 13.5px; color: #6b4d05; line-height: 1.6; }
+.ab-cruzada p { margin: 0 0 10px; }
+.ab-saldo { color: var(--coral); }
 .cd-toggle:hover:not(:disabled) { filter: brightness(1.05); }
 .c-prov { min-width: 0; }
 .c-prov .prov { font-size: 12.5px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

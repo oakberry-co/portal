@@ -3,8 +3,13 @@
 import { memo, useState, useTransition } from "react";
 import { type Estado } from "@/lib/estados";
 import { Combobox } from "./Combobox";
-import { guardarClasificacion, marcarTipoPago } from "./actions";
+import { guardarClasificacion, marcarTipoPago, cruzarConCotizacion, quitarCruceCotizacion } from "./actions";
 import { RetencionesModal } from "./RetencionesModal";
+
+/** Cotización con adelanto ya pagado, todavía sin factura cruzada. */
+export type CotConAbono = {
+  id: number; codigo: string; razon_social: string; nit: string; valor: number; abonado: number;
+};
 
 export type FacturaRow = {
   cufe: string;
@@ -39,6 +44,10 @@ export type FacturaRow = {
   pago_estado: string | null;
   fecha_pago_prog: string | Date | null;
   tipo_pago: string | null;
+  // El cruce con la cotización abonada: cuánto se adelantó y de qué cotización.
+  abono_aplicado: number | null;
+  cot_id: number | null;
+  cot_codigo: string | null;
   concepto_sug: string | null;
   destino_sug: string | null;
   confianza: string | null;
@@ -56,7 +65,7 @@ export type FilaPatch = Partial<FacturaRow>;
 
 const cop = new Intl.NumberFormat("es-CO", { style: "currency", currency: "COP", maximumFractionDigits: 0 });
 const copN = (n: number) => cop.format(Math.round(n || 0));
-const num = (s: string | null) => (s != null && s !== "" ? Number(s) : 0);
+const num = (s: string | number | null) => (s != null && s !== "" ? Number(s) : 0);
 const contents = { display: "contents" as const };
 
 function ddmm(d: string | Date | null): string {
@@ -75,15 +84,17 @@ function semanaISO(d: string | Date | null): string {
 }
 
 export const FacturaCard = memo(function FacturaCard({
-  f, conceptos, destinos, onSaved, puedeClasificar,
+  f, conceptos, destinos, cotizaciones, onSaved, puedeClasificar,
 }: {
   f: FacturaRow;
   conceptos: string[];
   destinos: string[];
+  cotizaciones: CotConAbono[];   // con adelanto pagado y sin factura cruzada
   onSaved: (cufe: string, patch: FilaPatch) => void;
   puedeClasificar: boolean;   // false = contador (solo puede Reten., no clasificar)
 }) {
   const [modal, setModal] = useState(false);
+  const [modalAbono, setModalAbono] = useState(false);
   const [pending, start] = useTransition();
   const [faltaDest, setFaltaDest] = useState(false);
 
@@ -119,6 +130,30 @@ export const FacturaCard = memo(function FacturaCard({
         const patch = await marcarTipoPago(fd);
         onSaved(f.cufe, patch as FilaPatch);
       } catch (err) { alert("No se pudo cambiar crédito/débito: " + (err as Error).message); }
+    });
+  }
+
+  // ABONO: no es un tercer estado de crédito/débito — la factura sigue siendo
+  // crédito. Es el cruce con la cotización cuyo adelanto YA se pagó, y por eso
+  // el botón no guarda una marca suelta sino el enlace del que sale el monto.
+  const abono = num(f.abono_aplicado);
+  const tieneAbono = abono > 0 || !!f.cot_id;
+  function cruzar(cotId: number) {
+    start(async () => {
+      try {
+        const fd = new FormData(); fd.set("cufe", f.cufe); fd.set("cotizacion_id", String(cotId));
+        onSaved(f.cufe, (await cruzarConCotizacion(fd)) as FilaPatch);
+        setModalAbono(false);
+      } catch (err) { alert("No se pudo cruzar: " + (err as Error).message); }
+    });
+  }
+  function quitarCruce() {
+    start(async () => {
+      try {
+        const fd = new FormData(); fd.set("cufe", f.cufe);
+        onSaved(f.cufe, (await quitarCruceCotizacion(fd)) as FilaPatch);
+        setModalAbono(false);
+      } catch (err) { alert("No se pudo quitar el cruce: " + (err as Error).message); }
     });
   }
 
@@ -251,7 +286,22 @@ export const FacturaCard = memo(function FacturaCard({
             : "Crédito — a pagar (entra a Pagos). Clic para marcar Débito (no se paga)."}>
           {esDebito ? "Débito" : "Crédito"}
         </button>
+        {/* El abono solo tiene sentido en crédito: un débito no se paga. */}
+        {!esDebito && (
+          <button type="button" className={"cd-toggle abono" + (tieneAbono ? " on" : "")}
+                  disabled={pending || !puedeClasificar} onClick={() => setModalAbono(true)}
+                  title={tieneAbono
+                    ? `Ya cruzada con ${f.cot_codigo ?? "una cotización"}: se pagará el SALDO (se descuenta ${copN(abono)}). Clic para ver o deshacer.`
+                    : "Esta factura ya tuvo un abono — clic para cruzarla con su cotización y que se pague solo el saldo."}>
+            {tieneAbono ? `Abono ${copN(abono)}` : "Abono"}
+          </button>
+        )}
       </div>
+
+      {modalAbono && (
+        <ModalAbono f={f} cotizaciones={cotizaciones} abono={abono} pending={pending}
+                    onCruzar={cruzar} onQuitar={quitarCruce} onClose={() => setModalAbono(false)} />
+      )}
 
       {modal && (
         <RetencionesModal
@@ -280,3 +330,77 @@ export const FacturaCard = memo(function FacturaCard({
     </div>
   );
 });
+
+
+/** El cruce, explicado: qué se va a descontar y de cuál cotización.
+ *
+ *  Se ofrecen PRIMERO las cotizaciones del mismo NIT (que son las que casi
+ *  siempre corresponden) pero no se ocultan las demás: pasa que el proveedor
+ *  cotiza con un NIT y factura con otro del mismo grupo, y esconderlas obligaría
+ *  a salir a la bandeja de Cotizaciones a hacerlo a mano. */
+function ModalAbono({ f, cotizaciones, abono, pending, onCruzar, onQuitar, onClose }: {
+  f: FacturaRow; cotizaciones: CotConAbono[]; abono: number; pending: boolean;
+  onCruzar: (id: number) => void; onQuitar: () => void; onClose: () => void;
+}) {
+  const total = num(f.total);
+  const mismos = cotizaciones.filter((c) => c.nit === f.nit_proveedor);
+  const otros = cotizaciones.filter((c) => c.nit !== f.nit_proveedor);
+  const lista = [...mismos, ...otros];
+
+  return (
+    <div className="modal-backdrop" onMouseDown={onClose}>
+      <div className="modal" onMouseDown={(e) => e.stopPropagation()}>
+        <div className="modal-head">
+          <div>
+            <h3>Abono aplicado a esta factura</h3>
+            <p className="modal-sub">
+              {f.nombre_proveedor ?? f.nit_proveedor} · factura {f.numero} · {copN(total)}
+            </p>
+          </div>
+          <button type="button" className="modal-x" onClick={onClose}>×</button>
+        </div>
+
+        {abono > 0 || f.cot_id ? (
+          <div className="ab-cruzada">
+            <p>
+              Cruzada con <b>{f.cot_codigo ?? "una cotización"}</b>. Ya se adelantaron{" "}
+              <b>{copN(abono)}</b>, así que Pagos la cobra por el saldo:{" "}
+              <b className="ab-saldo">{copN(Math.max(0, total - abono))}</b>.
+            </p>
+            <button type="button" className="cc-act ghost" disabled={pending} onClick={onQuitar}>
+              Quitar el cruce
+            </button>
+          </div>
+        ) : !lista.length ? (
+          <p className="ab-vacio">
+            No hay cotizaciones con abono pendientes de cruzar. El abono se registra en{" "}
+            <b>Cotizaciones</b> (o se crea solo al pagar el adelanto en Pagos).
+          </p>
+        ) : (
+          <>
+            <p className="ab-ayuda">
+              Elige la cotización cuyo adelanto ya se pagó. Se descontará de esta factura
+              para que <b>no se pague dos veces</b>.
+            </p>
+            <div className="ab-lista">
+              {lista.map((c) => (
+                <button key={c.id} type="button" className="ab-item" disabled={pending}
+                        onClick={() => onCruzar(c.id)}>
+                  <span className="ab-cod mono">{c.codigo}</span>
+                  <span className="ab-nom">
+                    {c.razon_social}
+                    {c.nit !== f.nit_proveedor && <i title="NIT distinto al de la factura"> · NIT {c.nit}</i>}
+                  </span>
+                  <span className="ab-mto">
+                    abonado <b>{copN(c.abonado)}</b>
+                    <i>saldo {copN(Math.max(0, total - c.abonado))}</i>
+                  </span>
+                </button>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}

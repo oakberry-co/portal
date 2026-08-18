@@ -616,6 +616,14 @@ ALTER TABLE pagos ADD COLUMN IF NOT EXISTS origen_ref TEXT;   -- 'CC-12' | 'COT-
 CREATE INDEX IF NOT EXISTS ix_cc_pago  ON cuentas_cobro (pago_id);
 CREATE INDEX IF NOT EXISTS ix_cot_pago ON cotizaciones  (pago_id);
 
+-- UNA cotización por factura. Sin esto, dos cotizaciones apuntando al mismo CUFE
+-- duplican la factura en la grilla de conciliación (el LEFT JOIN la multiplica)
+-- y el abono aplicado queda ambiguo: ¿el de cuál? Los dos caminos que cruzan
+-- (bandeja de Cotizaciones y botón Abono de la grilla) ya lo validan en código;
+-- esto lo garantiza aunque alguien escriba por fuera.
+CREATE UNIQUE INDEX IF NOT EXISTS ux_cot_factura
+  ON cotizaciones (cufe_factura) WHERE cufe_factura IS NOT NULL;
+
 -- ¿La cuenta leída del documento SE APLICÓ al maestro?
 --
 -- Aquí vive el agujero más peligroso de todo el intake: cualquiera puede mandar
