@@ -1,12 +1,39 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useRef, useState } from "react";
 import { enviarCotizacion, type Resultado } from "./actions";
 import { CasillasDocumentos } from "../CasillasDocumentos";
+import { RevisarAntesDeEnviar, resumenDe, type FilaResumen } from "../RevisarAntesDeEnviar";
 import { AREAS, PLAZOS_NEGOCIADOS } from "@/lib/areas";
+
+const CAMPOS = [
+  { name: "razon_social", etiqueta: "Razón social" },
+  { name: "nit", etiqueta: "NIT" },
+  { name: "contacto", etiqueta: "Contacto" },
+  { name: "telefono", etiqueta: "Teléfono" },
+  { name: "correo", etiqueta: "Correo" },
+  { name: "numero_cotizacion", etiqueta: "Tu n° de cotización" },
+  { name: "area", etiqueta: "Área" },
+  { name: "valor", etiqueta: "Valor cotizado", formato: "money" as const },
+  { name: "adelanto_pct", etiqueta: "% de adelanto", formato: "pct" as const },
+  { name: "concepto", etiqueta: "Concepto" },
+];
 
 export function FormCotizacion() {
   const [estado, action, pending] = useActionState<Resultado | null, FormData>(enviarCotizacion, null);
+  // Dos pasos: llenar -> revisar -> enviar. El formulario NUNCA se desmonta (se
+  // oculta), porque desmontarlo perdería los archivos ya elegidos.
+  const [paso, setPaso] = useState<"datos" | "revisar">("datos");
+  const [resumen, setResumen] = useState<{ filas: FilaResumen[]; docs: { label: string; nombre: string | null }[] }>({ filas: [], docs: [] });
+  const formRef = useRef<HTMLFormElement>(null);
+
+  function revisar() {
+    const f = formRef.current;
+    if (!f || !f.reportValidity()) return;   // validación nativa, antes de ocultar nada
+    setResumen(resumenDe(new FormData(f), CAMPOS));
+    setPaso("revisar");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
 
   if (estado?.ok) {
     return (
@@ -23,7 +50,8 @@ export function FormCotizacion() {
   }
 
   return (
-    <form action={action} className="pub-form">
+    <form action={action} className="pub-form" ref={formRef}>
+      <div className={"pub-campos" + (paso === "datos" ? "" : " pub-oculto")}>
       <div className="pub-sec">Tus datos</div>
       <label className="pub-full">Razón social / Nombre *
         <input name="razon_social" required placeholder="Ej. Servicios XYZ S.A.S." />
@@ -80,8 +108,16 @@ export function FormCotizacion() {
       <p className="pub-hint">Toca cada uno para adjuntarlo. PDF o foto.</p>
       <CasillasDocumentos />
 
+      </div>
+
       {estado?.error && <div className="pub-err">{estado.error}</div>}
-      <button className="pub-btn" type="submit" disabled={pending}>{pending ? "Enviando…" : "Enviar cotización"}</button>
+
+      {paso === "datos" ? (
+        <button className="pub-btn" type="button" onClick={revisar}>Revisar y enviar →</button>
+      ) : (
+        <RevisarAntesDeEnviar filas={resumen.filas} docs={resumen.docs} pending={pending}
+                              onCorregir={() => setPaso("datos")} textoEnviar="Enviar cotización" />
+      )}
     </form>
   );
 }
