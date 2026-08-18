@@ -2,7 +2,7 @@
 
 import { Fragment, useState, useTransition } from "react";
 import { asignarCuenta, quitarCuenta, confirmarPago, agregarCuentaPago, toggleCuentaPago, guardarDiaPago,
-         asignarCuentaIntake, confirmarPagoIntake } from "./actions";
+         asignarCuentaIntake, confirmarPagoIntake, descontarAdelanto, quitarAdelanto } from "./actions";
 
 export type FilaPago = {
   cufe: string; nombre_proveedor: string | null; nit_proveedor: string; numero: string;
@@ -29,6 +29,10 @@ export type PagoHecho = {
   facturas: { numero: string; monto: number }[];
 };
 export type CuentaPago = { nombre: string; formato: string; activo: boolean };
+/** Adelanto ya PAGADO que todavía no se descontó de ninguna factura. */
+export type Adelanto = {
+  id: number; codigo: string; nit: string; razon_social: string; valor: number; abonado: number;
+};
 
 const cop = new Intl.NumberFormat("es-CO", { style: "currency", currency: "COP", maximumFractionDigits: 0 });
 const $ = (n: number) => cop.format(Math.round(n || 0));
@@ -84,9 +88,9 @@ function porCuenta(filas: FilaPago[], intake: FilaIntake[]): { cuenta: string; p
   });
 }
 
-export function PagosView({ pendientes, validacion, intake, historial, cuentas, diaPago, puedePagos }: {
-  pendientes: FilaPago[]; validacion: FilaPago[]; intake: FilaIntake[]; historial: PagoHecho[];
-  cuentas: CuentaPago[]; diaPago: number; puedePagos: boolean;
+export function PagosView({ pendientes, validacion, intake, adelantos, historial, cuentas, diaPago, puedePagos }: {
+  pendientes: FilaPago[]; validacion: FilaPago[]; intake: FilaIntake[]; adelantos: Adelanto[];
+  historial: PagoHecho[]; cuentas: CuentaPago[]; diaPago: number; puedePagos: boolean;
 }) {
   const [abierto, setAbierto] = useState<Set<string>>(new Set());
   const [sel, setSel] = useState<Set<string>>(new Set());
@@ -107,6 +111,23 @@ export function PagosView({ pendientes, validacion, intake, historial, cuentas, 
   const cuenta0 = ctasActivas[0]?.nombre ?? "";
 
   const porCta = porCuenta(validacion, intake);
+  // Adelantos sin descontar, por proveedor: es lo que se le avisa a quien paga.
+  const adelantosDe = new Map<string, Adelanto[]>();
+  for (const a of adelantos) (adelantosDe.get(a.nit) ?? adelantosDe.set(a.nit, []).get(a.nit)!).push(a);
+  function descontar(cufe: string, cotId: number) {
+    start(async () => {
+      try {
+        const fd = new FormData(); fd.set("cufe", cufe); fd.set("cotizacion_id", String(cotId));
+        await descontarAdelanto(fd);
+      } catch (e) { alert("No se pudo descontar el adelanto: " + (e as Error).message); }
+    });
+  }
+  function deshacerDescuento(cufe: string) {
+    start(async () => {
+      try { const fd = new FormData(); fd.set("cufe", cufe); await quitarAdelanto(fd); }
+      catch (e) { alert("No se pudo deshacer: " + (e as Error).message); }
+    });
+  }
 
   // 4 columnas independientes: pendientes de semanas pasadas · pendientes de esta
   // semana · validación · confirmados de ESTA semana (lo anterior vive en Historial).
@@ -141,6 +162,8 @@ export function PagosView({ pendientes, validacion, intake, historial, cuentas, 
   const renderGrupoPend = (g: Grupo, keyPrefix: string) => {
     const key = keyPrefix + g.nit; const exp = abierto.has(key);
     const selG = g.facturas.filter((f) => sel.has(f.cufe)).length;
+    // A este proveedor ya se le adelantó plata que nadie ha descontado.
+    const pend = adelantosDe.get(g.nit) ?? [];
     return (
       <div key={key} className="pg-prov">
         <div className="pg-prov-head" onClick={() => setAbierto(toggle(abierto, key))}>
@@ -151,6 +174,13 @@ export function PagosView({ pendientes, validacion, intake, historial, cuentas, 
         </div>
         {exp && (
           <>
+            {pend.length > 0 && (
+              <div className="pg-adelanto">
+                ⚠️ A este proveedor <b>ya se le adelantó</b>{" "}
+                {pend.map((a) => <b key={a.id}>{$(a.abonado)} ({a.codigo})</b>).reduce((p, c) => <>{p} y {c}</>)}
+                {" "}y no se ha descontado. Marca en cuál factura va:
+              </div>
+            )}
             <div className="pg-assign top">
               <button type="button" className="pg-mini" onClick={() => { const n = new Set(sel); const all = g.facturas.every((f) => n.has(f.cufe)); g.facturas.forEach((f) => all ? n.delete(f.cufe) : n.add(f.cufe)); setSel(n); }}>
                 {g.facturas.every((f) => sel.has(f.cufe)) ? "Ninguna" : "Todas"}
@@ -175,7 +205,27 @@ export function PagosView({ pendientes, validacion, intake, historial, cuentas, 
                         <div className="pg-frow"><span className="mono">{f.numero}</span><span className={"pg-urg " + urg}>{urgTxt}</span></div>
                         <div className="pg-fdates">pagar <b>{dm(sug)}</b> · vence {dm(orig)}</div>
                       </td>
-                      <td className="num">{$(saldo(f))}</td>
+                      <td className="num">
+                        {f.abono_aplicado > 0 ? (
+                          <>
+                            <span className="pg-conabono" title={`Ya se le descontó un adelanto de ${$(f.abono_aplicado)}`}>
+                              −{$(f.abono_aplicado)}
+                            </span>
+                            <b>{$(saldo(f))}</b>
+                            <button type="button" className="pg-undo" disabled={pending}
+                                    onClick={() => deshacerDescuento(f.cufe)} title="Quitar el descuento del adelanto">↩</button>
+                          </>
+                        ) : pend.length > 0 ? (
+                          <>
+                            {$(saldo(f))}
+                            <button type="button" className="pg-descontar" disabled={pending}
+                                    onClick={() => descontar(f.cufe, pend[0].id)}
+                                    title={`Descontar de esta factura el adelanto ${pend[0].codigo} (${$(pend[0].abonado)}) ya pagado`}>
+                              − adelanto
+                            </button>
+                          </>
+                        ) : $(saldo(f))}
+                      </td>
                     </tr>
                   );
                 })}

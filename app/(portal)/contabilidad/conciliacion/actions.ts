@@ -4,7 +4,6 @@ import { revalidatePath } from "next/cache";
 import { withTx } from "@/lib/db";
 import { registrarEvento } from "@/lib/eventos";
 import { exigirCap } from "@/lib/auth";
-import { syncAbono } from "@/lib/abonos";
 import type { PoolClient } from "pg";
 
 // Si el valor no existe en el maestro, lo crea (autoridad humana) y lo registra.
@@ -360,70 +359,5 @@ export async function marcarTipoPago(formData: FormData) {
       actor: user.email, actorRol: user.rol, origen: "web",
     });
     return { tipo_pago: tipo };
-  });
-}
-
-
-// ---------------------------------------------------------------------------
-// EL CRUCE DESDE LA FACTURA: "esta factura ya tuvo un abono".
-//
-// El cruce cotización↔factura ya existía, pero solo se podía hacer desde la
-// bandeja de Cotizaciones. En la práctica el equipo llega por el otro lado:
-// está clasificando facturas y reconoce "esta es la del anticipo que ya
-// pagamos". Si en ese momento no puede cruzarla, la factura sigue de largo por
-// su valor TOTAL y el anticipo se paga dos veces.
-//
-// No es un tercer estado de crédito/débito: la factura sigue siendo crédito.
-// El abono es un hecho aparte —cuánto se adelantó— y por eso no se guarda como
-// una marca suelta sino como el enlace real a la cotización, que es de donde
-// sale el monto. Una marca "tuvo abono" sin decir de cuánto no serviría para
-// descontar nada.
-// ---------------------------------------------------------------------------
-
-/** Cruza la factura con una cotización que ya tiene abonos. A partir de aquí
- *  Pagos la cobra por el SALDO (valor − abonos). */
-export async function cruzarConCotizacion(formData: FormData) {
-  const user = await exigirCap("clasificar");
-  const cufe = String(formData.get("cufe") ?? "").trim();
-  const cotId = Number(formData.get("cotizacion_id"));
-  if (!cufe || !cotId) throw new Error("Falta la factura o la cotización.");
-
-  return withTx(async (c) => {
-    const dup = await c.query("SELECT codigo FROM cotizaciones WHERE cufe_factura = $1 AND id <> $2", [cufe, cotId]);
-    if (dup.rowCount) throw new Error("Esta factura ya está cruzada con " + (dup.rows[0] as { codigo: string }).codigo + ".");
-    const r = await c.query<{ codigo: string | null }>(
-      "UPDATE cotizaciones SET cufe_factura = $2, estado = 'facturada' WHERE id = $1 RETURNING codigo", [cotId, cufe]);
-    if (!r.rowCount) throw new Error("Cotización no encontrada.");
-    await syncAbono(c, cotId);
-
-    const est = await c.query<{ abono_aplicado: string }>(
-      "SELECT coalesce(abono_aplicado,0) AS abono_aplicado FROM factura_estado WHERE cufe = $1", [cufe]);
-    await registrarEvento(c, {
-      cufe, tipo: "enlaza_cotizacion", campo: "cufe_factura",
-      valorNuevo: { cotizacion_id: cotId, codigo: r.rows[0].codigo, desde: "conciliacion" },
-      actor: user.email, actorRol: user.rol, origen: "web",
-    });
-    return {
-      abono_aplicado: Number(est.rows[0]?.abono_aplicado ?? 0),
-      cot_id: cotId, cot_codigo: r.rows[0].codigo,
-    };
-  });
-}
-
-/** Deshace el cruce: la factura vuelve a cobrarse por su valor completo. */
-export async function quitarCruceCotizacion(formData: FormData) {
-  const user = await exigirCap("clasificar");
-  const cufe = String(formData.get("cufe") ?? "").trim();
-  if (!cufe) throw new Error("Falta la factura.");
-  return withTx(async (c) => {
-    const r = await c.query<{ id: number }>(
-      "UPDATE cotizaciones SET cufe_factura = NULL, estado = 'aprobada' WHERE cufe_factura = $1 RETURNING id", [cufe]);
-    await c.query("UPDATE factura_estado SET abono_aplicado = 0, actualizado_en = now() WHERE cufe = $1", [cufe]);
-    await registrarEvento(c, {
-      cufe, tipo: "quita_enlace_cotizacion", campo: "cufe_factura",
-      valorNuevo: { cotizacion_id: r.rows[0]?.id ?? null, desde: "conciliacion" },
-      actor: user.email, actorRol: user.rol, origen: "web",
-    });
-    return { abono_aplicado: 0, cot_id: null, cot_codigo: null };
   });
 }

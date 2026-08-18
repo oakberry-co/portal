@@ -1,7 +1,7 @@
 import { getPool } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { puede } from "@/lib/permisos";
-import { PagosView, type FilaPago, type FilaIntake, type PagoHecho, type CuentaPago } from "./PagosView";
+import { PagosView, type FilaPago, type FilaIntake, type PagoHecho, type CuentaPago, type Adelanto } from "./PagosView";
 
 export const dynamic = "force-dynamic";
 
@@ -42,7 +42,7 @@ const SQL_INTAKE = `
      AND cot.requiere_adelanto
   ORDER BY fecha_pago_prog NULLS FIRST, proveedor`;
 
-async function cargar(): Promise<{ pendientes: FilaPago[]; validacion: FilaPago[]; intake: FilaIntake[]; historial: PagoHecho[]; cuentas: CuentaPago[]; diaPago: number }> {
+async function cargar(): Promise<{ pendientes: FilaPago[]; validacion: FilaPago[]; intake: FilaIntake[]; historial: PagoHecho[]; cuentas: CuentaPago[]; diaPago: number; adelantos: Adelanto[] }> {
   const pool = getPool();
   // Columna 1 — PENDIENTES: listas para pago (retenciones_ok), sin cuenta asignada.
   const pendientes = await pool.query<FilaPago>(`
@@ -60,6 +60,17 @@ async function cargar(): Promise<{ pendientes: FilaPago[]; validacion: FilaPago[
     LEFT JOIN cuentas_bancarias_proveedor cb ON cb.nit = f.nit_proveedor
     WHERE e.estado = 'aprobada_pago' AND coalesce(e.pago_estado,'pendiente') <> 'pagado'
     ORDER BY e.cuenta_pago, f.nombre_proveedor, f.fecha_emision`);
+  // Adelantos YA PAGADOS que todavía no se descontaron de ninguna factura. Es
+  // plata que ya salió: si no se ve acá, la factura del proveedor se paga
+  // completa y el anticipo termina pagándose dos veces.
+  const adelantos = await pool.query<Adelanto>(`
+    SELECT cot.id, coalesce(cot.codigo, 'COT-' || cot.id) AS codigo, cot.nit,
+           cot.razon_social, cot.valor::float AS valor,
+           coalesce((SELECT sum(monto) FROM cotizacion_abonos a WHERE a.cotizacion_id = cot.id),0)::float AS abonado
+      FROM cotizaciones cot
+     WHERE cot.cufe_factura IS NULL
+       AND EXISTS (SELECT 1 FROM cotizacion_abonos a WHERE a.cotizacion_id = cot.id)
+     ORDER BY cot.creado_en`);
   // Bloque APARTE de Validación — lo aprobado en el intake (sin factura DIAN).
   const intake = await pool.query<FilaIntake>(SQL_INTAKE);
   // Columna 4 — CONFIRMADOS: los pagos ya registrados (con su cuenta).
@@ -84,7 +95,7 @@ async function cargar(): Promise<{ pendientes: FilaPago[]; validacion: FilaPago[
   const cfg = await pool.query<{ valor: string }>("SELECT valor FROM config_pagos WHERE clave = 'dia_pago'");
   const diaPago = Number(cfg.rows[0]?.valor ?? 5) || 5;
   return { pendientes: pendientes.rows, validacion: validacion.rows, intake: intake.rows,
-           historial: historial.rows, cuentas: cuentas.rows, diaPago };
+           historial: historial.rows, cuentas: cuentas.rows, diaPago, adelantos: adelantos.rows };
 }
 
 export default async function PagosPage() {
@@ -108,7 +119,7 @@ export default async function PagosPage() {
           <>Consolidado de pagos: consulta el <b>Historial</b> y descárgalo en Excel.</>
         )}
       </p>
-      <PagosView pendientes={data.pendientes} validacion={data.validacion} intake={data.intake} historial={data.historial} cuentas={data.cuentas} diaPago={data.diaPago} puedePagos={puedePagos} />
+      <PagosView pendientes={data.pendientes} validacion={data.validacion} intake={data.intake} adelantos={data.adelantos} historial={data.historial} cuentas={data.cuentas} diaPago={data.diaPago} puedePagos={puedePagos} />
     </div>
   );
 }

@@ -338,3 +338,73 @@ export async function guardarDiaPago(fd: FormData) {
   });
   done();
 }
+
+
+// ---------------------------------------------------------------------------
+// DESCONTAR UN ADELANTO YA PAGADO — el cruce, donde de verdad hace falta.
+//
+// Vivía en la grilla de Conciliación y ahí estorbaba: son 4.000 facturas y el
+// anticipo es un caso raro. El momento en que importa es OTRO — cuando alguien
+// está mirando qué se le paga a este proveedor esta semana. Si en ese instante
+// no ve que ya se le adelantó plata, la factura sale al banco por su valor
+// completo y el anticipo se paga dos veces.
+//
+// Por eso el aviso vive en "Pagos pendientes", contra el proveedor, y el
+// descuento es UN clic sobre la factura que le corresponde. Quién lo aplica es
+// un humano: el sistema no sabe cuál de las facturas del proveedor es la de ese
+// trabajo (cruzar por monto acierta apenas la mitad de las veces).
+// ---------------------------------------------------------------------------
+
+/** Aplica el adelanto de una cotización a UNA factura: a partir de aquí esa
+ *  factura se paga por el saldo (valor − adelanto). */
+export async function descontarAdelanto(fd: FormData) {
+  const user = await guardPagador();
+  const cufe = String(fd.get("cufe") ?? "").trim();
+  const cotId = Number(fd.get("cotizacion_id"));
+  if (!cufe || !cotId) throw new Error("Falta la factura o la cotización.");
+
+  await withTx(async (c: PoolClient) => {
+    const est = await c.query<{ estado: string; pago_estado: string }>(
+      "SELECT estado, coalesce(pago_estado,'pendiente') AS pago_estado FROM factura_estado WHERE cufe = $1 FOR UPDATE", [cufe]);
+    if (!est.rowCount) throw new Error("Factura no encontrada.");
+    // Descontar algo ya pagado no devuelve la plata: solo descuadra el saldo.
+    if (est.rows[0].pago_estado === "pagado") throw new Error("Esa factura ya está pagada: el adelanto no se puede descontar ahí.");
+
+    const dup = await c.query<{ codigo: string }>(
+      "SELECT codigo FROM cotizaciones WHERE cufe_factura = $1 AND id <> $2", [cufe, cotId]);
+    if (dup.rowCount) throw new Error("Esa factura ya tiene descontado el adelanto de " + dup.rows[0].codigo + ".");
+
+    const r = await c.query<{ codigo: string | null }>(
+      "UPDATE cotizaciones SET cufe_factura = $2, estado = 'facturada' WHERE id = $1 AND cufe_factura IS NULL RETURNING codigo",
+      [cotId, cufe]);
+    if (!r.rowCount) throw new Error("Ese adelanto ya se descontó en otra factura.");
+    await syncAbono(c, cotId);
+
+    await registrarEvento(c, {
+      cufe, tipo: "descuenta_adelanto", campo: "abono_aplicado",
+      valorNuevo: { cotizacion_id: cotId, codigo: r.rows[0].codigo },
+      actor: user.email, actorRol: user.rol, origen: "web",
+    });
+  });
+  done();
+  revalidatePath("/contabilidad/cotizaciones");
+}
+
+/** Deshace el descuento: la factura vuelve a cobrarse completa. */
+export async function quitarAdelanto(fd: FormData) {
+  const user = await guardPagador();
+  const cufe = String(fd.get("cufe") ?? "").trim();
+  if (!cufe) throw new Error("Falta la factura.");
+  await withTx(async (c: PoolClient) => {
+    const r = await c.query<{ id: number }>(
+      "UPDATE cotizaciones SET cufe_factura = NULL, estado = 'aprobada' WHERE cufe_factura = $1 RETURNING id", [cufe]);
+    await c.query("UPDATE factura_estado SET abono_aplicado = 0, actualizado_en = now() WHERE cufe = $1", [cufe]);
+    await registrarEvento(c, {
+      cufe, tipo: "quita_adelanto", campo: "abono_aplicado",
+      valorNuevo: { cotizacion_id: r.rows[0]?.id ?? null },
+      actor: user.email, actorRol: user.rol, origen: "web",
+    });
+  });
+  done();
+  revalidatePath("/contabilidad/cotizaciones");
+}

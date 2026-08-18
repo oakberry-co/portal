@@ -338,33 +338,19 @@ button.ghost { background: #fff; color: var(--purple); }
 .cd-toggle { font-size: 8.5px; font-weight: 700; padding: 2px 7px; border-radius: 999px; cursor: pointer; border: 1px solid; margin-top: 2px; width: fit-content; }
 .cd-toggle.cred { color: var(--ok); background: rgba(39,174,96,.1); border-color: rgba(39,174,96,.3); }
 .cd-toggle.deb { color: var(--coral); background: rgba(232,89,60,.1); border-color: rgba(232,89,60,.35); }
-/* ABONO: no es un tercer estado de crédito/débito (la factura sigue siendo
-   crédito). Es el cruce con la cotización cuyo adelanto ya se pagó, por eso
-   solo aparece en crédito y muestra el monto que se va a descontar. */
-.cd-toggle.abono { background: #fff; color: var(--lav) !important; border: 1px solid var(--border-lav); }
-.cd-toggle.abono:hover:not(:disabled) { border-color: var(--purple); color: var(--purple) !important; }
-.cd-toggle.abono.on { background: #fff8e6; color: #8a6100 !important; border-color: rgba(212,160,23,.45); font-weight: 800; }
-/* Sugerencia, no afirmación: se ve distinto (punteado) porque el sistema NO
-   sabe si es la factura de ese anticipo — lo decide un humano. */
-.cd-toggle.abono.sug { background: transparent; color: var(--lav) !important; border-style: dashed; font-weight: 600; }
+/* ADELANTO YA PAGADO SIN DESCONTAR — vive en "Pagos pendientes", que es donde
+   alguien decide qué sale al banco. En la grilla de conciliación estorbaba: son
+   4.000 facturas y el anticipo es un caso raro. */
+.pg-adelanto { background: #fff8e6; border-bottom: 1px solid rgba(212,160,23,.35);
+  padding: 9px 11px; font-size: 11.5px; color: #6b4d05; line-height: 1.5; }
+.pg-descontar { margin-left: 6px; background: #fff8e6; color: #8a6100; border: 1px solid rgba(212,160,23,.5);
+  border-radius: 999px; padding: 2px 8px; font-size: 9.5px; font-weight: 800; cursor: pointer; white-space: nowrap; }
+.pg-descontar:hover:not(:disabled) { background: #ffefc4; }
+.pg-conabono { display: block; font-size: 9.5px; color: #8a6100; font-weight: 700; }
+.pg-undo { margin-left: 5px; background: none; border: none; color: var(--lav); cursor: pointer; font-size: 11px; padding: 0 2px; }
+.pg-undo:hover:not(:disabled) { color: var(--coral); }
 
-/* Modal del cruce factura ↔ cotización abonada */
-.ab-ayuda, .ab-vacio { font-size: 13px; color: var(--lav); line-height: 1.55; margin: 0 18px 12px; }
-.ab-lista { display: flex; flex-direction: column; gap: 6px; margin: 0 18px 18px; max-height: 46vh; overflow-y: auto; }
-.ab-item { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 10px;
-  width: 100%; text-align: left; background: #fff; border: 1px solid var(--border); border-radius: 10px;
-  padding: 10px 12px; cursor: pointer; font: inherit; }
-.ab-item:hover:not(:disabled) { border-color: var(--purple); background: var(--lav-soft); }
-.ab-cod { font-size: 11px; color: var(--purple); background: var(--lav-soft); border-radius: 6px; padding: 2px 7px; }
-.ab-nom { font-size: 13px; font-weight: 700; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ab-nom i { font-style: normal; font-weight: 400; font-size: 11px; color: var(--coral); }
-.ab-mto { text-align: right; font-size: 12px; color: var(--lav); white-space: nowrap; }
-.ab-mto b { display: block; color: #8a6100; font-size: 13px; }
-.ab-mto i { font-style: normal; font-size: 10.5px; }
-.ab-cruzada { margin: 0 18px 18px; background: #fff8e6; border: 1px solid rgba(212,160,23,.35);
-  border-radius: 12px; padding: 13px 15px; font-size: 13.5px; color: #6b4d05; line-height: 1.6; }
-.ab-cruzada p { margin: 0 0 10px; }
-.ab-saldo { color: var(--coral); }
+
 .cd-toggle:hover:not(:disabled) { filter: brightness(1.05); }
 .c-prov { min-width: 0; }
 .c-prov .prov { font-size: 12.5px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

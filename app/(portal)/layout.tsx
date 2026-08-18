@@ -14,7 +14,7 @@ import { AsistenteFloating } from "./AsistenteFloating";
 // Los ítems SIN href son los que todavía no existen: se muestran como "pronto"
 // a propósito, para que el equipo sepa qué viene y no los pida dos veces.
 type Item = { label: string; href?: string; cap: Cap };
-type Grupo = { label: string; href?: string; cap?: Cap; items?: Item[] };
+type Grupo = { label: string; href?: string; cap?: Cap; items?: Item[]; pronto?: boolean };
 
 const MENU: Grupo[] = [
   { label: "Dashboard", href: "/contabilidad/dashboard", cap: "dashboard" },
@@ -28,9 +28,17 @@ const MENU: Grupo[] = [
       { label: "Cotizaciones", href: "/contabilidad/cotizaciones", cap: "intake" },
       { label: "Órdenes de compra", cap: "ver_conciliacion" },
       { label: "Pagos internacionales", cap: "pagos" },
+      { label: "Causaciones", cap: "clasificar" },
     ],
   },
-  { label: "Causaciones", items: [{ label: "Causaciones", cap: "clasificar" }] },
+  // El nivel de arriba son las ÁREAS del negocio, no los módulos: el portal es
+  // la cáscara de TODA la operación, no solo de contabilidad. Las que aún no
+  // tienen módulos van marcadas "pronto" — verlas desde ya evita que cada área
+  // salga a montar su propia herramienta por fuera.
+  { label: "Recursos humanos", pronto: true },
+  { label: "Operaciones", pronto: true },
+  { label: "Mercadeo", pronto: true },
+  { label: "Finanzas", pronto: true },
   {
     label: "Configuraciones",
     items: [
@@ -45,6 +53,7 @@ const MENU: Grupo[] = [
 function menuPara(rol: Rol): GrupoMenu[] {
   const salida: GrupoMenu[] = [];
   for (const g of MENU) {
+    if (g.pronto) { salida.push({ label: g.label, pronto: true }); continue; }
     if (g.href) {
       if (!g.cap || puede(rol, g.cap)) salida.push({ label: g.label, href: g.href });
       continue;

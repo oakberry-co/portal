@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { FacturaCard, type CotConAbono, type FacturaRow, type FilaPatch } from "./FacturaCard";
+import { FacturaCard, type FacturaRow, type FilaPatch } from "./FacturaCard";
 
 const MESES = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
 const PAGE = 100; // filas por página — no montamos 3.900 filas (mataba el navegador)
@@ -19,8 +19,8 @@ function isoWeek(d: Date): string {
 }
 
 export function ConciliacionView({
-  filas, conceptos, destinos, cotizaciones, puedeClasificar, puedeExport,
-}: { filas: FacturaRow[]; conceptos: string[]; destinos: string[]; cotizaciones: CotConAbono[];
+  filas, conceptos, destinos, puedeClasificar, puedeExport,
+}: { filas: FacturaRow[]; conceptos: string[]; destinos: string[];
      puedeClasificar: boolean; puedeExport: boolean }) {
   const [q, setQ] = useState("");
   const [anio, setAnio] = useState("");
@@ -184,7 +184,7 @@ export function ConciliacionView({
         {visible.length === 0 ? (
           <div className="tabla-vacia muted">Ninguna factura coincide con los filtros.</div>
         ) : (
-          visible.map((f) => <FacturaCard key={f.cufe} f={f} conceptos={conceptos} destinos={destinos} cotizaciones={cotizaciones} onSaved={onSaved} puedeClasificar={puedeClasificar} />)
+          visible.map((f) => <FacturaCard key={f.cufe} f={f} conceptos={conceptos} destinos={destinos} onSaved={onSaved} puedeClasificar={puedeClasificar} />)
         )}
       </div>
 

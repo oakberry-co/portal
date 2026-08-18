@@ -13,7 +13,7 @@ import { usePathname } from "next/navigation";
 // resaltado. Sin eso, agrupar es un retroceso.
 
 export type ItemMenu = { label: string; href?: string };
-export type GrupoMenu = { label: string; href?: string; items?: ItemMenu[] };
+export type GrupoMenu = { label: string; href?: string; items?: ItemMenu[]; pronto?: boolean };
 
 export function MenuPortal({ grupos }: { grupos: GrupoMenu[] }) {
   const [abierto, setAbierto] = useState<string | null>(null);
@@ -38,6 +38,10 @@ export function MenuPortal({ grupos }: { grupos: GrupoMenu[] }) {
   return (
     <nav className="nav-menu" ref={ref}>
       {grupos.map((g) => {
+        // Área anunciada pero sin módulos todavía: se ve, no se abre.
+        if (g.pronto) {
+          return <span key={g.label} className="nav-link soon">{g.label}<i>pronto</i></span>;
+        }
         if (g.href) {
           return (
             <a key={g.label} href={g.href} className={"nav-link" + (ruta === g.href ? " activo" : "")}>
