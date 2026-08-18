@@ -141,6 +141,12 @@ def plantilla(tipo: str, d: dict) -> tuple[str, str, str]:
             plazo = d.get("plazo_dias") or 30
             plata = (f"""<p style="font-size:15px;line-height:1.6">Queda programada por
             <b>{pesos(d.get('valor'))}</b>, a <b>{plazo} días</b> desde que la recibimos.</p>""")
+        # Pedirle el código en la factura es lo ÚNICO que permite descontar el
+        # adelanto solo, sin que un humano adivine cuál factura corresponde.
+        pide_codigo = (f"""<p style="font-size:14px;line-height:1.6;background:#fff8e6;
+        border-radius:10px;padding:12px 14px;color:#6b4d05"><b>Importante:</b> escribe el código
+        <b>{ref}</b> en tu factura (en el concepto o en las observaciones). Con eso descontamos
+        el adelanto automáticamente y te pagamos el saldo sin demoras.</p>""" if adelanto else "")
         cuerpo = f"""
         <p style="font-size:15px;line-height:1.6">Hola <b>{prov}</b>,</p>
         <p style="font-size:15px;line-height:1.6">Tu solicitud <b>{ref}</b> quedó
@@ -149,11 +155,14 @@ def plantilla(tipo: str, d: dict) -> tuple[str, str, str]:
         <p style="font-size:15px;line-height:1.6"><b>Envíanos la factura respondiendo
         a este correo.</b> Si aún no la tienes, respóndenos igual con el
         <b>número de factura</b> y nosotros la buscamos.</p>
+        {pide_codigo}
         <p style="font-size:14px;line-height:1.6;color:#6b6480">Te vamos a pagar a la
         cuenta de la certificación bancaria que nos enviaste.</p>"""
         texto = (f"Hola {prov}, tu solicitud {ref} quedó aprobada y entró a la "
                  "programación de pagos. Envíanos la factura respondiendo a este "
-                 "correo; si aún no la tienes, respóndenos con el número de factura.")
+                 "correo; si aún no la tienes, respóndenos con el número de factura."
+                 + (f" IMPORTANTE: escribe el código {ref} en la factura, así "
+                    "descontamos el adelanto automáticamente." if adelanto else ""))
         return asunto, envoltura(cuerpo), texto
 
     if tipo == "pago_hecho":

@@ -344,6 +344,9 @@ button.ghost { background: #fff; color: var(--purple); }
 .cd-toggle.abono { background: #fff; color: var(--lav) !important; border: 1px solid var(--border-lav); }
 .cd-toggle.abono:hover:not(:disabled) { border-color: var(--purple); color: var(--purple) !important; }
 .cd-toggle.abono.on { background: #fff8e6; color: #8a6100 !important; border-color: rgba(212,160,23,.45); font-weight: 800; }
+/* Sugerencia, no afirmación: se ve distinto (punteado) porque el sistema NO
+   sabe si es la factura de ese anticipo — lo decide un humano. */
+.cd-toggle.abono.sug { background: transparent; color: var(--lav) !important; border-style: dashed; font-weight: 600; }
 
 /* Modal del cruce factura ↔ cotización abonada */
 .ab-ayuda, .ab-vacio { font-size: 13px; color: var(--lav); line-height: 1.55; margin: 0 18px 12px; }

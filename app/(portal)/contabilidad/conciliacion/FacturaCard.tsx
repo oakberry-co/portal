@@ -138,6 +138,11 @@ export const FacturaCard = memo(function FacturaCard({
   // el botón no guarda una marca suelta sino el enlace del que sale el monto.
   const abono = num(f.abono_aplicado);
   const tieneAbono = abono > 0 || !!f.cot_id;
+  // Si NO tiene abono, el chip solo aparece cuando hay algo real que cruzar:
+  // una cotización con adelanto pagado DEL MISMO NIT. Ponerlo en toda factura
+  // era ruido en 4.000 filas donde el 99% no tiene nada que ver con un anticipo.
+  const candidatas = cotizaciones.filter((c) => c.nit === f.nit_proveedor);
+  const sugerido = !tieneAbono && candidatas.length > 0;
   function cruzar(cotId: number) {
     start(async () => {
       try {
@@ -286,14 +291,24 @@ export const FacturaCard = memo(function FacturaCard({
             : "Crédito — a pagar (entra a Pagos). Clic para marcar Débito (no se paga)."}>
           {esDebito ? "Débito" : "Crédito"}
         </button>
-        {/* El abono solo tiene sentido en crédito: un débito no se paga. */}
-        {!esDebito && (
-          <button type="button" className={"cd-toggle abono" + (tieneAbono ? " on" : "")}
+        {/* ABONO. Dos casos, y solo esos: la factura YA tiene abono (estado, se
+            muestra el monto), o hay una cotización con adelanto pagado del mismo
+            proveedor esperando cruce (sugerencia, se pregunta). Si no hay
+            ninguna de las dos, no se pinta nada. Un débito no se paga, así que
+            tampoco aplica. */}
+        {!esDebito && tieneAbono && (
+          <button type="button" className="cd-toggle abono on"
                   disabled={pending || !puedeClasificar} onClick={() => setModalAbono(true)}
-                  title={tieneAbono
-                    ? `Ya cruzada con ${f.cot_codigo ?? "una cotización"}: se pagará el SALDO (se descuenta ${copN(abono)}). Clic para ver o deshacer.`
-                    : "Esta factura ya tuvo un abono — clic para cruzarla con su cotización y que se pague solo el saldo."}>
-            {tieneAbono ? `Abono ${copN(abono)}` : "Abono"}
+                  title={`Cruzada con ${f.cot_codigo ?? "una cotización"}: se paga el SALDO, descontando ${copN(abono)}. Clic para ver o deshacer.`}>
+            Abono {copN(abono)}
+          </button>
+        )}
+        {!esDebito && sugerido && (
+          <button type="button" className="cd-toggle abono sug"
+                  disabled={pending || !puedeClasificar} onClick={() => setModalAbono(true)}
+                  title={`${candidatas.length === 1 ? "Hay una cotización" : `Hay ${candidatas.length} cotizaciones`} de este proveedor con adelanto ya pagado. `
+                       + "Si esta factura es la de ese trabajo, crúzala para que se pague solo el saldo."}>
+            ¿abono?
           </button>
         )}
       </div>
