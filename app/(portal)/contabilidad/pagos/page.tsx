@@ -1,7 +1,7 @@
 import { getPool } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { puede } from "@/lib/permisos";
-import { PagosView, type FilaPago, type PagoHecho, type CuentaPago } from "./PagosView";
+import { PagosView, type FilaPago, type FilaIntake, type PagoHecho, type CuentaPago } from "./PagosView";
 
 export const dynamic = "force-dynamic";
 
@@ -16,7 +16,33 @@ const CAMPOS = `
   coalesce(e.pago_estado,'pendiente') AS pago_estado,
   (cb.nit IS NOT NULL) AS tiene_banco`;
 
-async function cargar(): Promise<{ pendientes: FilaPago[]; validacion: FilaPago[]; historial: PagoHecho[]; cuentas: CuentaPago[]; diaPago: number }> {
+// Lo aprobado en las dos bandejas del intake: cuentas de cobro (se pagan por su
+// valor) y adelantos de cotización (por el % pactado). Van al bloque "sin
+// factura DIAN" de Validación — plata real, sin factura electrónica detrás.
+const SQL_INTAKE = `
+  SELECT 'cuenta_cobro' AS tipo, cc.id, 'CC-' || cc.id AS ref,
+         cc.razon_social AS proveedor, cc.num_doc AS nit, cc.concepto, cc.area,
+         coalesce(cc.valor,0)::float AS monto, cc.cuenta_pago,
+         cc.fecha_pago_prog::text AS fecha_pago_prog, cc.creado_en::text AS creado_en,
+         NULL::float AS pct, NULL::float AS base,
+         (cb.num_cuenta IS NOT NULL) AS tiene_banco, cb.banco, cb.certificada
+    FROM cuentas_cobro cc
+    LEFT JOIN cuentas_bancarias_proveedor cb ON cb.nit = cc.num_doc
+   WHERE cc.estado = 'aprobada' AND cc.pago_id IS NULL
+  UNION ALL
+  SELECT 'cotizacion', cot.id, coalesce(cot.codigo, 'COT-' || cot.id),
+         cot.razon_social, cot.nit, cot.concepto, cot.area,
+         round(coalesce(cot.valor,0) * coalesce(cot.adelanto_pct,0) / 100)::float,
+         cot.cuenta_pago, cot.fecha_pago_prog::text, cot.creado_en::text,
+         cot.adelanto_pct::float, cot.valor::float,
+         (cb.num_cuenta IS NOT NULL), cb.banco, cb.certificada
+    FROM cotizaciones cot
+    LEFT JOIN cuentas_bancarias_proveedor cb ON cb.nit = cot.nit
+   WHERE cot.estado IN ('aprobada','facturada') AND cot.pago_id IS NULL
+     AND cot.requiere_adelanto
+  ORDER BY fecha_pago_prog NULLS FIRST, proveedor`;
+
+async function cargar(): Promise<{ pendientes: FilaPago[]; validacion: FilaPago[]; intake: FilaIntake[]; historial: PagoHecho[]; cuentas: CuentaPago[]; diaPago: number }> {
   const pool = getPool();
   // Columna 1 — PENDIENTES: listas para pago (retenciones_ok), sin cuenta asignada.
   const pendientes = await pool.query<FilaPago>(`
@@ -34,10 +60,16 @@ async function cargar(): Promise<{ pendientes: FilaPago[]; validacion: FilaPago[
     LEFT JOIN cuentas_bancarias_proveedor cb ON cb.nit = f.nit_proveedor
     WHERE e.estado = 'aprobada_pago' AND coalesce(e.pago_estado,'pendiente') <> 'pagado'
     ORDER BY e.cuenta_pago, f.nombre_proveedor, f.fecha_emision`);
-  // Columna 3 — CONFIRMADOS: los pagos ya registrados (con su cuenta).
+  // Bloque APARTE de Validación — lo aprobado en el intake (sin factura DIAN).
+  const intake = await pool.query<FilaIntake>(SQL_INTAKE);
+  // Columna 4 — CONFIRMADOS: los pagos ya registrados (con su cuenta).
+  // `origen` distingue el pago de una factura del de una cuenta de cobro o un
+  // adelanto: sin él, un pago sin facturas parecería un registro roto.
   const historial = await pool.query<PagoHecho>(`
-    SELECT p.id, p.nit_proveedor, max(f.nombre_proveedor) AS proveedor, p.cuenta_pago,
+    SELECT p.id, p.nit_proveedor,
+           coalesce(max(f.nombre_proveedor), max(p.origen_ref)) AS proveedor, p.cuenta_pago,
            p.fecha_pago::text AS fecha_pago, p.monto::float AS monto, p.tipo,
+           p.origen, p.origen_ref,
            p.comprobante_url, p.nota, p.pagado_por, p.creado_en::text AS creado_en,
            count(pf.cufe)::int AS n_facturas,
            coalesce(json_agg(json_build_object('numero', f.numero, 'monto', pf.monto_aplicado)
@@ -51,7 +83,8 @@ async function cargar(): Promise<{ pendientes: FilaPago[]; validacion: FilaPago[
   const cuentas = await pool.query<CuentaPago>("SELECT nombre, formato, activo FROM cuentas_pago ORDER BY id");
   const cfg = await pool.query<{ valor: string }>("SELECT valor FROM config_pagos WHERE clave = 'dia_pago'");
   const diaPago = Number(cfg.rows[0]?.valor ?? 5) || 5;
-  return { pendientes: pendientes.rows, validacion: validacion.rows, historial: historial.rows, cuentas: cuentas.rows, diaPago };
+  return { pendientes: pendientes.rows, validacion: validacion.rows, intake: intake.rows,
+           historial: historial.rows, cuentas: cuentas.rows, diaPago };
 }
 
 export default async function PagosPage() {
@@ -75,7 +108,7 @@ export default async function PagosPage() {
           <>Consolidado de pagos: consulta el <b>Historial</b> y descárgalo en Excel.</>
         )}
       </p>
-      <PagosView pendientes={data.pendientes} validacion={data.validacion} historial={data.historial} cuentas={data.cuentas} diaPago={data.diaPago} puedePagos={puedePagos} />
+      <PagosView pendientes={data.pendientes} validacion={data.validacion} intake={data.intake} historial={data.historial} cuentas={data.cuentas} diaPago={data.diaPago} puedePagos={puedePagos} />
     </div>
   );
 }

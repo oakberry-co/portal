@@ -4,37 +4,90 @@ import { revalidatePath } from "next/cache";
 import { withTx } from "@/lib/db";
 import { registrarEvento } from "@/lib/eventos";
 import { exigirCap } from "@/lib/auth";
+import { docsFaltantes, type DocGuardado } from "@/lib/areas";
+import { bloqueoAprobacion, type CertEstado, type CuentaMaestro } from "@/lib/certificaciones";
+import { syncAbono } from "@/lib/abonos";
+import { aplicarCuentaCertificada } from "@/lib/cuenta-certificada";
 import type { PoolClient } from "pg";
 
 async function guard() {
   return exigirCap("intake");
 }
-const done = () => revalidatePath("/contabilidad/cotizaciones");
-
-/** Recalcula el abono aplicado a la factura enlazada de una cotización (para que
- *  Pagos descuente esos abonos → nunca doble). */
-async function syncAbono(c: PoolClient, cotId: number) {
-  const r = await c.query<{ cufe: string | null; abono: string }>(
-    `SELECT cufe_factura AS cufe,
-            coalesce((SELECT sum(monto) FROM cotizacion_abonos WHERE cotizacion_id = $1),0) AS abono
-       FROM cotizaciones WHERE id = $1`, [cotId]);
-  const cufe = r.rows[0]?.cufe;
-  if (cufe) await c.query("UPDATE factura_estado SET abono_aplicado = $2, actualizado_en = now() WHERE cufe = $1",
-    [cufe, Number(r.rows[0].abono)]);
-}
+const done = () => {
+  revalidatePath("/contabilidad/cotizaciones");
+  revalidatePath("/contabilidad/pagos");
+};
 
 const ESTADOS: Record<string, string> = {
   aprobar: "aprobada", rechazar: "rechazada", cerrar: "cerrada", reabrir: "recibida",
 };
 
+/** Los mismos candados que en cuentas de cobro, re-evaluados CONTRA LA BASE al
+ *  aprobar (la bandeja los muestra, pero decide el servidor), más el que es
+ *  propio de este módulo: sin adelanto no hay nada que llevar a Pagos — una
+ *  cotización sin anticipo se paga por su factura, que ya tiene su carril. */
+async function exigirAprobable(c: PoolClient, id: number): Promise<number> {
+  const { rows } = await c.query<{
+    documentos: DocGuardado[]; cert: CertEstado | null; cuenta: CuentaMaestro;
+    valor: string | null; adelanto_pct: string | null; requiere_adelanto: boolean;
+  }>(
+    `SELECT cot.documentos, cot.valor, cot.adelanto_pct, cot.requiere_adelanto,
+            to_jsonb(cert) AS cert, to_jsonb(cb) AS cuenta
+       FROM cotizaciones cot
+       LEFT JOIN LATERAL (
+         SELECT x.id, x.estado, x.motivo, x.banco, x.num_cuenta, x.aplicada,
+                x.cuenta_anterior, x.leido_en::text AS leido_en
+           FROM certificacion_bancaria x
+          WHERE x.origen_tipo = 'cotizacion' AND x.origen_id = cot.id
+          ORDER BY x.id DESC LIMIT 1) cert ON TRUE
+       LEFT JOIN LATERAL (
+         SELECT y.banco, y.tipo_cuenta, y.num_cuenta, y.certificada
+           FROM cuentas_bancarias_proveedor y WHERE y.nit = cot.nit) cb ON TRUE
+      WHERE cot.id = $1`, [id]);
+  const r = rows[0];
+  if (!r) throw new Error("Cotización no encontrada.");
+  const bloqueo = bloqueoAprobacion(docsFaltantes(r.documentos), r.cert, r.cuenta);
+  if (bloqueo) throw new Error(bloqueo);
+  if (!r.requiere_adelanto || !Number(r.adelanto_pct ?? 0) || !Number(r.valor ?? 0)) {
+    throw new Error("Esta cotización no tiene adelanto (valor y %) — no hay monto que pasar a Pagos. "
+                  + "Sin anticipo el trámite es la factura del proveedor.");
+  }
+  return r.cert!.id;
+}
+
 export async function revisarCotizacion(fd: FormData) {
   const user = await guard();
   const id = Number(fd.get("id"));
-  const nuevo = ESTADOS[String(fd.get("accion") ?? "")];
+  const accion = String(fd.get("accion") ?? "");
+  const nuevo = ESTADOS[accion];
   const nota = String(fd.get("nota") ?? "").trim() || null;
   if (!id || !nuevo) throw new Error("Acción inválida.");
   await withTx(async (c) => {
-    await c.query("UPDATE cotizaciones SET estado=$2, nota_revision=COALESCE($3,nota_revision), revisado_por=$4, revisado_en=now() WHERE id=$1",
+    if (accion === "aprobar") {
+      // Igual que en cuentas de cobro: aprobar escribe la cuenta certificada en
+      // el maestro, en la misma transacción.
+      const certId = await exigirAprobable(c, id);
+      await aplicarCuentaCertificada(c, certId, user);
+    }
+    if (accion === "reabrir") {
+      const { rows } = await c.query<{ pago_id: number | null }>(
+        "SELECT pago_id FROM cotizaciones WHERE id = $1", [id]);
+      if (rows[0]?.pago_id) throw new Error("Esta cotización ya tiene el adelanto pagado: no se puede devolver a revisión.");
+    }
+    await c.query(
+      `UPDATE cotizaciones
+          SET estado = $2, nota_revision = COALESCE($3, nota_revision),
+              -- volver a la bandeja la saca del tablero de Pagos
+              cuenta_pago = CASE WHEN $2 = 'recibida' THEN NULL ELSE cuenta_pago END,
+              revisado_por = $4, revisado_en = now(),
+              aprobado_en = CASE WHEN $2 = 'aprobada' THEN now() ELSE aprobado_en END,
+              -- El adelanto se paga YA: es la condición para que el proveedor
+              -- arranque. La fecha queda explícita para que el tablero lo ordene
+              -- junto a las facturas y no dependa de cuándo llegó la cotización.
+              fecha_pago_prog = CASE WHEN $2 = 'aprobada'
+                THEN COALESCE(fecha_pago_prog, (now() AT TIME ZONE 'America/Bogota')::date)
+                ELSE fecha_pago_prog END
+        WHERE id = $1`,
       [id, nuevo, nota, user.email]);
     await registrarEvento(c, { cufe: null, tipo: "revisa_cotizacion", campo: "estado", valorNuevo: { id, estado: nuevo }, actor: user.email, actorRol: user.rol, origen: "web" });
   });

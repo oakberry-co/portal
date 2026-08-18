@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { withTx } from "@/lib/db";
 import { registrarEvento } from "@/lib/eventos";
 import { exigirCap } from "@/lib/auth";
+import { syncAbono } from "@/lib/abonos";
 import type { PoolClient } from "pg";
 
 // Tablero de pagos (3 columnas):
@@ -156,6 +157,126 @@ export async function reprogramarSemana(fd: FormData) {
     await registrarEvento(c, { cufe: null, tipo: "reprograma_pago", campo: "semana", valorNuevo: { facturas: cufes.length, fecha }, actor: user.email, actorRol: user.rol, origen: "web" });
   });
   done();
+}
+
+// ---------------------------------------------------------------------------
+// BLOQUE "SIN FACTURA DIAN": cuentas de cobro y adelantos de cotización.
+//
+// Es plata que sale por la misma tubería (cuenta propia → archivo del banco →
+// Historial) pero NO tiene factura electrónica. Vive aparte de `facturas` a
+// propósito: meterla ahí obligaría a inventarle un CUFE, y esa tabla es el
+// espejo de la identidad DIAN.
+// ---------------------------------------------------------------------------
+
+type TipoIntake = "cuenta_cobro" | "cotizacion";
+
+/** El tipo elige TABLA: se valida contra una lista cerrada, nunca se concatena
+ *  lo que mande el cliente. */
+function tipoIntake(v: FormDataEntryValue | null): TipoIntake {
+  const t = String(v ?? "");
+  if (t !== "cuenta_cobro" && t !== "cotizacion") throw new Error("Tipo de solicitud inválido.");
+  return t;
+}
+const TABLA: Record<TipoIntake, string> = { cuenta_cobro: "cuentas_cobro", cotizacion: "cotizaciones" };
+
+/** Asigna la cuenta propia desde la que se pagará una solicitud del intake
+ *  (equivale a `asignarCuenta` de las facturas: es lo que la mete en el CSV de
+ *  esa cuenta). */
+export async function asignarCuentaIntake(fd: FormData) {
+  const user = await guardPagador();
+  const tipo = tipoIntake(fd.get("tipo"));
+  const id = Number(fd.get("id"));
+  const cuenta = String(fd.get("cuenta") ?? "").trim();
+  if (!id) throw new Error("Falta la solicitud.");
+  await withTx(async (c) => {
+    if (cuenta) {
+      const cc = await c.query("SELECT 1 FROM cuentas_pago WHERE nombre = $1 AND activo", [cuenta]);
+      if (!cc.rowCount) throw new Error("Cuenta de pago no válida: " + cuenta);
+    }
+    const r = await c.query(
+      `UPDATE ${TABLA[tipo]} SET cuenta_pago = $2 WHERE id = $1 AND pago_id IS NULL`,
+      [id, cuenta || null]);
+    if (!r.rowCount) throw new Error("La solicitud ya está pagada o no existe.");
+    await registrarEvento(c, {
+      cufe: null, tipo: "asigna_cuenta_intake", campo: "cuenta_pago",
+      valorNuevo: { tipo, id, cuenta: cuenta || null },
+      actor: user.email, actorRol: user.rol, origen: "web",
+    });
+  });
+  done();
+}
+
+/** Confirma el pago de una solicitud del intake (el banco ya ejecutó).
+ *
+ *  Crea el `pagos` — con `origen` para que el Historial no lo confunda con una
+ *  factura — y cierra el envío. En una COTIZACIÓN además registra el abono: es
+ *  lo que hace que, cuando llegue la factura final y se enlace, Pagos le
+ *  descuente el adelanto. Sin ese registro se pagaría dos veces. */
+export async function confirmarPagoIntake(fd: FormData) {
+  const user = await guardPagador();
+  const tipo = tipoIntake(fd.get("tipo"));
+  const id = Number(fd.get("id"));
+  if (!id) throw new Error("Falta la solicitud.");
+  const fecha = String(fd.get("fecha_pago") ?? "").trim() || new Date().toISOString().slice(0, 10);
+  const comprobante = String(fd.get("comprobante_url") ?? "").trim() || null;
+  const nota = String(fd.get("nota") ?? "").trim() || null;
+  const montoRaw = String(fd.get("monto") ?? "").replace(/[^\d.-]/g, "");
+
+  await withTx(async (c: PoolClient) => {
+    const q = tipo === "cuenta_cobro"
+      ? `SELECT id, razon_social AS nombre, num_doc AS nit, estado, cuenta_pago, pago_id,
+                coalesce(valor,0) AS debido, 'CC-' || id AS ref
+           FROM cuentas_cobro WHERE id = $1 FOR UPDATE`
+      : `SELECT id, razon_social AS nombre, nit, estado, cuenta_pago, pago_id,
+                round(coalesce(valor,0) * coalesce(adelanto_pct,0) / 100) AS debido,
+                coalesce(codigo, 'COT-' || id) AS ref
+           FROM cotizaciones WHERE id = $1 FOR UPDATE`;
+    const { rows } = await c.query<{
+      id: number; nombre: string; nit: string; estado: string;
+      cuenta_pago: string | null; pago_id: number | null; debido: string; ref: string;
+    }>(q, [id]);
+    const s = rows[0];
+    if (!s) throw new Error("Solicitud no encontrada.");
+    if (s.pago_id) throw new Error("Esta solicitud ya tiene un pago registrado.");
+    const estadosOk = tipo === "cuenta_cobro" ? ["aprobada"] : ["aprobada", "facturada"];
+    if (!estadosOk.includes(s.estado)) throw new Error("La solicitud no está aprobada.");
+    if (!s.cuenta_pago) throw new Error("Elige primero la cuenta desde la que se paga.");
+
+    const debido = Number(s.debido);
+    const monto = montoRaw === "" ? debido : Number(montoRaw);
+    if (!Number.isFinite(monto) || monto <= 0) throw new Error("Monto inválido.");
+    if (debido > 0 && monto > debido + 1) throw new Error("El monto supera lo aprobado para esta solicitud.");
+
+    const pago = await c.query<{ id: number }>(
+      `INSERT INTO pagos (nit_proveedor, fecha_pago, monto, tipo, comprobante_url, nota,
+                          pagado_por, cuenta_pago, origen, origen_ref)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id`,
+      [s.nit, fecha, monto, tipo === "cotizacion" ? "adelanto" : "completo",
+       comprobante, nota, user.email, s.cuenta_pago, tipo, s.ref]);
+    const pagoId = pago.rows[0].id;
+
+    if (tipo === "cuenta_cobro") {
+      await c.query("UPDATE cuentas_cobro SET estado = 'pagada', pago_id = $2 WHERE id = $1", [id, pagoId]);
+    } else {
+      await c.query("UPDATE cotizaciones SET pago_id = $2 WHERE id = $1", [id, pagoId]);
+      // EL CRUCE: el adelanto queda como abono de la cotización para que la
+      // factura final se pague por el SALDO, no por el total.
+      await c.query(
+        `INSERT INTO cotizacion_abonos (cotizacion_id, monto, fecha, cuenta_pago, comprobante_url, creado_por)
+         VALUES ($1,$2,$3,$4,$5,$6)`,
+        [id, monto, fecha, s.cuenta_pago, comprobante, user.email]);
+      await syncAbono(c, id);
+    }
+
+    await registrarEvento(c, {
+      cufe: null, tipo: "confirma_pago_intake", campo: "pago",
+      valorNuevo: { origen: tipo, ref: s.ref, proveedor: s.nombre, nit: s.nit,
+                    cuenta: s.cuenta_pago, monto, fecha, comprobante: !!comprobante, pago_id: pagoId },
+      actor: user.email, actorRol: user.rol, origen: "web",
+    });
+  });
+  done();
+  revalidatePath(tipo === "cuenta_cobro" ? "/contabilidad/cuentas-de-cobro" : "/contabilidad/cotizaciones");
 }
 
 // ---------- Configuración de Pagos (cuentas propias + día de pago) ----------

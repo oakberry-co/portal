@@ -1,7 +1,8 @@
 "use client";
 
 import { Fragment, useState, useTransition } from "react";
-import { asignarCuenta, quitarCuenta, confirmarPago, agregarCuentaPago, toggleCuentaPago, guardarDiaPago } from "./actions";
+import { asignarCuenta, quitarCuenta, confirmarPago, agregarCuentaPago, toggleCuentaPago, guardarDiaPago,
+         asignarCuentaIntake, confirmarPagoIntake } from "./actions";
 
 export type FilaPago = {
   cufe: string; nombre_proveedor: string | null; nit_proveedor: string; numero: string;
@@ -9,9 +10,21 @@ export type FilaPago = {
   cuenta_pago: string | null; semana_fecha: string; a_pagar: number; pagado: number;
   abono_aplicado: number; pago_estado: string; tiene_banco: boolean;
 };
+/** Una solicitud del intake aprobada: cuenta de cobro o adelanto de cotización.
+ *  No tiene CUFE (no hay factura electrónica) — por eso viaja aparte. */
+export type FilaIntake = {
+  tipo: "cuenta_cobro" | "cotizacion";
+  id: number; ref: string; proveedor: string; nit: string;
+  concepto: string | null; area: string | null;
+  monto: number; cuenta_pago: string | null;
+  fecha_pago_prog: string | null; creado_en: string;
+  pct: number | null; base: number | null;      // adelanto: % sobre el valor cotizado
+  tiene_banco: boolean; banco: string | null; certificada: boolean | null;
+};
 export type PagoHecho = {
   id: number; nit_proveedor: string; proveedor: string | null; cuenta_pago: string | null;
   fecha_pago: string; monto: number; tipo: string; comprobante_url: string | null; nota: string | null;
+  origen: string; origen_ref: string | null;
   pagado_por: string; creado_en: string; n_facturas: number;
   facturas: { numero: string; monto: number }[];
 };
@@ -57,32 +70,43 @@ function porProveedor(filas: FilaPago[]): Grupo[] {
     return { ...g, total: g.facturas.reduce((s, f) => s + saldo(f), 0), oldest: g.facturas[0]?.semana_fecha ?? "9999" };
   }).sort((a, b) => a.oldest.localeCompare(b.oldest)); // el proveedor con el pago más próximo/vencido, primero
 }
-function porCuenta(filas: FilaPago[]): { cuenta: string; provs: Grupo[]; total: number }[] {
-  const m = new Map<string, FilaPago[]>();
-  for (const f of filas) { const k = f.cuenta_pago ?? "—"; (m.get(k) ?? m.set(k, []).get(k)!).push(f); }
-  return [...m.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([cuenta, fs]) => ({ cuenta, provs: porProveedor(fs), total: fs.reduce((s, f) => s + saldo(f), 0) }));
+/** Validación se agrupa por CUENTA PROPIA (es lo que define cada archivo del
+ *  banco). Dentro de cada cuenta van, separados: las facturas por proveedor y el
+ *  bloque del intake. La cuenta "—" es la bandeja de lo recién aprobado, a lo que
+ *  todavía no se le dijo desde dónde se paga. */
+function porCuenta(filas: FilaPago[], intake: FilaIntake[]): { cuenta: string; provs: Grupo[]; items: FilaIntake[]; total: number }[] {
+  const claves = new Set<string>([...filas.map((f) => f.cuenta_pago ?? "—"), ...intake.map((i) => i.cuenta_pago ?? "—")]);
+  return [...claves].sort((a, b) => (a === "—" ? -1 : b === "—" ? 1 : a.localeCompare(b))).map((cuenta) => {
+    const fs = filas.filter((f) => (f.cuenta_pago ?? "—") === cuenta);
+    const items = intake.filter((i) => (i.cuenta_pago ?? "—") === cuenta);
+    return { cuenta, provs: porProveedor(fs), items,
+             total: fs.reduce((s, f) => s + saldo(f), 0) + items.reduce((s, i) => s + i.monto, 0) };
+  });
 }
 
-export function PagosView({ pendientes, validacion, historial, cuentas, diaPago, puedePagos }: {
-  pendientes: FilaPago[]; validacion: FilaPago[]; historial: PagoHecho[]; cuentas: CuentaPago[]; diaPago: number; puedePagos: boolean;
+export function PagosView({ pendientes, validacion, intake, historial, cuentas, diaPago, puedePagos }: {
+  pendientes: FilaPago[]; validacion: FilaPago[]; intake: FilaIntake[]; historial: PagoHecho[];
+  cuentas: CuentaPago[]; diaPago: number; puedePagos: boolean;
 }) {
   const [abierto, setAbierto] = useState<Set<string>>(new Set());
   const [sel, setSel] = useState<Set<string>>(new Set());
   const [cuentaProv, setCuentaProv] = useState<Record<string, string>>({});
   const [expPago, setExpPago] = useState<Set<number>>(new Set());
   const [modal, setModal] = useState<{ grupo: Grupo } | null>(null);
+  const [modalIntake, setModalIntake] = useState<FilaIntake | null>(null);
   const [pending, start] = useTransition();
   const [vista, setVista] = useState<"tablero" | "historial" | "config">(puedePagos ? "tablero" : "historial");
 
   const toggle = <T,>(set: Set<T>, k: T) => { const n = new Set(set); n.has(k) ? n.delete(k) : n.add(k); return n; };
   const totalPend = pendientes.reduce((s, f) => s + saldo(f), 0);
-  const totalVal = validacion.reduce((s, f) => s + saldo(f), 0);
+  const totalIntake = intake.reduce((s, i) => s + i.monto, 0);
+  const totalVal = validacion.reduce((s, f) => s + saldo(f), 0) + totalIntake;
   const pagadoMes = historial.filter((p) => p.fecha_pago.slice(0, 7) === mesActual).reduce((s, p) => s + p.monto, 0);
 
   const ctasActivas = cuentas.filter((c) => c.activo);
   const cuenta0 = ctasActivas[0]?.nombre ?? "";
 
-  const porCta = porCuenta(validacion);
+  const porCta = porCuenta(validacion, intake);
 
   // 4 columnas independientes: pendientes de semanas pasadas · pendientes de esta
   // semana · validación · confirmados de ESTA semana (lo anterior vive en Historial).
@@ -173,8 +197,8 @@ export function PagosView({ pendientes, validacion, historial, cuentas, diaPago,
 
       {puedePagos && vista === "tablero" && (<>
       <div className="pg-kpis">
-        <div className="pg-kpi due"><i>Por pagar (total)</i><b>{$(totalPend + totalVal)}</b><span>{pendientes.length + validacion.length} facturas</span></div>
-        <div className="pg-kpi"><i>En validación</i><b>{$(totalVal)}</b><span>{validacion.length} factura(s) con cuenta</span></div>
+        <div className="pg-kpi due"><i>Por pagar (total)</i><b>{$(totalPend + totalVal)}</b><span>{pendientes.length + validacion.length} facturas{intake.length ? ` + ${intake.length} sin factura DIAN` : ""}</span></div>
+        <div className="pg-kpi"><i>En validación</i><b>{$(totalVal)}</b><span>{validacion.length} factura(s){intake.length ? ` + ${intake.length} del intake` : ""}</span></div>
         <div className="pg-kpi paid"><i>Pagado este mes</i><b>{$(pagadoMes)}</b><span>{historial.filter((p) => p.fecha_pago.slice(0, 7) === mesActual).length} pago(s)</span></div>
       </div>
 
@@ -199,16 +223,18 @@ export function PagosView({ pendientes, validacion, historial, cuentas, diaPago,
 
         {/* ---------- Columna 3: VALIDACIÓN SEMANA EN CURSO ---------- */}
         <section className="pg-col">
-          <div className="pg-col-head"><span className="pg-col-tag val">Validación semana en curso</span><i>{validacion.length}</i></div>
+          <div className="pg-col-head"><span className="pg-col-tag val">Validación semana en curso</span><i>{validacion.length + intake.length}</i></div>
           <div className="pg-col-body">
             {!porCta.length ? (
               <div className="pg-empty sm">Asigna una cuenta a las facturas pendientes y aparecerán aquí, agrupadas por cuenta.</div>
             ) : porCta.map((c) => (
-              <div key={c.cuenta} className="pg-cta">
+              <div key={c.cuenta} className={"pg-cta" + (c.cuenta === "—" ? " sincta" : "")}>
                 <div className="pg-cta-head">
-                  <span className="pg-cta-nom">💳 {c.cuenta}</span>
+                  <span className="pg-cta-nom">{c.cuenta === "—" ? "🕓 Sin cuenta asignada" : "💳 " + c.cuenta}</span>
                   <span className="pg-cta-tot">{$(c.total)}</span>
-                  <a className="pg-csv" href={`/contabilidad/pagos/export?cuenta=${encodeURIComponent(c.cuenta)}`} title="Descargar archivo del banco (.csv)">⬇ CSV</a>
+                  {c.cuenta !== "—" && (
+                    <a className="pg-csv" href={`/contabilidad/pagos/export?cuenta=${encodeURIComponent(c.cuenta)}`} title="Descargar archivo del banco (.csv)">⬇ CSV</a>
+                  )}
                 </div>
                 {c.provs.map((g) => {
                   const key = "V" + c.cuenta + g.nit;
@@ -235,6 +261,22 @@ export function PagosView({ pendientes, validacion, historial, cuentas, diaPago,
                     </div>
                   );
                 })}
+
+                {/* BLOQUE APARTE: lo aprobado en el intake. Va dentro de la misma
+                    cuenta (entra al mismo archivo del banco) pero separado de las
+                    facturas — no tiene CUFE y no debe parecer que lo tiene. */}
+                {c.items.length > 0 && (
+                  <div className="pg-intake">
+                    <div className="pg-intake-head">
+                      🧾 Sin factura DIAN <i>{c.items.length}</i>
+                      <span className="pg-intake-tot">{$(c.items.reduce((s, i) => s + i.monto, 0))}</span>
+                    </div>
+                    {c.items.map((it) => (
+                      <ItemIntake key={it.tipo + it.id} it={it} ctas={ctasActivas} cuenta0={cuenta0}
+                                  pending={pending} start={start} onPagar={() => setModalIntake(it)} />
+                    ))}
+                  </div>
+                )}
               </div>
             ))}
           </div>
@@ -256,9 +298,11 @@ export function PagosView({ pendientes, validacion, historial, cuentas, diaPago,
                 </div>
                 {expPago.has(p.id) && (
                   <div className="pg-conf-det">
-                    <div className="muted mini">{dm(p.fecha_pago)} · {p.tipo === "abono" ? "abono" : "completo"} · {p.pagado_por.split("@")[0]}{p.comprobante_url ? <> · <a href={p.comprobante_url} target="_blank" rel="noopener noreferrer">📎 soporte</a></> : ""}</div>
+                    <div className="muted mini">{dm(p.fecha_pago)} · {p.tipo === "abono" ? "abono" : p.tipo === "adelanto" ? "adelanto" : "completo"} · {p.pagado_por.split("@")[0]}{p.comprobante_url ? <> · <a href={p.comprobante_url} target="_blank" rel="noopener noreferrer">📎 soporte</a></> : ""}</div>
                     {p.nota && <div className="pg-nota">📝 {p.nota}</div>}
-                    <div className="pg-fact-list">{p.facturas.map((x, i) => <span key={i}><b className="mono">{x.numero}</b> {$(x.monto)}</span>)}</div>
+                    {p.origen === "factura"
+                      ? <div className="pg-fact-list">{p.facturas.map((x, i) => <span key={i}><b className="mono">{x.numero}</b> {$(x.monto)}</span>)}</div>
+                      : <div className="pg-fact-list"><span className="pg-sindian">🧾 sin factura DIAN · <b className="mono">{p.origen_ref}</b></span></div>}
                   </div>
                 )}
               </div>
@@ -273,6 +317,98 @@ export function PagosView({ pendientes, validacion, historial, cuentas, diaPago,
       {puedePagos && vista === "config" && <ConfigView cuentas={cuentas} diaPago={diaPago} />}
 
       {modal && <ModalConfirmar grupo={modal.grupo} onClose={() => setModal(null)} />}
+      {modalIntake && <ModalConfirmarIntake it={modalIntake} onClose={() => setModalIntake(null)} />}
+    </div>
+  );
+}
+
+/** Una solicitud del intake dentro de Validación. Se le elige la cuenta propia
+ *  (lo que la mete en ese archivo del banco) y se confirma el pago. */
+function ItemIntake({ it, ctas, cuenta0, pending, start, onPagar }: {
+  it: FilaIntake; ctas: CuentaPago[]; cuenta0: string;
+  pending: boolean; start: (cb: () => void) => void; onPagar: () => void;
+}) {
+  const asignar = (cuenta: string) => start(async () => {
+    try {
+      const fd = new FormData();
+      fd.set("tipo", it.tipo); fd.set("id", String(it.id)); fd.set("cuenta", cuenta);
+      await asignarCuentaIntake(fd);
+    } catch (e) { alert("No se pudo asignar la cuenta: " + (e as Error).message); }
+  });
+
+  const detalle = it.tipo === "cotizacion"
+    ? `adelanto ${it.pct ?? "?"}% de ${$(it.base ?? 0)}`
+    : "cuenta de cobro";
+  // Una cuenta de cobro se paga a 30 días: sin ver cuánto falta, alguien le
+  // asigna cuenta hoy y sale en el archivo del banco un mes antes de tiempo.
+  const dias = it.fecha_pago_prog ? diasHasta(it.fecha_pago_prog) : null;
+
+  return (
+    <div className="pg-item">
+      <div className="pg-item-head">
+        <span className="pg-ref mono">{it.ref}</span>
+        <span className="pg-item-nom">{it.proveedor}</span>
+        <span className="pg-item-mto">{$(it.monto)}</span>
+      </div>
+      <div className="pg-item-sub muted mini">
+        {detalle}{it.area ? ` · ${it.area}` : ""}{it.concepto ? ` · ${it.concepto}` : ""}
+        {it.fecha_pago_prog && (
+          <> · pagar <b>{dm(it.fecha_pago_prog)}</b>{" "}
+            <span className={"pg-urg " + (dias! < 0 ? "lo" : dias! <= 3 ? "mid" : "hi")}>
+              {dias! < 0 ? `⏰ ${-dias!}d tarde` : dias === 0 ? "⏰ hoy" : `faltan ${dias}d`}
+            </span>
+          </>
+        )}
+      </div>
+      {!it.tiene_banco && (
+        <div className="pg-nobank blk" title="Sin cuenta bancaria en el maestro: no puede salir en el archivo del banco.">
+          ⚠ sin cuenta bancaria · no entra al CSV
+        </div>
+      )}
+      <div className="pg-assign">
+        <select value={it.cuenta_pago ?? ""} disabled={pending} onChange={(e) => asignar(e.target.value)}>
+          <option value="">— elegir cuenta —</option>
+          {ctas.map((c) => <option key={c.nombre} value={c.nombre}>{c.nombre}</option>)}
+        </select>
+        <button type="button" className="pg-btn" disabled={pending || !it.cuenta_pago}
+                title={it.cuenta_pago ? "Registrar el pago" : "Primero elige la cuenta desde la que se paga"}
+                onClick={onPagar}>✓ Confirmar pago</button>
+      </div>
+      {!it.cuenta_pago && cuenta0 && <div className="mini muted">Elige desde qué cuenta sale para que entre a ese archivo del banco.</div>}
+    </div>
+  );
+}
+
+function ModalConfirmarIntake({ it, onClose }: { it: FilaIntake; onClose: () => void }) {
+  const [monto, setMonto] = useState(String(Math.round(it.monto)));
+  const hoy = new Date().toISOString().slice(0, 10);
+  return (
+    <div className="modal-backdrop" onMouseDown={onClose}>
+      <div className="modal" onMouseDown={(e) => e.stopPropagation()}>
+        <div className="modal-head">
+          <div>
+            <h3>Confirmar pago · sin factura DIAN</h3>
+            <p className="modal-sub">{it.ref} · {it.proveedor} · {it.cuenta_pago} · {$(it.monto)}</p>
+          </div>
+          <button type="button" className="modal-x" onClick={onClose}>×</button>
+        </div>
+        <form action={async (fd) => { fd.set("tipo", it.tipo); fd.set("id", String(it.id)); await confirmarPagoIntake(fd); onClose(); }}>
+          <div className="pg-form">
+            <label>Monto pagado<input name="monto" value={monto} onChange={(e) => setMonto(e.target.value)} inputMode="numeric" /></label>
+            <label>Fecha de pago<input type="date" name="fecha_pago" defaultValue={hoy} /></label>
+            <label>Comprobante (link, opcional)<input name="comprobante_url" placeholder="Drive / URL del soporte" /></label>
+            <label>Nota (opcional)<input name="nota" placeholder="referencia, banco…" /></label>
+          </div>
+          {it.tipo === "cotizacion" && (
+            <p className="modal-nota">Queda registrado como <b>abono</b> de {it.ref}: cuando llegue la factura final y se
+              enlace, Pagos le descuenta este adelanto.</p>
+          )}
+          <div className="modal-foot">
+            <button type="button" className="ghost" onClick={onClose}>Cancelar</button>
+            <button type="submit">Confirmar pagada</button>
+          </div>
+        </form>
+      </div>
     </div>
   );
 }
@@ -326,15 +462,19 @@ function HistorialView({ historial, cuentas }: { historial: PagoHecho[]; cuentas
                     <td>{p.proveedor ?? p.nit_proveedor}</td>
                     <td>{p.cuenta_pago ?? <span className="muted">—</span>}</td>
                     <td className="num"><b>{$(p.monto)}</b></td>
-                    <td>{p.tipo === "abono" ? <span className="pg-abono">abono</span> : <span className="pg-completo">completo</span>}</td>
-                    <td className="num">{p.n_facturas} {exp.has(p.id) ? "▾" : "▸"}</td>
+                    <td>{p.tipo === "abono" ? <span className="pg-abono">abono</span>
+                       : p.tipo === "adelanto" ? <span className="pg-abono">adelanto</span>
+                       : <span className="pg-completo">completo</span>}</td>
+                    <td className="num">{p.origen === "factura" ? <>{p.n_facturas} {exp.has(p.id) ? "▾" : "▸"}</> : <span className="pg-sindian" title="Cuenta de cobro o adelanto: no tiene factura electrónica">s/DIAN</span>}</td>
                     <td>{p.comprobante_url ? <a href={p.comprobante_url} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}>📎</a> : <span className="muted">—</span>}</td>
                     <td className="muted">{p.pagado_por.split("@")[0]}</td>
                   </tr>
                   {exp.has(p.id) && (
                     <tr className="pg-hdet"><td colSpan={8}>
                       {p.nota && <div className="pg-nota">📝 {p.nota}</div>}
-                      <div className="pg-fact-list">{p.facturas.map((x, i) => <span key={i}><b className="mono">{x.numero}</b> {$(x.monto)}</span>)}</div>
+                      {p.origen === "factura"
+                        ? <div className="pg-fact-list">{p.facturas.map((x, i) => <span key={i}><b className="mono">{x.numero}</b> {$(x.monto)}</span>)}</div>
+                        : <div className="pg-fact-list"><span className="pg-sindian">🧾 {p.origen === "cotizacion" ? "adelanto de cotización" : "cuenta de cobro"} · <b className="mono">{p.origen_ref}</b></span></div>}
                     </td></tr>
                   )}
                 </Fragment>

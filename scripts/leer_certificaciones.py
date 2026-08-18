@@ -9,7 +9,11 @@ quisiera. Ahora el proveedor solo sube la certificación que emite su banco, y
 
     certificación (PDF o foto) -> texto -> banco + tipo + número + titular
                                -> certificacion_bancaria.estado
-                               -> cuentas_bancarias_proveedor (solo si 'valida')
+
+La cuenta NO se escribe en `cuentas_bancarias_proveedor` desde acá: eso pasa
+cuando alguien APRUEBA la solicitud en la bandeja. De ese maestro sale el
+archivo del banco para todo el proveedor —facturas DIAN incluidas—, así que un
+envío público sin revisar no puede decidirlo.
 
 Cómo lee, en orden:
   1. Texto embebido del PDF (pdftotext / PyMuPDF) — los bancos generan PDFs con
@@ -25,6 +29,11 @@ documento real del banco:
 Si falta alguna -> 'no_es_certificacion' (un Word hecho a mano no pasa).
 Si no se pudo extraer texto -> 'ilegible'.
 Los dos casos disparan el correo que le pide al proveedor el documento real.
+
+Y una cuenta ya registrada NUNCA se pisa: si el NIT tenía otra, se guarda cuál
+era (`cuenta_anterior`) y la bandeja exige confirmar el cambio aparte antes de
+aprobar. El intake es público: sin esa regla, mandar una cuenta de cobro con el
+NIT de un proveedor grande bastaría para desviarle el pago.
 
 Uso:
     python3 scripts/leer_certificaciones.py            # dry-run de lo pendiente
@@ -274,24 +283,34 @@ def main() -> int:
         cur.execute("""UPDATE certificacion_bancaria
                           SET banco=%s, tipo_cuenta=%s, num_cuenta=%s, titular_doc=%s,
                               estado=%s, motivo=%s, metodo=%s, texto_crudo=%s,
-                              leido_en=now()
+                              aplicada=FALSE, cuenta_anterior=NULL, leido_en=now()
                         WHERE id=%s""",
                     (d["banco"], d["tipo_cuenta"], d["num_cuenta"], d["titular_doc"],
                      estado, motivo, metodo, texto[:8000], cid))
 
-        # La cuenta oficial SOLO se escribe desde una certificación válida.
+        # El lector NO escribe la cuenta en el maestro. A propósito.
+        #
+        # `cuentas_bancarias_proveedor` es de donde sale el archivo del banco
+        # para TODO, incluidas las facturas DIAN de ese mismo NIT. Si acá
+        # escribiéramos, un envío del portal PÚBLICO —que nadie ha mirado—
+        # decidiría a qué cuenta se le paga a ese proveedor. La cuenta entra al
+        # circuito de pago cuando un humano APRUEBA en la bandeja, no cuando un
+        # OCR termina (lib/cuenta-certificada.ts).
+        #
+        # Lo que sí hace acá: dejar servida la decisión. Si el NIT ya tenía OTRA
+        # cuenta, se guarda cuál era -> la bandeja muestra "cambió la cuenta" y
+        # exige confirmarlo aparte antes de poder aprobar.
         if estado == "valida" and nit:
-            cur.execute("""
-                INSERT INTO cuentas_bancarias_proveedor
-                  (nit, banco, tipo_cuenta, num_cuenta, num_doc, fuente,
-                   certificacion_id, certificada, actualizado_en)
-                VALUES (%s,%s,%s,%s,%s,'certificacion',%s,TRUE, now())
-                ON CONFLICT (nit) DO UPDATE SET
-                  banco=EXCLUDED.banco, tipo_cuenta=EXCLUDED.tipo_cuenta,
-                  num_cuenta=EXCLUDED.num_cuenta, fuente='certificacion',
-                  certificacion_id=EXCLUDED.certificacion_id, certificada=TRUE,
-                  actualizado_en=now()""",
-                (nit, d["banco"], d["tipo_cuenta"], d["num_cuenta"], d["titular_doc"], cid))
+            cur.execute("SELECT num_cuenta FROM cuentas_bancarias_proveedor WHERE nit=%s", (nit,))
+            fila = cur.fetchone()
+            previa = solo_digitos(fila[0]) if fila and fila[0] else ""
+            nueva = solo_digitos(d["num_cuenta"])
+            if previa and previa != nueva:
+                cur.execute("UPDATE certificacion_bancaria SET cuenta_anterior=%s WHERE id=%s",
+                            (fila[0], cid))
+                res["cambio_de_cuenta"] += 1
+                print(f"     ⚠ el NIT {nit} ya tenía la cuenta ...{previa[-4:]} y esta trae "
+                      f"...{nueva[-4:]}: NO se pisa, hay que confirmarlo en la bandeja")
 
     print(f"\n{dict(res)}")
     if args.commit:

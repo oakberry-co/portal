@@ -1,4 +1,8 @@
-// Exporta el historial de pagos a Excel (.xlsx). Una línea por factura pagada.
+// Exporta el historial de pagos a Excel (.xlsx). Una línea por factura pagada —
+// y una línea por solicitud del intake (cuenta de cobro / adelanto de
+// cotización), que se paga igual pero no tiene factura electrónica: se
+// identifica por su referencia (CC-12, COT-0004) y la columna Origen. Dejarlas
+// fuera haría que el consolidado no cuadre con lo que salió del banco.
 // Params opcionales: ?desde=YYYY-MM-DD&hasta=YYYY-MM-DD&cuenta=Rappi
 import ExcelJS from "exceljs";
 import { getPool } from "@/lib/db";
@@ -22,12 +26,19 @@ export async function GET(req: Request) {
   const where = conds.length ? "WHERE " + conds.join(" AND ") : "";
 
   const { rows } = await getPool().query(
-    `SELECT p.fecha_pago, p.nit_proveedor, f.nombre_proveedor, p.cuenta_pago,
+    `SELECT p.fecha_pago, p.nit_proveedor,
+            coalesce(f.nombre_proveedor, ik.razon_social) AS nombre_proveedor, p.cuenta_pago,
             p.monto AS monto_pago, p.tipo, p.comprobante_url, p.nota, p.pagado_por,
-            f.numero, pf.monto_aplicado
+            p.origen, coalesce(f.numero, p.origen_ref) AS numero,
+            coalesce(pf.monto_aplicado, CASE WHEN p.origen <> 'factura' THEN p.monto END) AS monto_aplicado
        FROM pagos p
        LEFT JOIN pago_facturas pf ON pf.pago_id = p.id
        LEFT JOIN facturas f ON f.cufe = pf.cufe
+       LEFT JOIN LATERAL (
+         SELECT razon_social FROM cuentas_cobro WHERE pago_id = p.id
+          UNION ALL
+         SELECT razon_social FROM cotizaciones  WHERE pago_id = p.id
+          LIMIT 1) ik ON TRUE
        ${where}
       ORDER BY p.fecha_pago DESC, p.id DESC, f.fecha_emision`,
     params);
@@ -41,7 +52,8 @@ export async function GET(req: Request) {
     { header: "NIT", key: "nit", width: 14 },
     { header: "Proveedor", key: "prov", width: 28 },
     { header: "Cuenta", key: "cuenta", width: 14 },
-    { header: "Factura", key: "num", width: 14 },
+    { header: "Factura / ref.", key: "num", width: 16 },
+    { header: "Origen", key: "origen", width: 18 },
     { header: "Monto aplicado", key: "aplicado", width: 15, style: money },
     { header: "Tipo", key: "tipo", width: 10 },
     { header: "Monto del pago", key: "montop", width: 15, style: money },
@@ -55,10 +67,14 @@ export async function GET(req: Request) {
 
   const n = (v: unknown) => (v == null || v === "" ? null : Number(v));
   const ymd = (d: unknown) => (d ? new Date(d as string).toISOString().slice(0, 10) : "");
+  const ORIGEN: Record<string, string> = {
+    factura: "Factura DIAN", cuenta_cobro: "Cuenta de cobro", cotizacion: "Adelanto cotización",
+  };
   for (const r of rows) {
     ws.addRow({
       fecha: ymd(r.fecha_pago), nit: r.nit_proveedor, prov: r.nombre_proveedor ?? "",
-      cuenta: r.cuenta_pago ?? "", num: r.numero ?? "", aplicado: n(r.monto_aplicado),
+      cuenta: r.cuenta_pago ?? "", num: r.numero ?? "",
+      origen: ORIGEN[r.origen as string] ?? r.origen, aplicado: n(r.monto_aplicado),
       tipo: r.tipo, montop: n(r.monto_pago), comp: r.comprobante_url ?? "",
       nota: r.nota ?? "", quien: r.pagado_por,
     });

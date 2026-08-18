@@ -574,4 +574,58 @@ JOIN factura_soportes s ON s.cufe = f.cufe
 LEFT JOIN factura_estado e ON e.cufe = f.cufe
 GROUP BY f.cufe, e.destino;
 
+-- -----------------------------------------------------------------------------
+-- 14) EL INTAKE APROBADO ENTRA A PAGOS — bloque "sin factura DIAN"
+--
+-- Una cuenta de cobro y el adelanto de una cotización SON plata que sale, pero
+-- NO tienen factura electrónica. Se pagan por la misma tubería (misma cuenta
+-- propia, mismo archivo del banco, mismo Historial) pero viven APARTE de las
+-- facturas: mezclarlas obligaría a inventarles un CUFE, y `facturas` es el
+-- espejo de la identidad DIAN — un CUFE falso ahí envenena la trazabilidad.
+--
+--   bandeja (aprobar)  ->  Validación semana en curso, bloque "sin factura DIAN"
+--                      ->  cuenta propia  ->  CSV del banco  ->  Confirmados
+--
+-- Candado de aprobación (server, no solo UI): los 4 documentos subidos + la
+-- cuenta CERTIFICADA por el banco. Sin cuenta certificada no hay línea en el
+-- archivo del banco, así que aprobar sin ella solo mueve el problema al día del
+-- pago.
+-- -----------------------------------------------------------------------------
+
+-- Cuenta propia (Rappi/Davivienda/PSE) desde la que se paga este envío. La elige
+-- quien paga en el tablero, igual que en una factura.
+ALTER TABLE cuentas_cobro ADD COLUMN IF NOT EXISTS cuenta_pago TEXT;
+ALTER TABLE cotizaciones  ADD COLUMN IF NOT EXISTS cuenta_pago TEXT;
+
+-- Cuándo se aprobó (distinto de revisado_en, que también se mueve al rechazar).
+ALTER TABLE cuentas_cobro ADD COLUMN IF NOT EXISTS aprobado_en TIMESTAMPTZ;
+ALTER TABLE cotizaciones  ADD COLUMN IF NOT EXISTS aprobado_en TIMESTAMPTZ;
+
+-- El adelanto de una cotización se paga YA (es la condición para arrancar el
+-- trabajo); la fecha queda explícita para que el tablero la ordene como a las
+-- facturas y no dependa de la fecha de creación.
+ALTER TABLE cotizaciones ADD COLUMN IF NOT EXISTS fecha_pago_prog DATE;
+
+-- De dónde nació el pago. 'factura' = el carril DIAN de siempre. Se escribe una
+-- sola vez, en la misma transacción que crea el pago, y nunca se actualiza: es
+-- una etiqueta para el Historial, no una segunda fuente de verdad (el enlace
+-- real es cuentas_cobro.pago_id / cotizaciones.pago_id).
+ALTER TABLE pagos ADD COLUMN IF NOT EXISTS origen     TEXT NOT NULL DEFAULT 'factura';
+ALTER TABLE pagos ADD COLUMN IF NOT EXISTS origen_ref TEXT;   -- 'CC-12' | 'COT-0004'
+
+CREATE INDEX IF NOT EXISTS ix_cc_pago  ON cuentas_cobro (pago_id);
+CREATE INDEX IF NOT EXISTS ix_cot_pago ON cotizaciones  (pago_id);
+
+-- ¿La cuenta leída del documento SE APLICÓ al maestro?
+--
+-- Aquí vive el agujero más peligroso de todo el intake: cualquiera puede mandar
+-- una cuenta de cobro con el NIT de un proveedor grande y su propia
+-- certificación. Si el lector sobrescribiera la cuenta, el siguiente pago masivo
+-- se iría a la cuenta del atacante sin que nadie lo note.
+--   · NIT sin cuenta previa, o cuenta igual  -> aplicada = TRUE (automático).
+--   · NIT con OTRA cuenta                    -> aplicada = FALSE + cuenta_anterior;
+--     la anterior NO se toca y un humano confirma el cambio en la bandeja.
+ALTER TABLE certificacion_bancaria ADD COLUMN IF NOT EXISTS aplicada        BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE certificacion_bancaria ADD COLUMN IF NOT EXISTS cuenta_anterior TEXT;
+
 COMMIT;

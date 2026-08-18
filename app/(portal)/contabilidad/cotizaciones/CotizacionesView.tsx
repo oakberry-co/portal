@@ -2,20 +2,21 @@
 
 import { useMemo, useState, type ReactNode } from "react";
 import { revisarCotizacion, agregarAbono, enlazarFactura, quitarEnlace } from "./actions";
-import { etiquetaClase } from "@/lib/areas";
-
-/** Nombre del documento por su clase; los viejos (sin clase) caen al genérico. */
-const etiquetaDoc = (clase?: string) => (clase && clase !== "otro" ? etiquetaClase(clase) : "Documento");
+import { docsFaltantes } from "@/lib/areas";
+import { bloqueoAprobacion, type CertEstado, type CuentaMaestro } from "@/lib/certificaciones";
+import { DocsIntake, PanelCuenta, type DocIntake } from "../_intake/PanelCuenta";
 
 export type Cotizacion = {
   id: number; codigo: string | null; razon_social: string; nit: string;
   contacto: string | null; correo: string | null; telefono: string | null;
   area: string | null; concepto: string | null; descripcion: string | null; valor: number | null;
-  documentos: { nombre: string; path: string; tipo: string; clase?: string; estado?: string }[];
+  documentos: DocIntake[];
   numero_cotizacion: string | null;
-  requiere_adelanto: boolean; adelanto_pct: number | null;
+  requiere_adelanto: boolean; adelanto_pct: number | null; plazo_dias: number | null;
   estado: string; cufe_factura: string | null; nota_revision: string | null;
   revisado_por: string | null; creado_en: string;
+  cuenta_pago: string | null; pago_id: number | null;
+  cert: CertEstado | null; cuenta: CuentaMaestro;
   abono_total: number; abonos: { monto: number; fecha: string; cuenta: string | null }[];
   fact_numero: string | null; fact_total: number | null;
 };
@@ -58,6 +59,10 @@ export function CotizacionesView({ cots, candidatos }: { cots: Cotizacion[]; can
           {lista.map((c) => {
             const saldo = c.fact_total != null ? Math.max(0, c.fact_total - c.abono_total) : null;
             const cands = porNit.get(c.nit) ?? [];
+            // El mismo cálculo que exige el servidor al aprobar (lib/certificaciones).
+            const bloqueo = bloqueoAprobacion(docsFaltantes(c.documentos), c.cert, c.cuenta);
+            const adelanto = c.valor != null && c.adelanto_pct != null
+              ? Math.round((c.valor * Number(c.adelanto_pct)) / 100) : null;
             return (
               <div key={c.id} className="cc-card">
                 <div className="cc-head">
@@ -71,29 +76,18 @@ export function CotizacionesView({ cots, candidatos }: { cots: Cotizacion[]; can
                   <div className="cc-valor">{$(c.valor)}<span className="muted mini" style={{ display: "block", fontWeight: 400 }}>cotizado</span></div>
                 </div>
 
-                {/* El proveedor pidió adelanto: se ve ANTES de programar el pago. */}
+                {/* El adelanto es LO QUE SE VA A PAGAR al aprobar: se ve en pesos,
+                    no solo como porcentaje. */}
                 {c.requiere_adelanto && (
                   <div className="cc-adelanto">
                     Pide adelanto del <b>{c.adelanto_pct ?? "?"}%</b>
-                    {c.valor != null && c.adelanto_pct != null && (
-                      <span> · {$(Math.round((c.valor * Number(c.adelanto_pct)) / 100))}</span>
-                    )}
+                    {adelanto != null && <span> · <b>{$(adelanto)}</b> a pagar</span>}
+                    {c.plazo_dias != null && <span className="muted"> · saldo a {c.plazo_dias} días</span>}
                   </div>
                 )}
 
-                {c.documentos?.length > 0 && (
-                  <div className="cc-docs">{c.documentos.map((d, i) =>
-                    d.estado === "pendiente" ? (
-                      <span key={i} className="cc-doc falta" title={"No llegó a Drive: " + d.nombre}>
-                        ⚠️ {etiquetaDoc(d.clase)} — no subió
-                      </span>
-                    ) : (
-                      <a key={i} href={d.path} target="_blank" rel="noopener noreferrer" className="cc-doc">
-                        📎 {etiquetaDoc(d.clase)}
-                      </a>
-                    )
-                  )}</div>
-                )}
+                <DocsIntake docs={c.documentos ?? []} />
+                <PanelCuenta cert={c.cert} cuenta={c.cuenta} bloqueo={c.estado === "recibida" ? bloqueo : null} />
 
                 {/* Abonos */}
                 <div className="cot-abonos">
@@ -139,8 +133,23 @@ export function CotizacionesView({ cots, candidatos }: { cots: Cotizacion[]; can
                 {c.nota_revision && <div className="cc-nota">📝 {c.nota_revision}</div>}
 
                 <div className="cc-acts">
-                  {c.estado === "recibida" && <><Accion id={c.id} accion="aprobar">✓ Aprobar</Accion><Accion id={c.id} accion="rechazar" ghost>Rechazar</Accion></>}
-                  {c.estado === "aprobada" && <Accion id={c.id} accion="cerrar" ghost>Cerrar</Accion>}
+                  {c.estado === "recibida" && (
+                    <>
+                      <Accion id={c.id} accion="aprobar" disabled={!!bloqueo}
+                              title={bloqueo ?? "El adelanto pasa a Pagos › Validación semana en curso"}>
+                        ✓ Aprobar adelanto{adelanto != null ? ` (${$(adelanto)})` : ""}
+                      </Accion>
+                      <Accion id={c.id} accion="rechazar" ghost>Rechazar</Accion>
+                    </>
+                  )}
+                  {c.estado === "aprobada" && (
+                    <>
+                      {c.pago_id
+                        ? <span className="cc-enpagos">✓ adelanto pagado</span>
+                        : <span className="cc-enpagos">→ en Pagos · Validación semana en curso</span>}
+                      <Accion id={c.id} accion="cerrar" ghost>Cerrar</Accion>
+                    </>
+                  )}
                   {["cerrada", "rechazada"].includes(c.estado) && <Accion id={c.id} accion="reabrir" ghost>Reabrir</Accion>}
                 </div>
               </div>
@@ -152,12 +161,14 @@ export function CotizacionesView({ cots, candidatos }: { cots: Cotizacion[]; can
   );
 }
 
-function Accion({ id, accion, children, ghost }: { id: number; accion: string; children: ReactNode; ghost?: boolean }) {
+function Accion({ id, accion, children, ghost, disabled, title }: {
+  id: number; accion: string; children: ReactNode; ghost?: boolean; disabled?: boolean; title?: string;
+}) {
   return (
     <form action={revisarCotizacion} style={{ display: "inline" }}>
       <input type="hidden" name="id" value={id} />
       <input type="hidden" name="accion" value={accion} />
-      <button type="submit" className={"cc-act" + (ghost ? " ghost" : "")}>{children}</button>
+      <button type="submit" className={"cc-act" + (ghost ? " ghost" : "")} disabled={disabled} title={title}>{children}</button>
     </form>
   );
 }

@@ -52,3 +52,30 @@ export const PLAZOS_NEGOCIADOS = [
 export function etiquetaClase(clase: string | undefined): string {
   return CLASES_DOC.find((c) => c.clase === clase)?.label ?? "Documento";
 }
+
+/** Documento tal como quedó en `documentos` (JSONB) — lo mínimo para saber si
+ *  llegó. Vive acá (módulo puro) para que las vistas de cliente lo importen sin
+ *  arrastrar código de servidor. */
+export type DocGuardado = { clase?: string; estado?: string; path?: string };
+
+/** Qué documentos obligatorios FALTAN en un envío (devuelve sus etiquetas).
+ *
+ *  "Falta" incluye el que el proveedor adjuntó pero NO llegó a Drive
+ *  (`estado='pendiente'`): en la bandeja no hay nada que abrir, así que para
+ *  aprobar es como si no existiera.
+ *
+ *  Los envíos VIEJOS (sin `clase`, anteriores a los documentos tipados) no se
+ *  pueden evaluar por clase: se dan por completos si trajeron al menos tantos
+ *  archivos como clases se piden hoy. No se le exige a un proveedor una casilla
+ *  que no existía cuando llenó el formulario. */
+export function docsFaltantes(docs: DocGuardado[] | null | undefined): string[] {
+  const lista = docs ?? [];
+  const tipados = lista.filter((d) => d.clase && d.clase !== "otro");
+  if (!tipados.length) {
+    const subidos = lista.filter((d) => d.estado !== "pendiente" && (d.path ?? "") !== "");
+    return subidos.length >= CLASES_DOC.length ? [] : CLASES_DOC.map((c) => c.label);
+  }
+  return CLASES_DOC
+    .filter((c) => !tipados.some((d) => d.clase === c.clase && d.estado !== "pendiente" && (d.path ?? "") !== ""))
+    .map((c) => c.label);
+}

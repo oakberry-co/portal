@@ -7,12 +7,18 @@ import { codigoBanco, codigoBancoDavivienda, TIPO_DOC_FULL, TIPO_CUENTA_FULL, cs
 export const dynamic = "force-dynamic";
 
 // Archivo del banco (CSV) para una cuenta propia (Rappi/Davivienda/PSE): UNA
-// línea por proveedor, con el total a pagar (suma de saldos de sus facturas en
-// Validación). El formato lo define cuentas_pago.formato. Los datos bancarios
-// salen del maestro cuentas_bancarias_proveedor (banco → código ACH aquí).
+// línea por proveedor, con el total a pagar. El formato lo define
+// cuentas_pago.formato. Los datos bancarios salen del maestro
+// cuentas_bancarias_proveedor (banco → código ACH aquí).
+//
+// El total suma DOS orígenes, porque el banco hace una sola transferencia por
+// proveedor: las facturas en Validación y lo aprobado en el intake (cuentas de
+// cobro y adelantos de cotización, que no tienen factura electrónica). Si el
+// intake quedara por fuera, alguien tendría que agregar esa línea a mano al
+// archivo — exactamente el hueco por el que se cuelan las cuentas inventadas.
 
 type Fila = {
-  nit: string; nombre: string | null; monto: number;
+  nit: string; nombre: string | null; monto: number; n_intake: number;
   titular_nombre: string | null; titular_apellido: string | null;
   tipo_doc: string | null; num_doc: string | null; banco: string | null;
   tipo_cuenta: string | null; num_cuenta: string | null; correo: string | null; referencia: string | null;
@@ -33,17 +39,32 @@ export async function GET(req: NextRequest) {
   const formato = cc.rows[0]?.formato ?? "generico";
 
   const { rows } = await pool.query<Fila>(
-    `SELECT f.nit_proveedor AS nit, max(f.nombre_proveedor) AS nombre,
-            round(sum(coalesce(e.valor_a_pagar, f.total) - coalesce(e.pago_monto,0) - coalesce(e.abono_aplicado,0)))::float AS monto,
+    `WITH facturas_val AS (
+       SELECT f.nit_proveedor AS nit, f.nombre_proveedor AS nombre, 0 AS es_intake,
+              coalesce(e.valor_a_pagar, f.total) - coalesce(e.pago_monto,0) - coalesce(e.abono_aplicado,0) AS monto
+         FROM factura_estado e JOIN facturas f USING (cufe)
+        WHERE e.estado = 'aprobada_pago' AND e.cuenta_pago = $1
+          AND coalesce(e.pago_estado,'pendiente') <> 'pagado'
+     ), intake_val AS (
+       SELECT num_doc AS nit, razon_social AS nombre, 1 AS es_intake, coalesce(valor,0) AS monto
+         FROM cuentas_cobro
+        WHERE estado = 'aprobada' AND pago_id IS NULL AND cuenta_pago = $1
+       UNION ALL
+       SELECT nit, razon_social, 1, round(coalesce(valor,0) * coalesce(adelanto_pct,0) / 100)
+         FROM cotizaciones
+        WHERE estado IN ('aprobada','facturada') AND pago_id IS NULL AND requiere_adelanto
+          AND cuenta_pago = $1
+     ), todo AS (SELECT * FROM facturas_val UNION ALL SELECT * FROM intake_val)
+     SELECT t.nit, max(t.nombre) AS nombre, round(sum(t.monto))::float AS monto,
+            sum(t.es_intake)::int AS n_intake,
             max(cb.titular_nombre) titular_nombre, max(cb.titular_apellido) titular_apellido,
             max(cb.tipo_doc) tipo_doc, max(cb.num_doc) num_doc, max(cb.banco) banco,
             max(cb.tipo_cuenta) tipo_cuenta, max(cb.num_cuenta) num_cuenta,
             max(cb.correo) correo, max(cb.referencia) referencia
-       FROM factura_estado e JOIN facturas f USING (cufe)
-       LEFT JOIN cuentas_bancarias_proveedor cb ON cb.nit = f.nit_proveedor
-      WHERE e.estado = 'aprobada_pago' AND e.cuenta_pago = $1 AND coalesce(e.pago_estado,'pendiente') <> 'pagado'
-      GROUP BY f.nit_proveedor
-     HAVING sum(coalesce(e.valor_a_pagar, f.total) - coalesce(e.pago_monto,0) - coalesce(e.abono_aplicado,0)) > 0
+       FROM todo t
+       LEFT JOIN cuentas_bancarias_proveedor cb ON cb.nit = t.nit
+      GROUP BY t.nit
+     HAVING sum(t.monto) > 0
       ORDER BY nombre`,
     [cuenta]);
 
@@ -97,6 +118,7 @@ export async function GET(req: NextRequest) {
       + (sinCuenta.length ? `_FALTAN-${sinCuenta.length}` : "") + `.csv"`,
     "X-Proveedores-Incluidos": String(pagables.length),
     "X-Proveedores-Sin-Cuenta": String(sinCuenta.length),
+    "X-Solicitudes-Sin-Factura-Dian": String(rows.reduce((n, r) => n + (r.n_intake || 0), 0)),
   };
   if (sinCuenta.length) {
     console.warn("[pagos/export] fuera del archivo por no tener cuenta bancaria: "

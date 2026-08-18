@@ -736,6 +736,29 @@ button.ghost { background: #fff; color: var(--purple); }
 .pg-cta-tot { font-weight: 700; font-size: 12px; color: var(--coral); }
 .pg-csv { background: var(--purple); color: #fff !important; border-radius: 7px; padding: 4px 9px; font-size: 11px; font-weight: 700; text-decoration: none !important; white-space: nowrap; }
 .pg-csv:hover { background: var(--purple-deep); }
+/* Lo recién aprobado, a lo que todavía no se le dijo desde qué cuenta sale. */
+.pg-cta.sincta { border-style: dashed; }
+.pg-cta.sincta .pg-cta-head { background: var(--cream-2); }
+
+/* BLOQUE "SIN FACTURA DIAN": cuentas de cobro y adelantos, dentro de la misma
+   cuenta propia pero visiblemente aparte de las facturas. */
+.pg-intake { border-top: 1px dashed var(--border-lav); background: #fffdf5; }
+.pg-intake-head { display: flex; align-items: center; gap: 6px; padding: 6px 10px;
+  font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .03em; color: #8a6100; }
+.pg-intake-head i { font-style: normal; font-family: var(--mono); font-size: 10px;
+  background: rgba(212,160,23,.18); border-radius: 999px; padding: 1px 7px; }
+.pg-intake-tot { margin-left: auto; font-weight: 700; font-size: 12px; color: var(--coral); text-transform: none; }
+.pg-item { border-top: 1px solid var(--border); padding: 8px 10px 0; }
+.pg-item-head { display: flex; align-items: center; gap: 6px; }
+.pg-ref { font-size: 10px; color: var(--purple); background: var(--lav-soft); border-radius: 6px; padding: 1px 6px; }
+.pg-item-nom { flex: 1; font-weight: 700; font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pg-item-mto { font-weight: 800; font-size: 12.5px; color: var(--coral); }
+.pg-item-sub { margin: 2px 0 4px; }
+.pg-item .pg-assign { margin: 6px -10px 0; border-top: 1px solid var(--border); }
+.pg-nobank.blk { display: block; margin: 2px 0 0; font-size: 10px; }
+.pg-sindian { color: #8a6100; background: #fff8e6 !important; border-color: rgba(212,160,23,.35) !important; }
+.modal-nota { margin: 0 18px 4px; font-size: 12.5px; color: #6b4d05; background: #fff8e6;
+  border-radius: 9px; padding: 9px 12px; line-height: 1.5; }
 .pg-conf { border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
 .pg-conf-head { display: flex; align-items: center; gap: 8px; padding: 8px 10px; cursor: pointer; }
 .pg-conf-head:hover { background: #fdfbf6; }
@@ -914,9 +937,30 @@ button.ghost { background: #fff; color: var(--purple); }
   background: #fff8e6; border: 1px solid rgba(212,160,23,.35); color: #8a6100;
   font-size: 12.5px; font-weight: 600; }
 .cc-nota { font-size: 12.5px; color: var(--lav); background: var(--cream-2); border-radius: 8px; padding: 7px 10px; margin: 6px 0; }
-.cc-acts { display: flex; gap: 8px; margin-top: 12px; }
+.cc-acts { display: flex; gap: 8px; margin-top: 12px; align-items: center; flex-wrap: wrap; }
 .cc-act { background: var(--purple); color: #fff; border: none; border-radius: 9px; padding: 8px 16px; font-weight: 700; font-size: 12.5px; cursor: pointer; }
 .cc-act:hover { background: var(--purple-deep); }
+.cc-act:disabled { background: #cfc7dd; cursor: not-allowed; }
+
+/* ---- La cuenta a la que se pagaría + por qué no se puede aprobar ---------- */
+.cc-cuenta { margin: 10px 0 2px; }
+.cc-cuenta-linea { font-size: 13px; display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; }
+.cc-cuenta-linea i { font-style: normal; font-size: 10px; text-transform: uppercase; letter-spacing: .05em;
+  color: var(--lav); font-weight: 700; }
+.cc-badge { margin-left: 6px; border-radius: 999px; padding: 1px 9px; font-size: 10.5px; font-weight: 700; }
+.cc-badge.ok { background: #e6f4ea; color: #1e7d47; }
+.cc-badge.tibio { background: #fff8e6; color: #8a6100; }
+.cc-cert { margin-top: 7px; border-radius: 9px; padding: 8px 11px; font-size: 12.5px; line-height: 1.5; }
+.cc-cert.esperando { background: var(--cream-2); color: var(--lav); }
+.cc-cert.malo { background: #fdeef0; color: var(--danger); }
+/* Cambio de cuenta: el caso peligroso. Amarillo fuerte, con las dos salidas. */
+.cc-cambio { margin-top: 8px; background: #fff8e6; border: 1px solid rgba(212,160,23,.45);
+  border-radius: 11px; padding: 11px 13px; font-size: 13px; color: #6b4d05; line-height: 1.5; }
+.cc-cambio-acts { display: flex; gap: 8px; margin-top: 9px; flex-wrap: wrap; }
+.cc-bloqueo { margin-top: 8px; background: #fdeef0; border: 1px solid rgba(192,57,43,.25);
+  border-radius: 11px; padding: 10px 13px; font-size: 12.5px; color: var(--danger); line-height: 1.5; }
+.cc-enpagos { font-size: 12px; font-weight: 700; color: var(--purple); background: var(--lav-soft);
+  border-radius: 999px; padding: 4px 12px; }
 .cc-act.ghost { background: #fff; color: var(--purple); border: 1px solid var(--border-lav); }
 .cc-act.ghost:hover { border-color: var(--purple); background: var(--lav-soft); }
 @media (max-width: 560px) { .cc-grid { grid-template-columns: 1fr; } }
