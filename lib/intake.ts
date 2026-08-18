@@ -42,9 +42,9 @@ function config() {
 /** Sube UN archivo. Lanza si falla — el llamador decide si eso tumba el envío.
  *
  *  OJO con `tipo`: el relay de la VM lo mapea contra una lista CERRADA
- *  ('cuentas-de-cobro' | 'cotizaciones') para elegir la subcarpeta de Drive, y
- *  cualquier otra cosa cae en `Intake/Otros`. No meterle la clase de documento
- *  acá — para eso está `nombre`, que la pone al frente del archivo. */
+ *  ('cuentas-de-cobro' | 'cotizaciones' | 'comprobantes') para elegir la carpeta
+ *  de Drive, y cualquier otra cosa cae en `Intake/Otros`. No meterle la clase de
+ *  documento acá — para eso está `nombre`, que la pone al frente del archivo. */
 export async function subirAintake(file: File, tipo: string, nombre?: string,
                                    quien?: Remitente): Promise<{ url: string; nombre: string }> {
   const { url, secret } = config();
@@ -166,5 +166,34 @@ export async function estadoIntake(): Promise<{
     return { ...base, ok: false, relay: "sin_respuesta",
              detalle: "El relay no respondió: " + (e as Error).message.slice(0, 150) +
                       " (revisa `systemctl status oakberry-intake` en la VM)." };
+  }
+}
+
+
+/** Sube el SOPORTE de un pago a Drive (CONTABILIDAD/Comprobantes de pago/).
+ *
+ *  Devuelve null si falla, y a propósito NO lanza: el pago ya se ejecutó en el
+ *  banco: perder su registro porque Drive no respondió sería mucho peor que
+ *  quedarse sin el adjunto. El pago se guarda igual y la tarjeta muestra que
+ *  quedó sin soporte.
+ *
+ *  Va SIEMPRE antes de abrir la transacción: subir un archivo puede tardar
+ *  decenas de segundos y una conexión de base abierta todo ese rato bloquea
+ *  filas de dinero para los demás. */
+export async function subirComprobante(
+  file: File, quien: { nit: string; razon: string },
+): Promise<{ url: string; aviso?: string } | null> {
+  if (!file || file.size === 0) return null;
+  const mes = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Bogota", year: "numeric", month: "2-digit",
+  }).format(new Date()).slice(0, 7);           // AAAA-MM en hora de Bogotá
+  try {
+    const up = await subirAintake(file, "comprobantes", file.name,
+                                  { nit: quien.nit, razon: quien.razon, envio: mes });
+    return { url: up.url };
+  } catch (e) {
+    console.error("[comprobante] no se pudo subir:", e);
+    return { url: "", aviso: "El pago quedó registrado, pero el soporte no se pudo subir a Drive: "
+                           + (e as Error).message.slice(0, 120) };
   }
 }

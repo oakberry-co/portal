@@ -1,10 +1,11 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { withTx } from "@/lib/db";
+import { getPool, withTx } from "@/lib/db";
 import { registrarEvento } from "@/lib/eventos";
 import { exigirCap } from "@/lib/auth";
 import { syncAbono } from "@/lib/abonos";
+import { subirComprobante } from "@/lib/intake";
 import { encolarCorreo } from "@/lib/correos";
 import type { PoolClient } from "pg";
 
@@ -83,9 +84,20 @@ export async function confirmarPago(fd: FormData) {
   const cufes = cufesDe(fd);
   if (!cufes.length) throw new Error("Selecciona al menos una factura.");
   const fecha = String(fd.get("fecha_pago") ?? "").trim() || new Date().toISOString().slice(0, 10);
-  const comprobante = String(fd.get("comprobante_url") ?? "").trim() || null;
   const nota = String(fd.get("nota") ?? "").trim() || null;
   const montoRaw = String(fd.get("monto") ?? "").replace(/[^\d.-]/g, "");
+  // El soporte se sube ANTES de abrir la transacción: puede tardar decenas de
+  // segundos y no se puede tener una conexión bloqueando filas de dinero
+  // mientras tanto. Si falla, el pago se registra igual (ya salió del banco).
+  let comprobante = String(fd.get("comprobante_url") ?? "").trim() || null;
+  let aviso: string | undefined;
+  const archivo = fd.get("comprobante");
+  if (archivo instanceof File && archivo.size > 0) {
+    const prov = await datosProveedor(String(fd.get("cufes") ?? "").split(",")[0]?.trim());
+    const sub = await subirComprobante(archivo, prov);
+    if (sub?.url) comprobante = sub.url;
+    aviso = sub?.aviso;
+  }
 
   await withTx(async (c: PoolClient) => {
     const { rows } = await c.query<{
@@ -144,6 +156,14 @@ export async function confirmarPago(fd: FormData) {
     });
   });
   done();
+  return aviso ? { aviso } : {};
+}
+
+/** Nombre y NIT del proveedor de una factura, para armar su carpeta en Drive. */
+async function datosProveedor(cufe: string): Promise<{ nit: string; razon: string }> {
+  const r = await getPool().query<{ nit: string; razon: string | null }>(
+    "SELECT nit_proveedor AS nit, nombre_proveedor AS razon FROM facturas WHERE cufe = $1", [cufe]);
+  return { nit: r.rows[0]?.nit ?? "", razon: r.rows[0]?.razon ?? "" };
 }
 
 /** "Pasar a otra semana": cambia la semana de pago PROGRAMADA (no toca el
@@ -219,9 +239,20 @@ export async function confirmarPagoIntake(fd: FormData) {
   const id = Number(fd.get("id"));
   if (!id) throw new Error("Falta la solicitud.");
   const fecha = String(fd.get("fecha_pago") ?? "").trim() || new Date().toISOString().slice(0, 10);
-  const comprobante = String(fd.get("comprobante_url") ?? "").trim() || null;
   const nota = String(fd.get("nota") ?? "").trim() || null;
   const montoRaw = String(fd.get("monto") ?? "").replace(/[^\d.-]/g, "");
+  let comprobante = String(fd.get("comprobante_url") ?? "").trim() || null;
+  let aviso: string | undefined;
+  const archivo = fd.get("comprobante");
+  if (archivo instanceof File && archivo.size > 0) {
+    const tabla = tipo === "cuenta_cobro" ? "cuentas_cobro" : "cotizaciones";
+    const col = tipo === "cuenta_cobro" ? "num_doc" : "nit";
+    const r = await getPool().query<{ nit: string; razon: string }>(
+      `SELECT ${col} AS nit, razon_social AS razon FROM ${tabla} WHERE id = $1`, [id]);
+    const sub = await subirComprobante(archivo, { nit: r.rows[0]?.nit ?? "", razon: r.rows[0]?.razon ?? "" });
+    if (sub?.url) comprobante = sub.url;
+    aviso = sub?.aviso;
+  }
 
   await withTx(async (c: PoolClient) => {
     const q = tipo === "cuenta_cobro"
@@ -291,6 +322,7 @@ export async function confirmarPagoIntake(fd: FormData) {
   });
   done();
   revalidatePath(tipo === "cuenta_cobro" ? "/contabilidad/cuentas-de-cobro" : "/contabilidad/cotizaciones");
+  return aviso ? { aviso } : {};
 }
 
 // ---------- Configuración de Pagos (cuentas propias + día de pago) ----------

@@ -442,11 +442,16 @@ function ModalConfirmarIntake({ it, onClose }: { it: FilaIntake; onClose: () => 
           </div>
           <button type="button" className="modal-x" onClick={onClose}>×</button>
         </div>
-        <form action={async (fd) => { fd.set("tipo", it.tipo); fd.set("id", String(it.id)); await confirmarPagoIntake(fd); onClose(); }}>
+        <form action={async (fd) => {
+          fd.set("tipo", it.tipo); fd.set("id", String(it.id));
+          const r = await confirmarPagoIntake(fd);
+          if (r?.aviso) alert(r.aviso);
+          onClose();
+        }}>
           <div className="pg-form">
             <label>Monto pagado<input name="monto" value={monto} onChange={(e) => setMonto(e.target.value)} inputMode="numeric" /></label>
             <label>Fecha de pago<input type="date" name="fecha_pago" defaultValue={hoy} /></label>
-            <label>Comprobante (link, opcional)<input name="comprobante_url" placeholder="Drive / URL del soporte" /></label>
+            <CampoComprobante />
             <label>Nota (opcional)<input name="nota" placeholder="referencia, banco…" /></label>
           </div>
           {it.tipo === "cotizacion" && (
@@ -585,6 +590,27 @@ function ConfigView({ cuentas, diaPago }: { cuentas: CuentaPago[]; diaPago: numb
   );
 }
 
+/** El soporte del pago: se SUBE, ya no se pega un link.
+ *
+ *  Antes había que subirlo a Drive por fuera, copiar el link y pegarlo — tres
+ *  pasos que casi nadie hacía, así que la mayoría de los pagos quedaban sin
+ *  respaldo. El archivo va a CONTABILIDAD/Comprobantes de pago/{proveedor}/{mes}
+ *  y, además, es el que se le adjunta al proveedor en el correo de "ya te
+ *  pagamos". */
+function CampoComprobante() {
+  const [nombre, setNombre] = useState<string | null>(null);
+  return (
+    <label className="pg-comp">Comprobante de pago
+      <span className={"pg-comp-caja" + (nombre ? " puesto" : "")}>
+        <input type="file" name="comprobante" accept=".pdf,image/*"
+               onChange={(e) => setNombre(e.target.files?.[0]?.name ?? null)} />
+        <b>{nombre ? "✓" : "+"}</b>
+        <i>{nombre ?? "Adjuntar PDF o foto (opcional)"}</i>
+      </span>
+    </label>
+  );
+}
+
 function ModalConfirmar({ grupo, onClose }: { grupo: Grupo; onClose: () => void }) {
   const total = grupo.facturas.reduce((s, f) => s + saldo(f), 0);
   const [monto, setMonto] = useState(String(Math.round(total)));
@@ -598,12 +624,17 @@ function ModalConfirmar({ grupo, onClose }: { grupo: Grupo; onClose: () => void 
           <div><h3>Confirmar pago</h3><p className="modal-sub">{grupo.nombre} · {grupo.facturas.length} factura(s) · {grupo.facturas[0]?.cuenta_pago ?? ""} · saldo {$(total)}</p></div>
           <button type="button" className="modal-x" onClick={onClose}>×</button>
         </div>
-        <form action={async (fd) => { fd.set("cufes", grupo.facturas.map((f) => f.cufe).join(",")); await confirmarPago(fd); onClose(); }}>
+        <form action={async (fd) => {
+          fd.set("cufes", grupo.facturas.map((f) => f.cufe).join(","));
+          const r = await confirmarPago(fd);
+          if (r?.aviso) alert(r.aviso);   // el pago SÍ quedó; lo que falló fue el adjunto
+          onClose();
+        }}>
           <div className="pg-form">
             <label>Monto pagado<input name="monto" value={monto} onChange={(e) => setMonto(e.target.value)} inputMode="numeric" />
               {esAbono ? <i className="pg-abono-tag">abono (saldo queda {$(total - m)})</i> : <i className="muted">pago completo</i>}</label>
             <label>Fecha de pago<input type="date" name="fecha_pago" defaultValue={hoy} /></label>
-            <label>Comprobante (link, opcional)<input name="comprobante_url" placeholder="Drive / URL del soporte" /></label>
+            <CampoComprobante />
             <label>Nota (opcional)<input name="nota" placeholder="referencia, banco…" /></label>
           </div>
           <div className="modal-foot">
