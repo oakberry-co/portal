@@ -28,17 +28,9 @@ const MENU: Grupo[] = [
       { label: "Cotizaciones", href: "/contabilidad/cotizaciones", cap: "intake" },
       { label: "Órdenes de compra", cap: "ver_conciliacion" },
       { label: "Pagos internacionales", cap: "pagos" },
-      { label: "Causaciones", cap: "clasificar" },
     ],
   },
-  // El nivel de arriba son las ÁREAS del negocio, no los módulos: el portal es
-  // la cáscara de TODA la operación, no solo de contabilidad. Las que aún no
-  // tienen módulos van marcadas "pronto" — verlas desde ya evita que cada área
-  // salga a montar su propia herramienta por fuera.
-  { label: "Recursos humanos", pronto: true },
-  { label: "Operaciones", pronto: true },
-  { label: "Mercadeo", pronto: true },
-  { label: "Finanzas", pronto: true },
+  { label: "Causaciones", items: [{ label: "Causaciones", cap: "clasificar" }] },
   {
     label: "Configuraciones",
     items: [
