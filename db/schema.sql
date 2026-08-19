@@ -472,6 +472,34 @@ CREATE INDEX IF NOT EXISTS ix_cert_nit    ON certificacion_bancaria (nit);
 ALTER TABLE cuentas_bancarias_proveedor ADD COLUMN IF NOT EXISTS certificacion_id BIGINT;
 ALTER TABLE cuentas_bancarias_proveedor ADD COLUMN IF NOT EXISTS certificada BOOLEAN NOT NULL DEFAULT FALSE;
 
+-- RETENCIONES EN LA CUENTA DE COBRO — el mismo modelo que la factura.
+--
+-- Una cuenta de cobro se pagaba por su valor BRUTO, y a una persona natural casi
+-- siempre hay que practicarle ReteFuente (y ReteICA donde aplique). Pagar de más
+-- no se devuelve solo: toca pedirle la plata de vuelta al proveedor.
+--
+-- Espejo de `factura_estado` (retefuente/reteiva/reteica/otros + valor_a_pagar)
+-- con una diferencia obligada: la cuenta de cobro NO trae desglose de IVA, solo
+-- un total. Por eso `iva_incluido` es explícito — si el proveedor es responsable
+-- de IVA y lo incluyó, la base de ReteFuente/ReteICA es (valor - IVA), como en
+-- una factura; si no, la base es el valor completo.
+--
+-- `valor_a_pagar` es lo que va a Pagos y al archivo del banco, NO `valor`.
+ALTER TABLE cuentas_cobro ADD COLUMN IF NOT EXISTS iva_incluido   NUMERIC(16,2) NOT NULL DEFAULT 0;
+ALTER TABLE cuentas_cobro ADD COLUMN IF NOT EXISTS retefuente     NUMERIC(16,2);
+ALTER TABLE cuentas_cobro ADD COLUMN IF NOT EXISTS reteiva        NUMERIC(16,2);
+ALTER TABLE cuentas_cobro ADD COLUMN IF NOT EXISTS reteica        NUMERIC(16,2);
+ALTER TABLE cuentas_cobro ADD COLUMN IF NOT EXISTS reten_total    NUMERIC(16,2);
+ALTER TABLE cuentas_cobro ADD COLUMN IF NOT EXISTS otros_valor    NUMERIC(16,2);
+ALTER TABLE cuentas_cobro ADD COLUMN IF NOT EXISTS otros_concepto TEXT;
+ALTER TABLE cuentas_cobro ADD COLUMN IF NOT EXISTS valor_a_pagar  NUMERIC(16,2);
+-- Confirmar CERO también es una decisión: por eso es un booleano aparte y no se
+-- deduce de que los montos estén vacíos.
+ALTER TABLE cuentas_cobro ADD COLUMN IF NOT EXISTS retencion_ok   BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE cuentas_cobro ADD COLUMN IF NOT EXISTS observaciones  TEXT;
+ALTER TABLE cuentas_cobro ADD COLUMN IF NOT EXISTS retenciones_por TEXT;
+ALTER TABLE cuentas_cobro ADD COLUMN IF NOT EXISTS retenciones_en  TIMESTAMPTZ;
+
 -- Plazo de las cuentas de cobro: 30 días desde que el proveedor la sube.
 ALTER TABLE cuentas_cobro ADD COLUMN IF NOT EXISTS fecha_pago_prog DATE;
 -- Enlace al pago que generó su aprobación (para no crear dos por la misma).

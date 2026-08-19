@@ -388,7 +388,10 @@ function ItemIntake({ it, ctas, cuenta0, pending, start, onPagar }: {
 
   const detalle = it.tipo === "cotizacion"
     ? `adelanto ${it.pct ?? "?"}% de ${$(it.base ?? 0)}`
-    : "cuenta de cobro";
+    // Si se le retuvo, quien paga tiene que ver de cuánto salió el neto.
+    : it.base && it.base > it.monto
+      ? `cuenta de cobro por ${$(it.base)} · −${$(it.base - it.monto)} retenido`
+      : "cuenta de cobro";
   // Una cuenta de cobro se paga a 30 días: sin ver cuánto falta, alguien le
   // asigna cuenta hoy y sale en el archivo del banco un mes antes de tiempo.
   const dias = it.fecha_pago_prog ? diasHasta(it.fecha_pago_prog) : null;

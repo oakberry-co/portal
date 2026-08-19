@@ -257,7 +257,7 @@ export async function confirmarPagoIntake(fd: FormData) {
   await withTx(async (c: PoolClient) => {
     const q = tipo === "cuenta_cobro"
       ? `SELECT id, razon_social AS nombre, num_doc AS nit, estado, cuenta_pago, pago_id,
-                correo, coalesce(valor,0) AS debido, 0 AS saldo, 'CC-' || id AS ref
+                correo, coalesce(valor_a_pagar, valor, 0) AS debido, 0 AS saldo, 'CC-' || id AS ref
            FROM cuentas_cobro WHERE id = $1 FOR UPDATE`
       : `SELECT id, razon_social AS nombre, nit, estado, cuenta_pago, pago_id,
                 correo, round(coalesce(valor,0) * coalesce(adelanto_pct,0) / 100) AS debido,

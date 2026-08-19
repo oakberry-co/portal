@@ -162,20 +162,35 @@ def plantilla(tipo: str, d: dict) -> tuple[str, str, str]:
         if d.get("_es_cuenta_cobro"):
             plazo = d.get("plazo_dias") or 30
             asunto = f"Aprobamos tu cuenta de cobro {ref}"
+            # Que vea el descuento ANTES de que le llegue menos plata de la que
+            # esperaba: una retención sin avisar se lee como un pago incompleto.
+            ret = float(d.get("retenciones") or 0)
+            if ret > 0:
+                retencion = (f"""<p style="font-size:15px;line-height:1.6">Te vamos a consignar
+        <b>{pesos(d.get('valor'))}</b>: son <b>{pesos(d.get('valor_bruto'))}</b> menos
+        <b>{pesos(ret)}</b> de <b>retenciones de ley</b>, que le declaramos a la DIAN a tu
+        nombre.</p>""")
+            else:
+                retencion = (f"""<p style="font-size:15px;line-height:1.6">Te vamos a consignar
+        <b>{pesos(d.get('valor'))}</b>.</p>""")
             cuerpo = f"""
         <p style="font-size:15px;line-height:1.6">Hola <b>{prov}</b>,</p>
         <p style="font-size:15px;line-height:1.6">Tu cuenta de cobro <b>{ref}</b> quedó
-        <b>aprobada</b> por <b>{pesos(d.get('valor'))}</b> y entró a la programación de pagos,
-        a <b>{plazo} días</b> desde que la recibimos.</p>
+        <b>aprobada</b> y entró a la programación de pagos, a <b>{plazo} días</b> desde que la
+        recibimos.</p>
+        {retencion}
         <p style="font-size:15px;line-height:1.6"><b>No tienes que enviarnos nada más.</b>
         Tu cuenta de cobro es el documento del trámite — no necesitamos factura.</p>
         <p style="font-size:14px;line-height:1.6;color:#6b6480">Te vamos a pagar a la cuenta de la
         certificación bancaria que nos enviaste. Cuando salga el pago te avisamos por este mismo
         correo con el soporte.</p>"""
-            texto = (f"Hola {prov}, tu cuenta de cobro {ref} quedó aprobada por "
-                     f"{pesos(d.get('valor'))} y entró a la programación de pagos, a {plazo} días. "
-                     "No tienes que enviarnos nada más: tu cuenta de cobro es el documento del "
-                     "trámite. Cuando salga el pago te avisamos con el soporte.")
+            texto = (f"Hola {prov}, tu cuenta de cobro {ref} quedó aprobada y entró a la "
+                     f"programación de pagos, a {plazo} días. Te consignaremos "
+                     f"{pesos(d.get('valor'))}"
+                     + (f" ({pesos(d.get('valor_bruto'))} menos {pesos(ret)} de retenciones de ley). "
+                        if ret > 0 else ". ")
+                     + "No tienes que enviarnos nada más: tu cuenta de cobro es el documento del "
+                       "trámite. Cuando salga el pago te avisamos con el soporte.")
             return asunto, envoltura(cuerpo), texto
 
         asunto = f"Aprobamos tu solicitud {ref} — envíanos la factura"

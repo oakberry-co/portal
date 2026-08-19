@@ -46,7 +46,11 @@ export async function GET(req: NextRequest) {
         WHERE e.estado = 'aprobada_pago' AND e.cuenta_pago = $1
           AND coalesce(e.pago_estado,'pendiente') <> 'pagado'
      ), intake_val AS (
-       SELECT num_doc AS nit, razon_social AS nombre, 1 AS es_intake, coalesce(valor,0) AS monto
+       -- El NETO de retenciones: lo que de verdad se transfiere. Mandar el
+       -- valor bruto al banco es pagarle de más al proveedor, y eso después hay
+       -- que pedírselo de vuelta.
+       SELECT num_doc AS nit, razon_social AS nombre, 1 AS es_intake,
+              coalesce(valor_a_pagar, valor, 0) AS monto
          FROM cuentas_cobro
         WHERE estado = 'aprobada' AND pago_id IS NULL AND cuenta_pago = $1
        UNION ALL

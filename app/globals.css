@@ -1128,6 +1128,16 @@ button.ghost { background: #fff; color: var(--purple); }
 .cc-choque-ops i { display: block; font-style: normal; font-size: 10px; text-transform: uppercase;
   letter-spacing: .05em; color: #8a6100; font-weight: 700; }
 .cc-choque-ops b { font-size: 15px; color: var(--ink); }
+/* Retenciones de la cuenta de cobro: mismo lenguaje visual que la factura. */
+.cc-reten { display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  flex-wrap: wrap; margin-top: 9px; padding: 10px 13px; border-radius: 11px; font-size: 12.5px;
+  background: #fff8e6; border: 1px solid rgba(212,160,23,.35); color: #6b4d05; line-height: 1.5; }
+.cc-reten.ok { background: #f0f9f3; border-color: rgba(39,174,96,.28); color: #1e7d47; }
+.cc-neto { display: block; font-size: 10.5px; font-weight: 400; color: var(--lav); margin-top: 2px; }
+.ret-iva { display: flex; flex-direction: column; gap: 5px; margin: 0 18px 12px; font-size: 12px;
+  font-weight: 700; color: var(--purple-deep); }
+.ret-iva input { font-weight: 400; font-size: 13.5px; padding: 9px 11px;
+  border: 1.5px solid var(--border-lav); border-radius: 9px; }
 .cc-enpagos { font-size: 12px; font-weight: 700; color: var(--purple); background: var(--lav-soft);
   border-radius: 999px; padding: 4px 12px; }
 .cc-act.ghost { background: #fff; color: var(--purple); border: 1px solid var(--border-lav); }

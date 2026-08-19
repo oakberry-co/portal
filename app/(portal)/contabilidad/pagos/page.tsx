@@ -16,15 +16,16 @@ const CAMPOS = `
   coalesce(e.pago_estado,'pendiente') AS pago_estado,
   (cb.nit IS NOT NULL) AS tiene_banco`;
 
-// Lo aprobado en las dos bandejas del intake: cuentas de cobro (se pagan por su
-// valor) y adelantos de cotización (por el % pactado). Van al bloque "sin
+// Lo aprobado en las dos bandejas del intake: cuentas de cobro (por su valor
+// NETO de retenciones) y adelantos de cotización (por el % pactado). Van al bloque "sin
 // factura DIAN" de Validación — plata real, sin factura electrónica detrás.
 const SQL_INTAKE = `
   SELECT 'cuenta_cobro' AS tipo, cc.id, 'CC-' || cc.id AS ref,
          cc.razon_social AS proveedor, cc.num_doc AS nit, cc.concepto, cc.area,
-         coalesce(cc.valor,0)::float AS monto, cc.cuenta_pago,
+         -- LO QUE SE PAGA es el neto de retenciones, no el valor del cobro.
+         coalesce(cc.valor_a_pagar, cc.valor, 0)::float AS monto, cc.cuenta_pago,
          cc.fecha_pago_prog::text AS fecha_pago_prog, cc.creado_en::text AS creado_en,
-         NULL::float AS pct, NULL::float AS base,
+         NULL::float AS pct, coalesce(cc.valor,0)::float AS base,
          (cb.num_cuenta IS NOT NULL) AS tiene_banco, cb.banco, cb.certificada
     FROM cuentas_cobro cc
     LEFT JOIN cuentas_bancarias_proveedor cb ON cb.nit = cc.num_doc
