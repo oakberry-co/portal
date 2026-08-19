@@ -155,6 +155,29 @@ def plantilla(tipo: str, d: dict) -> tuple[str, str, str]:
         return asunto, envoltura(cuerpo), texto
 
     if tipo == "aprobacion":
+        # UNA CUENTA DE COBRO NO TIENE FACTURA — ese es su motivo de existir: la
+        # usa quien NO factura electrónicamente. Pedirle "mándanos la factura"
+        # es pedirle lo único que no puede dar, y lo deja pensando que le falta
+        # un trámite. Su cuenta de cobro YA es el documento.
+        if d.get("_es_cuenta_cobro"):
+            plazo = d.get("plazo_dias") or 30
+            asunto = f"Aprobamos tu cuenta de cobro {ref}"
+            cuerpo = f"""
+        <p style="font-size:15px;line-height:1.6">Hola <b>{prov}</b>,</p>
+        <p style="font-size:15px;line-height:1.6">Tu cuenta de cobro <b>{ref}</b> quedó
+        <b>aprobada</b> por <b>{pesos(d.get('valor'))}</b> y entró a la programación de pagos,
+        a <b>{plazo} días</b> desde que la recibimos.</p>
+        <p style="font-size:15px;line-height:1.6"><b>No tienes que enviarnos nada más.</b>
+        Tu cuenta de cobro es el documento del trámite — no necesitamos factura.</p>
+        <p style="font-size:14px;line-height:1.6;color:#6b6480">Te vamos a pagar a la cuenta de la
+        certificación bancaria que nos enviaste. Cuando salga el pago te avisamos por este mismo
+        correo con el soporte.</p>"""
+            texto = (f"Hola {prov}, tu cuenta de cobro {ref} quedó aprobada por "
+                     f"{pesos(d.get('valor'))} y entró a la programación de pagos, a {plazo} días. "
+                     "No tienes que enviarnos nada más: tu cuenta de cobro es el documento del "
+                     "trámite. Cuando salga el pago te avisamos con el soporte.")
+            return asunto, envoltura(cuerpo), texto
+
         asunto = f"Aprobamos tu solicitud {ref} — envíanos la factura"
         adelanto = d.get("adelanto")
         if adelanto:
@@ -199,12 +222,17 @@ def plantilla(tipo: str, d: dict) -> tuple[str, str, str]:
             soporte = """<p style="font-size:15px;line-height:1.6">El pago ya salió
             de nuestro banco: <b>revisa tu cuenta</b>. Si en 24 horas no lo ves,
             respóndenos a este correo y lo revisamos contigo.</p>"""
-        pendiente = (f"""<p style="font-size:15px;line-height:1.6">Queda un
+        if d.get("_es_cuenta_cobro"):
+            # Sin factura de por medio: el trámite se cierra aquí.
+            pendiente = ("""<p style="font-size:15px;line-height:1.6">Con esto queda saldada tu
+        cuenta de cobro. Gracias por trabajar con nosotros.</p>""")
+        elif saldo > 0:
+            pendiente = (f"""<p style="font-size:15px;line-height:1.6">Queda un
         <b>saldo de {pesos(saldo)}</b>. Para pagarlo necesitamos tu
-        <b>factura</b>: respóndenos a este mismo correo con ella.</p>"""
-                     if saldo > 0 else
-                     """<p style="font-size:15px;line-height:1.6">Si aún no nos has
-                     enviado la factura, respóndenos a este correo con ella.</p>""")
+        <b>factura</b>: respóndenos a este mismo correo con ella.</p>""")
+        else:
+            pendiente = ("""<p style="font-size:15px;line-height:1.6">Si aún no nos has
+        enviado la factura, respóndenos a este correo con ella.</p>""")
         cuerpo = f"""
         <p style="font-size:15px;line-height:1.6">Hola <b>{prov}</b>,</p>
         <p style="font-size:15px;line-height:1.6">Te transferimos
@@ -216,8 +244,9 @@ def plantilla(tipo: str, d: dict) -> tuple[str, str, str]:
                  f"{d.get('fecha')} por la solicitud {ref}. "
                  + ("Adjuntamos el soporte. " if d.get("_con_adjunto")
                     else "El pago ya salió de nuestro banco: revisa tu cuenta. ")
-                 + (f"Queda un saldo de {pesos(saldo)}: respóndenos con tu factura."
-                    if saldo > 0 else "Si aún no nos enviaste la factura, respóndenos con ella."))
+                 + ("Con esto queda saldada tu cuenta de cobro." if d.get("_es_cuenta_cobro")
+                    else f"Queda un saldo de {pesos(saldo)}: respóndenos con tu factura." if saldo > 0
+                    else "Si aún no nos enviaste la factura, respóndenos con ella."))
         return asunto, envoltura(cuerpo), texto
 
     raise ValueError(f"tipo de correo desconocido: {tipo}")
@@ -251,6 +280,8 @@ def armar(fila: dict) -> tuple[EmailMessage, str, str]:
     datos = dict(fila["datos"] or {})
     adjunto = bajar_adjunto(fila["adjunto_url"]) if fila["adjunto_url"] else None
     datos["_con_adjunto"] = bool(adjunto)
+    # De qué carril viene: una cuenta de cobro NO termina en factura.
+    datos["_es_cuenta_cobro"] = fila["origen_tipo"] == "cuenta_cobro"
     asunto, html, texto = plantilla(fila["tipo"], datos)
 
     msg = EmailMessage()
@@ -265,8 +296,10 @@ def armar(fila: dict) -> tuple[EmailMessage, str, str]:
     msg["Subject"] = asunto
     msg["From"] = REMITENTE
     msg["To"] = fila["para"]
-    # CC al buzón que lee el pipeline DIAN -> la factura de respuesta se captura
-    # sola, sin que nadie la reenvíe a mano.
+    # CC al buzón que lee el pipeline DIAN -> cuando SÍ hay factura (cotización),
+    # la respuesta del proveedor se captura sola. En una cuenta de cobro no hay
+    # factura que capturar, pero el CC se deja igual: es como el equipo se entera
+    # de qué se le prometió al proveedor sin entrar al portal.
     msg["Cc"] = fila["cc"] or BUZON_COMPRAS
     msg["Reply-To"] = BUZON_COMPRAS
     msg.set_content(texto)
