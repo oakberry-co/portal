@@ -144,7 +144,12 @@ RE_CUENTA = re.compile(
 # salto de línea para que el número no pueda cruzar de una columna a otra; el
 # ancla sí puede, porque su hueco admite cualquier carácter que no sea dígito.
 RE_COLUMNAS = re.compile(r"[ \t]{2,}")
-RE_NIT = re.compile(r"(?:nit|c\.?c\.?|cedula|documento)[^0-9]{0,15}((?:\d[\s.\-]?){6,15}\d)", re.I)
+# Anclas del documento del titular. Se aplica sobre el texto SIN TILDES (ver
+# `interpretar`): el certificado de Nu dice "Cédula de ciudadanía" y sin quitar
+# la tilde el patrón no encontraba la cédula de la titular — solo el NIT del
+# banco del encabezado, que es justo el número equivocado.
+RE_NIT = re.compile(
+    r"(?:nit|c\.?c\.?|cedula|identificacion|documento)[^0-9]{0,20}((?:\d[\s.\-]?){6,15}\d)", re.I)
 
 
 def norm(s: str) -> str:
@@ -299,7 +304,9 @@ def interpretar(texto: str) -> dict:
 
     # Cuenta: se toma la candidata con contexto MÁS LARGA (los bancos escriben la
     # cuenta completa; los números cortos suelen ser sucursal o consecutivo).
-    plano = RE_COLUMNAS.sub("\n", texto)      # las columnas dejan de ser un continuo
+    # Sin tildes y con las columnas cortadas: 'Cédula' tiene que encontrarse
+    # igual que 'Cedula', y el número no puede cruzar de una columna a otra.
+    plano = RE_COLUMNAS.sub("\n", _sin_tildes(texto))
     cuentas = [solo_digitos(m) for m in RE_CUENTA.findall(plano)]
     docs = [solo_digitos(m) for m in RE_NIT.findall(plano)]
 
@@ -308,10 +315,14 @@ def interpretar(texto: str) -> dict:
     cuentas = [c for c in cuentas if 8 <= len(c) <= 22 and c not in docs]
     num = max(cuentas, key=len) if cuentas else None
 
-    titular_doc = next((d for d in docs if d != num and 6 <= len(d) <= 15), None)
+    # TODOS los documentos que aparecen. Ojo: uno de ellos es el NIT DEL BANCO
+    # ("Nu Colombia Compañía de Financiamiento S.A., NIT 901.658.107-2" va en el
+    # encabezado), así que tomar el primero es tomar el del banco.
+    docs = [d for d in docs if d != num and 6 <= len(d) <= 15]
 
     return {"banco": banco, "tipo_cuenta": tipo, "num_cuenta": num,
-            "titular_doc": titular_doc, "tiene_lenguaje": tiene_lenguaje}
+            "docs": docs, "titular_doc": docs[0] if docs else None,
+            "tiene_lenguaje": tiene_lenguaje}
 
 
 def dictaminar(d: dict, texto: str, protegido: bool = False,
@@ -345,11 +356,16 @@ def dictaminar(d: dict, texto: str, protegido: bool = False,
     #
     # No bloquea de forma definitiva: manda a revisión humana. Pasa de buena fe
     # que la cuenta esté a nombre del representante legal y no de la empresa.
-    if doc_solicitud and d.get("titular_doc") and not mismo_documento(d["titular_doc"], doc_solicitud):
+    # La regla correcta NO es "el primer documento del papel es el titular" —el
+    # primero suele ser el NIT del banco— sino: ¿el documento de quien cobra
+    # APARECE en el certificado? Si aparece, el papel es suyo. Si no aparece por
+    # ningún lado, ahí sí hay que mirar de quién es esa cuenta.
+    docs = d.get("docs") or ([d["titular_doc"]] if d.get("titular_doc") else [])
+    if doc_solicitud and docs and not any(mismo_documento(x, doc_solicitud) for x in docs):
         return "no_coincide", (
-            f"El certificado está a nombre del documento {d['titular_doc']}, pero la "
-            f"solicitud la hizo {doc_solicitud}. Hay que confirmar de quién es la cuenta "
-            "antes de pagarle.")
+            f"El certificado no menciona el documento {doc_solicitud} de quien hace la "
+            f"solicitud (encontramos {', '.join(docs[:3])}). Hay que confirmar de quién "
+            "es esa cuenta antes de pagarle.")
     return "valida", None
 
 
@@ -489,6 +505,12 @@ def main() -> int:
 
         d = interpretar(texto)
         estado, motivo = dictaminar(d, texto, protegido, nit)
+        # Se guarda el documento DEL TITULAR, no el primero que aparezca: si el
+        # de quien cobra está en el papel, ese es.
+        if nit and d.get("docs"):
+            propio = next((x for x in d["docs"] if mismo_documento(x, nit)), None)
+            if propio:
+                d["titular_doc"] = propio
         res[estado] += 1
         print(f"  #{cid} [{metodo}] -> {estado}"
               + (f" · {d['banco']} {d['tipo_cuenta'] or ''} {d['num_cuenta'] or ''}"
