@@ -92,6 +92,29 @@ BANCOS = {
     "W": ["banco w"],
     "FINANDINA": ["finandina"],
     "JP MORGAN": ["jp morgan", "jpmorgan"],
+    # Agregados 2026-08-19 al medir la lista contra los 54 proveedores que el
+    # equipo ya tenía cargados: PIBANK aparecía y el lector lo habría rechazado.
+    # La lista es un FILTRO de autenticidad, no un catálogo — pero un banco que
+    # falta se ve como "esto no es del banco", que es un rechazo INJUSTO. Por eso
+    # el sentinela `banco_desconocido` avisa cuál agregar en vez de que el
+    # proveedor rebote en silencio.
+    "PIBANK": ["pibank"],
+    "UNION": ["banco union", "banco unión"],
+    "SANTANDER": ["santander"],
+    "CITIBANK": ["citibank"],
+    "BANCOOMEVA": ["bancoomeva", "coomeva"],
+    "CONFIAR": ["confiar"],
+    "COTRAFA": ["cotrafa"],
+    "JURISCOOP": ["juriscoop"],
+    "COMULTRASAN": ["comultrasan"],
+    "IRIS": ["banco iris", "coltefinanciera"],
+    "MIBANCO": ["mibanco"],
+    "DALE": ["dale!", "dale "],
+    "POWWI": ["powwi"],
+    "UALA": ["uala", "ualá"],
+    "TPAGA": ["tpaga"],
+    "CREZCAMOS": ["crezcamos"],
+    "CONTACTAR": ["contactar"],
 }
 
 # Lenguaje propio de una certificación. Un Word improvisado rara vez lo trae.
@@ -130,6 +153,18 @@ def norm(s: str) -> str:
 
 def solo_digitos(s: str) -> str:
     return re.sub(r"\D", "", s or "")
+
+
+def mismo_documento(a: str, b: str) -> bool:
+    """¿Son el mismo documento? Tolera el dígito de verificación del NIT.
+
+    El formulario recibe '860035748-1' y el certificado imprime '860035748' (o
+    al revés). Sin esta tolerancia, todo NIT de empresa daría "no coincide".
+    """
+    x, y = solo_digitos(a), solo_digitos(b)
+    if not x or not y:
+        return True                      # sin dato no se puede afirmar nada
+    return x == y or x == y[:-1] or y == x[:-1]
 
 
 def misma_cuenta(a: str, b: str) -> bool:
@@ -279,7 +314,8 @@ def interpretar(texto: str) -> dict:
             "titular_doc": titular_doc, "tiene_lenguaje": tiene_lenguaje}
 
 
-def dictaminar(d: dict, texto: str, protegido: bool = False) -> tuple[str, str | None]:
+def dictaminar(d: dict, texto: str, protegido: bool = False,
+               doc_solicitud: str | None = None) -> tuple[str, str | None]:
     """-> (estado, motivo). Conservador a propósito: en duda, NO valida."""
     if protegido:
         # NO es "ilegible": el documento puede estar perfecto. Decirle al
@@ -300,6 +336,20 @@ def dictaminar(d: dict, texto: str, protegido: bool = False) -> tuple[str, str |
     if not d["num_cuenta"]:
         return "ilegible", ("Encontramos el banco pero no pudimos leer el número de "
                             "cuenta en el documento.")
+    # EL TITULAR TIENE QUE SER QUIEN COBRA.
+    #
+    # Sin esto, cualquiera podía subir el certificado de OTRA persona: el NIT del
+    # formulario sería el del proveedor real y la cuenta la del que sube. Y el
+    # candado de "cambió la cuenta" no lo atrapa, porque para un proveedor nuevo
+    # no hay cuenta anterior con qué comparar.
+    #
+    # No bloquea de forma definitiva: manda a revisión humana. Pasa de buena fe
+    # que la cuenta esté a nombre del representante legal y no de la empresa.
+    if doc_solicitud and d.get("titular_doc") and not mismo_documento(d["titular_doc"], doc_solicitud):
+        return "no_coincide", (
+            f"El certificado está a nombre del documento {d['titular_doc']}, pero la "
+            f"solicitud la hizo {doc_solicitud}. Hay que confirmar de quién es la cuenta "
+            "antes de pagarle.")
     return "valida", None
 
 
@@ -438,7 +488,7 @@ def main() -> int:
                     os.unlink(f)
 
         d = interpretar(texto)
-        estado, motivo = dictaminar(d, texto, protegido)
+        estado, motivo = dictaminar(d, texto, protegido, nit)
         res[estado] += 1
         print(f"  #{cid} [{metodo}] -> {estado}"
               + (f" · {d['banco']} {d['tipo_cuenta'] or ''} {d['num_cuenta'] or ''}"
