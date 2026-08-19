@@ -96,6 +96,8 @@ export function FormCuentaCobro() {
       <p className="pub-hint">
         Toca cada uno para adjuntarlo. PDF o foto. <b>Tu cuenta la tomamos de la
         certificación bancaria</b>, así que no tienes que escribirla.
+        <br /><b>Súbelos todos sin contraseña</b> — si tu banco te los entrega con clave,
+        ábrelos y vuelve a guardarlos, o mándanos una foto.
       </p>
       <CasillasDocumentos documento={doc} />
 

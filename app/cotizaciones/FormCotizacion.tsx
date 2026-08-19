@@ -108,7 +108,11 @@ export function FormCotizacion() {
       </p>
 
       <div className="pub-sec">Documentos</div>
-      <p className="pub-hint">Toca cada uno para adjuntarlo. PDF o foto.</p>
+      <p className="pub-hint">
+        Toca cada uno para adjuntarlo. PDF o foto.
+        <br /><b>Súbelos todos sin contraseña</b> — si tu banco te los entrega con clave,
+        ábrelos y vuelve a guardarlos, o mándanos una foto.
+      </p>
       <CasillasDocumentos documento={doc} />
 
       </div>

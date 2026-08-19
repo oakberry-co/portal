@@ -105,12 +105,34 @@ export function archivosDelForm(formData: FormData, clases: readonly { name: str
   return salida.slice(0, max);
 }
 
-/** Encola la certificación bancaria para que el lector la procese en la VM.
+/** Le pide a la VM que lea ESTA certificación ya, sin esperar el cron.
+ *
+ *  El lector corre cada 15 minutos y ese hueco se lo come el proveedor: manda su
+ *  certificación, cierra la página, y si el documento no servía se entera mucho
+ *  después. Con esta llamada la lectura arranca en el momento.
+ *
+ *  No se espera la respuesta ni se propaga el error a propósito: es una MEJORA
+ *  de latencia, no un requisito. Si la VM no contesta, la certificación queda
+ *  'pendiente' y el cron la toma igual — la red de seguridad sigue ahí. */
+async function pedirLecturaYa(certId: number): Promise<void> {
+  const { url, secret } = config();
+  if (!url || !secret) return;
+  try {
+    const fd = new FormData();
+    fd.set("cert_id", String(certId));
+    await fetch(url.replace(/\/upload$/, "/leer-certificacion"),
+                { method: "POST", headers: { "X-Intake-Secret": secret }, body: fd,
+                  signal: AbortSignal.timeout(6000) });
+  } catch (e) {
+    console.error("[intake] no se pudo disparar la lectura inmediata:", e);
+  }
+}
+
+/** Encola la certificación bancaria y pide que se lea de una.
  *
  *  Se guarda la fila apenas llega el documento; NO se lee acá porque el OCR vive
- *  en la VM (tesseract, poppler) y no en el runtime de Vercel. El lector corre
- *  por cron, extrae banco/cuenta/titular y decide si la cuenta sirve. Hasta ese
- *  momento el proveedor queda en 'pendiente' y no se puede aprobar. */
+ *  en la VM (tesseract, poppler) y no en el runtime de Vercel. Se dispara la
+ *  lectura al instante y, si eso falla, el cron la recoge igual. */
 export async function registrarCertificacion(
   pool: { query: (q: string, v?: unknown[]) => Promise<unknown> },
   origenTipo: "cuenta_cobro" | "cotizacion", origenId: number,
@@ -120,10 +142,12 @@ export async function registrarCertificacion(
   if (!cert?.path) return;
   const fileId = /\/d\/([A-Za-z0-9_-]{20,})/.exec(cert.path)?.[1] ?? null;
   try {
-    await pool.query(
+    const r = await pool.query(
       `INSERT INTO certificacion_bancaria (origen_tipo, origen_id, nit, drive_url, drive_file_id)
-       VALUES ($1,$2,$3,$4,$5)`,
-      [origenTipo, origenId, nit, cert.path, fileId]);
+       VALUES ($1,$2,$3,$4,$5) RETURNING id`,
+      [origenTipo, origenId, nit, cert.path, fileId]) as { rows?: { id: number }[] };
+    const certId = r?.rows?.[0]?.id;
+    if (certId) await pedirLecturaYa(certId);
   } catch (e) {
     // Que no tumbe el envío del proveedor: la fila se puede recrear después.
     console.error("[intake] no se pudo encolar la certificación:", e);

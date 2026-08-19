@@ -100,11 +100,27 @@ SENAS_CERTIFICACION = ["certifica", "certificacion", "certificamos", "consta que
 
 TIPOS_CUENTA = [("ahorros", ["ahorro"]), ("corriente", ["corriente"])]
 
-# Número de cuenta colombiano: 8-20 dígitos, tolerando separadores. Se exige un
-# ancla de contexto ('cuenta', 'no.', '#') para no confundirlo con un NIT, un
-# teléfono o una fecha larga — el error clásico de matchear números pelados.
+# Número de cuenta colombiano: 8-22 dígitos. Se exige un ancla de contexto
+# ('cuenta', 'no.', '#') para no confundirlo con un NIT, un teléfono o una fecha
+# larga — el error clásico de matchear números pelados.
+#
+# El número NO admite espacios adentro, y eso es a propósito. Los bancos
+# imprimen el certificado como TABLA:
+#
+#     CUENTA CORRIENTE        17391143238        1978/02/23        ACTIVA
+#
+# Si se permitieran espacios, el patrón se comería la columna siguiente y
+# devolvería '173911432381978' — una cuenta que no existe, con la fecha pegada.
+# Preferimos no leerla (y pedir el documento) antes que inventar un número:
+# a esa cuenta se le manda plata. Los separadores que sí se aceptan son los que
+# el banco escribe DENTRO del número: guiones y puntos.
 RE_CUENTA = re.compile(
-    r"(?:cuenta|cta|no\.?|n[uú]mero|#)[^0-9]{0,25}((?:\d[\s.\-]?){8,22}\d)", re.I)
+    r"(?:cuenta|cta|no\.?|n[uú]mero|#)[^0-9]{0,40}((?:\d[.\-]?){7,21}\d)", re.I)
+
+# Las columnas de esas tablas van separadas por varios espacios. Se convierten en
+# salto de línea para que el número no pueda cruzar de una columna a otra; el
+# ancla sí puede, porque su hueco admite cualquier carácter que no sea dígito.
+RE_COLUMNAS = re.compile(r"[ \t]{2,}")
 RE_NIT = re.compile(r"(?:nit|c\.?c\.?|cedula|documento)[^0-9]{0,15}((?:\d[\s.\-]?){6,15}\d)", re.I)
 
 
@@ -114,6 +130,21 @@ def norm(s: str) -> str:
 
 def solo_digitos(s: str) -> str:
     return re.sub(r"\D", "", s or "")
+
+
+def misma_cuenta(a: str, b: str) -> bool:
+    """¿Es la misma cuenta, escrita distinto?
+
+    Los CEROS A LA IZQUIERDA son el clásico: el banco imprime '05314486074' y el
+    equipo la cargó a mano como '5314486074'. Comparadas como texto son
+    distintas, y sin esto el sistema gritaría "cambió la cuenta" contra un
+    proveedor que nunca la cambió — una alarma falsa que bloquea el pago y que,
+    peor, enseña al equipo a ignorar la alarma de verdad.
+
+    Caso real: NIT 79448558, primera certificación leída del carril nuevo.
+    """
+    x, y = solo_digitos(a).lstrip("0"), solo_digitos(b).lstrip("0")
+    return bool(x) and x == y
 
 
 # ---------------------------------------------------------------------------
@@ -233,11 +264,15 @@ def interpretar(texto: str) -> dict:
 
     # Cuenta: se toma la candidata con contexto MÁS LARGA (los bancos escriben la
     # cuenta completa; los números cortos suelen ser sucursal o consecutivo).
-    cuentas = [solo_digitos(m) for m in RE_CUENTA.findall(texto)]
-    cuentas = [c for c in cuentas if 8 <= len(c) <= 22]
+    plano = RE_COLUMNAS.sub("\n", texto)      # las columnas dejan de ser un continuo
+    cuentas = [solo_digitos(m) for m in RE_CUENTA.findall(plano)]
+    docs = [solo_digitos(m) for m in RE_NIT.findall(plano)]
+
+    # Un número que es el NIT/cédula del titular NO es la cuenta. Pasa seguido:
+    # "identificado con NIT 860035748" está a pocos caracteres de un ancla.
+    cuentas = [c for c in cuentas if 8 <= len(c) <= 22 and c not in docs]
     num = max(cuentas, key=len) if cuentas else None
 
-    docs = [solo_digitos(m) for m in RE_NIT.findall(texto)]
     titular_doc = next((d for d in docs if d != num and 6 <= len(d) <= 15), None)
 
     return {"banco": banco, "tipo_cuenta": tipo, "num_cuenta": num,
@@ -308,7 +343,12 @@ def encolar_aviso(cur, cid: int, otipo: str, oid: int, motivo: str, protegido: b
     tabla, _ = ORIGEN_TABLA.get(otipo, (None, None))
     if not tabla:
         return False
-    cur.execute(f"SELECT razon_social, correo FROM {tabla} WHERE id=%s", (oid,))
+    # La REFERENCIA va en el asunto. Sin ella el proveedor recibía
+    # "No pudimos validar tu certificación bancaria ()" — con el paréntesis
+    # vacío, sin saber de cuál de sus solicitudes le están hablando.
+    ref_sql = ("'CC-' || id" if otipo == "cuenta_cobro"
+               else "coalesce(codigo, 'COT-' || id)")
+    cur.execute(f"SELECT razon_social, correo, {ref_sql} FROM {tabla} WHERE id=%s", (oid,))
     fila = cur.fetchone()
     if not fila or not (fila[1] or "").strip():
         return False                      # no dejó correo: la bandeja lo muestra
@@ -316,10 +356,10 @@ def encolar_aviso(cur, cid: int, otipo: str, oid: int, motivo: str, protegido: b
                      (tipo, origen_tipo, origen_id, para, datos, creado_por)
                    VALUES ('certificacion_invalida', %s, %s, %s,
                            jsonb_build_object('proveedor', %s::text, 'motivo', %s::text,
-                                              'protegido', %s::boolean),
+                                              'ref', %s::text, 'protegido', %s::boolean),
                            'lector_certificaciones')
                    ON CONFLICT (tipo, origen_tipo, origen_id) DO NOTHING""",
-                (otipo, oid, fila[1].strip(), fila[0], motivo, protegido))
+                (otipo, oid, fila[1].strip(), fila[0], motivo, fila[2], protegido))
     encolado = cur.rowcount > 0
     cur.execute("UPDATE certificacion_bancaria SET avisado_en=now() WHERE id=%s", (cid,))
     return encolado
@@ -440,7 +480,7 @@ def main() -> int:
             fila = cur.fetchone()
             previa = solo_digitos(fila[0]) if fila and fila[0] else ""
             nueva = solo_digitos(d["num_cuenta"])
-            if previa and previa != nueva:
+            if previa and not misma_cuenta(previa, nueva):
                 cur.execute("UPDATE certificacion_bancaria SET cuenta_anterior=%s WHERE id=%s",
                             (fila[0], cid))
                 res["cambio_de_cuenta"] += 1
