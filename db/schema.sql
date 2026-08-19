@@ -636,6 +636,20 @@ CREATE UNIQUE INDEX IF NOT EXISTS ux_cot_factura
 ALTER TABLE certificacion_bancaria ADD COLUMN IF NOT EXISTS aplicada        BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE certificacion_bancaria ADD COLUMN IF NOT EXISTS cuenta_anterior TEXT;
 
+-- CLAVE DEL DOCUMENTO — de paso, nunca guardada.
+--
+-- Los bancos entregan el certificado cifrado y la clave suele ser la cédula del
+-- titular, que ya está en la solicitud: el lector la deduce solo. Esta columna es
+-- para el caso raro en que NO es el documento y el proveedor se la dio al equipo
+-- por teléfono o WhatsApp.
+--
+-- El lector la usa y la BORRA en la misma corrida, salga bien o mal. No se pide
+-- en el formulario público a propósito: mucha gente reusa contraseñas, y una
+-- clave tecleada en internet abierto es un riesgo que no existía. Pedir la clave
+-- NO autentica a nadie — es una comodidad, no un control.
+ALTER TABLE certificacion_bancaria ADD COLUMN IF NOT EXISTS clave_intento   TEXT;
+ALTER TABLE certificacion_bancaria ADD COLUMN IF NOT EXISTS clave_pedida_por TEXT;
+
 -- -----------------------------------------------------------------------------
 -- 15) CORREO AL PROVEEDOR — cola en la base, envía la VM
 --

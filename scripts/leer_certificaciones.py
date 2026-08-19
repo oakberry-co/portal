@@ -145,7 +145,7 @@ def claves_probables(doc_num: str) -> list[str]:
     return out
 
 
-def desproteger(ruta: str, doc_num: str) -> tuple[str, str | None]:
+def desproteger(ruta: str, doc_num: str, clave_dada: str | None = None) -> tuple[str, str | None]:
     """-> (ruta utilizable, clave que sirvió | None si no estaba protegido).
 
     Si el PDF viene con clave y ninguna de las probables abre, devuelve
@@ -164,7 +164,9 @@ def desproteger(ruta: str, doc_num: str) -> tuple[str, str | None]:
     if not doc.needs_pass:
         doc.close()
         return ruta, None
-    for clave in claves_probables(doc_num):
+    candidatas = ([clave_dada.strip()] if clave_dada and clave_dada.strip() else []) \
+        + claves_probables(doc_num)
+    for clave in candidatas:
         if doc.authenticate(clave):
             libre = ruta + ".libre.pdf"
             # Se guarda una copia SIN candado para que el resto del camino
@@ -338,8 +340,11 @@ def main() -> int:
     conn = psycopg2.connect(dsn)
     cur = conn.cursor()
 
-    filtro = "AND id = %(id)s" if args.id else "AND estado = 'pendiente'"
-    cur.execute(f"""SELECT id, origen_tipo, origen_id, nit, drive_url, drive_file_id
+    # Se releen las pendientes y, además, cualquier PROTEGIDA a la que el equipo
+    # le acaba de dar la clave (la bandeja la escribe en `clave_intento`).
+    filtro = ("AND id = %(id)s" if args.id
+              else "AND (estado = 'pendiente' OR (estado = 'protegido' AND clave_intento IS NOT NULL))")
+    cur.execute(f"""SELECT id, origen_tipo, origen_id, nit, drive_url, drive_file_id, clave_intento
                       FROM certificacion_bancaria
                      WHERE TRUE {filtro}
                      ORDER BY id""", {"id": args.id})
@@ -351,7 +356,11 @@ def main() -> int:
     token = drive_token()
     res = Counter()
 
-    for (cid, otipo, oid, nit, url, file_id) in filas:
+    for (cid, otipo, oid, nit, url, file_id, clave_dada) in filas:
+        # La clave que el equipo consiguió se usa y se BORRA en esta misma
+        # corrida, salga bien o mal: no se guarda una contraseña ajena.
+        if clave_dada:
+            cur.execute("UPDATE certificacion_bancaria SET clave_intento=NULL WHERE id=%s", (cid,))
         file_id = file_id or (RE_ID_DRIVE.search(url or "") or [None, None])[1] \
             if RE_ID_DRIVE.search(url or "") else file_id
         if not file_id:
@@ -370,10 +379,12 @@ def main() -> int:
             if es_pdf:
                 # Los bancos mandan el certificado cifrado con la cédula del
                 # titular: se abre con el documento que el proveedor ya escribió.
-                libre, clave = desproteger(ruta, nit)
+                libre, clave = desproteger(ruta, nit, clave_dada)
                 protegido = (clave == "?")
                 if clave and clave != "?":
-                    print(f"    (venía protegido; abierto con el documento del proveedor)")
+                    print("    (venía protegido; abierto con "
+                          + ("la clave que dio el proveedor)" if clave_dada and clave == clave_dada.strip()
+                             else "el documento del proveedor)"))
                 if not protegido:
                     ruta = libre
             metodo = "texto_pdf"

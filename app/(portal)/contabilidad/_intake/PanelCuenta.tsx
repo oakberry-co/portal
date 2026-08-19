@@ -7,7 +7,7 @@
 
 import { CLASES_DOC, etiquetaClase, type DocGuardado } from "@/lib/areas";
 import { cola, type CertEstado, type CuentaMaestro } from "@/lib/certificaciones";
-import { confirmarCambioCuenta, rechazarCambioCuenta } from "@/lib/certificacion-actions";
+import { confirmarCambioCuenta, rechazarCambioCuenta, darClaveCertificacion } from "@/lib/certificacion-actions";
 
 export type DocIntake = DocGuardado & { nombre?: string; path?: string; tipo?: string };
 
@@ -100,11 +100,32 @@ export function PanelCuenta({ cert, cuenta, bloqueo }: {
       </div>
 
       {/* Qué vio el lector. Un 'pendiente' no es un error: es que aún no corre. */}
-      {cert && cert.estado !== "valida" && (
+      {cert && cert.estado !== "valida" && cert.estado !== "protegido" && (
         <div className={"cc-cert " + (cert.estado === "pendiente" ? "esperando" : "malo")}>
           {cert.estado === "pendiente"
             ? "⏳ Certificación bancaria recibida, sin leer todavía (el lector corre cada 15 minutos)."
             : <>❌ Certificación rechazada: {cert.motivo ?? cert.estado}</>}
+        </div>
+      )}
+
+      {/* PROTEGIDA: el documento puede estar perfecto, solo tiene candado. Ya se
+          intentó con el documento del proveedor (así lo cifran los bancos). Si
+          el equipo consiguió la clave por WhatsApp o teléfono, la escribe acá:
+          se usa una vez y se borra, nunca queda guardada. */}
+      {cert?.estado === "protegido" && (
+        <div className="cc-cert protegido">
+          <div>🔒 <b>El certificado viene con clave</b> y no abrió con el documento del proveedor.
+            Ya se le pidió por correo que lo mande sin candado. Si te dio la clave por otro lado,
+            escríbela y el lector lo reintenta en su próxima corrida.</div>
+          <form action={darClaveCertificacion} className="cc-clave">
+            <input type="hidden" name="cert_id" value={cert.id} />
+            <input name="clave" placeholder="Clave del documento" autoComplete="off" maxLength={80} />
+            <button type="submit" className="cc-act">Reintentar con esta clave</button>
+          </form>
+          <div className="cc-clave-nota">
+            La clave se usa una vez y se borra; no queda guardada ni en la bitácora.
+            Si es una contraseña que el proveedor usa en otras partes, mejor pídele el archivo sin candado.
+          </div>
         </div>
       )}
 

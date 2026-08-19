@@ -55,3 +55,38 @@ export async function rechazarCambioCuenta(fd: FormData) {
   });
   refrescar();
 }
+
+/** Guarda, SOLO de paso, la clave que el equipo consiguió para abrir un
+ *  certificado protegido. El lector la usa y la borra en su próxima corrida
+ *  (≤15 min), salga bien o mal.
+ *
+ *  Por qué no se pide en el formulario público: pedir una contraseña no
+ *  autentica a nadie —no es un control de seguridad, es una comodidad— y mucha
+ *  gente reusa claves. Recogerlas en internet abierto crea un riesgo que hoy no
+ *  existe. Acá la teclea alguien del equipo, con una clave que el proveedor le
+ *  dio por un canal que ya conoce, y no queda guardada.
+ *
+ *  En la bitácora queda QUE se intentó y quién — nunca la clave. */
+export async function darClaveCertificacion(fd: FormData) {
+  const user = await exigirCap("intake");
+  const id = Number(fd.get("cert_id"));
+  const clave = String(fd.get("clave") ?? "").trim();
+  if (!id) throw new Error("Falta la certificación.");
+  if (!clave) throw new Error("Escribe la clave del documento.");
+  if (clave.length > 80) throw new Error("Esa clave no parece la de un documento.");
+
+  await withTx(async (c) => {
+    const r = await c.query(
+      `UPDATE certificacion_bancaria
+          SET clave_intento = $2, clave_pedida_por = $3, estado = 'protegido'
+        WHERE id = $1 AND estado IN ('protegido', 'ilegible')`,
+      [id, clave, user.email]);
+    if (!r.rowCount) throw new Error("Esa certificación no está esperando una clave.");
+    await registrarEvento(c, {
+      cufe: null, tipo: "clave_certificacion", campo: "clave_intento",
+      valorNuevo: { certificacion_id: id, entregada: true },   // NUNCA la clave
+      actor: user.email, actorRol: user.rol, origen: "web",
+    });
+  });
+  refrescar();
+}

@@ -1079,6 +1079,11 @@ button.ghost { background: #fff; color: var(--purple); }
 .cc-cert { margin-top: 7px; border-radius: 9px; padding: 8px 11px; font-size: 12.5px; line-height: 1.5; }
 .cc-cert.esperando { background: var(--cream-2); color: var(--lav); }
 .cc-cert.malo { background: #fdeef0; color: var(--danger); }
+.cc-cert.protegido { background: #fff8e6; color: #6b4d05; border: 1px solid rgba(212,160,23,.35); }
+.cc-clave { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+.cc-clave input { width: auto; flex: 1; min-width: 160px; font-size: 13px; padding: 8px 11px;
+  border: 1.5px solid rgba(212,160,23,.4); border-radius: 9px; background: #fff; }
+.cc-clave-nota { margin-top: 8px; font-size: 11.5px; color: #8a6100; line-height: 1.5; }
 /* Cambio de cuenta: el caso peligroso. Amarillo fuerte, con las dos salidas. */
 .cc-cambio { margin-top: 8px; background: #fff8e6; border: 1px solid rgba(212,160,23,.45);
   border-radius: 11px; padding: 11px 13px; font-size: 13px; color: #6b4d05; line-height: 1.5; }
