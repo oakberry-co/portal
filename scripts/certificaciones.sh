@@ -9,8 +9,15 @@
 # entrar al archivo del banco — una trampa armada que solo se descubre el día
 # del pago.
 #
-# Cada 15 min en horas de oficina: el proveedor que acaba de enviar ve su estado
-# resuelto el mismo rato, no al otro día.
+# Cada 15 min, TODO EL DÍA. Antes corría solo en horas de oficina y eso dejaba
+# un hueco feo: el proveedor que manda su certificación a las 8pm no se enteraba
+# de que no servía hasta las 6am del otro día. Leer un PDF no despierta a nadie.
+#
+# Los CORREOS sí tienen horario, pero no lo pone este cron: lo pone la compuerta
+# de envío (common/envio_seguro.py, ventana 6-22 Bogotá). Si el emisor corre a
+# las 3am, la compuerta lo frena y el correo se queda encolado para la mañana.
+# El freno vive DENTRO del programa, no en el wrapper — que es justo la regla
+# que nació de mandar WhatsApps a la 1am.
 set -e
 
 PORTAL="/home/daniel/proyectos/portal"

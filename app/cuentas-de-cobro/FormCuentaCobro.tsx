@@ -24,6 +24,8 @@ export function FormCuentaCobro() {
   const [paso, setPaso] = useState<"datos" | "revisar">("datos");
   const [resumen, setResumen] = useState<{ filas: FilaResumen[]; docs: { label: string; nombre: string | null }[] }>({ filas: [], docs: [] });
   const formRef = useRef<HTMLFormElement>(null);
+  // Para que el aviso de "tiene clave" diga CUÁL documento probaríamos.
+  const [doc, setDoc] = useState("");
 
   function revisar() {
     const f = formRef.current;
@@ -60,7 +62,8 @@ export function FormCuentaCobro() {
           </select>
         </label>
         <label>Número de documento *
-          <input name="num_doc" required inputMode="numeric" placeholder="900123456" />
+          <input name="num_doc" required inputMode="numeric" placeholder="900123456"
+                 onChange={(e) => setDoc(e.target.value)} />
         </label>
       </div>
       <div className="pub-row">
@@ -94,7 +97,7 @@ export function FormCuentaCobro() {
         Toca cada uno para adjuntarlo. PDF o foto. <b>Tu cuenta la tomamos de la
         certificación bancaria</b>, así que no tienes que escribirla.
       </p>
-      <CasillasDocumentos />
+      <CasillasDocumentos documento={doc} />
 
       </div>
 

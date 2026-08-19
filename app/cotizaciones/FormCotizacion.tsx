@@ -26,6 +26,8 @@ export function FormCotizacion() {
   const [paso, setPaso] = useState<"datos" | "revisar">("datos");
   const [resumen, setResumen] = useState<{ filas: FilaResumen[]; docs: { label: string; nombre: string | null }[] }>({ filas: [], docs: [] });
   const formRef = useRef<HTMLFormElement>(null);
+  // Para que el aviso de "tiene clave" diga CUÁL documento probaríamos.
+  const [doc, setDoc] = useState("");
 
   function revisar() {
     const f = formRef.current;
@@ -57,7 +59,8 @@ export function FormCotizacion() {
         <input name="razon_social" required placeholder="Ej. Servicios XYZ S.A.S." />
       </label>
       <div className="pub-row">
-        <label>NIT *<input name="nit" required inputMode="numeric" placeholder="900123456" /></label>
+        <label>NIT *<input name="nit" required inputMode="numeric" placeholder="900123456"
+                 onChange={(e) => setDoc(e.target.value)} /></label>
         <label>Teléfono / WhatsApp<input name="telefono" inputMode="tel" placeholder="300 000 0000" /></label>
       </div>
       <div className="pub-row">
@@ -106,7 +109,7 @@ export function FormCotizacion() {
 
       <div className="pub-sec">Documentos</div>
       <p className="pub-hint">Toca cada uno para adjuntarlo. PDF o foto.</p>
-      <CasillasDocumentos />
+      <CasillasDocumentos documento={doc} />
 
       </div>
 
