@@ -137,7 +137,12 @@ export function CuentasCobroView({ items }: { items: CuentaCobro[] }) {
                               title={bloqueo ?? "Pasa a Pagos › Validación semana en curso"}>
                         ✓ Aprobar y pasar a Pagos
                       </Accion>
-                      <Accion id={c.id} accion="rechazar" ghost>Rechazar</Accion>
+                      <form action={revisarCuentaCobro} className="cc-rechazo">
+                        <input type="hidden" name="id" value={c.id} />
+                        <input type="hidden" name="accion" value="rechazar" />
+                        <input name="nota" required placeholder="¿Por qué la devuelves? (lo lee el proveedor)" />
+                        <button type="submit" className="cc-act ghost">Devolver</button>
+                      </form>
                     </>
                   )}
                   {c.estado === "aprobada" && (

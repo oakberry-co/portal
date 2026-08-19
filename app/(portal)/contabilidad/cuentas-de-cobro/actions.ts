@@ -98,6 +98,20 @@ export async function revisarCuentaCobro(fd: FormData) {
                  plazo_dias: PLAZO_CUENTA_COBRO_DIAS },
       });
     }
+    if (accion === "rechazar") {
+      // Rechazar sin avisar deja al proveedor esperando para siempre — y sin
+      // motivo, no sabe qué corregir. El correo lleva el enlace para que suba
+      // SOLO lo que falta, no todo el formulario otra vez.
+      if (!nota) throw new Error("Escribe por qué la devuelves: el proveedor lo va a leer.");
+      const { rows } = await c.query<{ correo: string | null; razon_social: string; token: string | null }>(
+        "SELECT correo, razon_social, token FROM cuentas_cobro WHERE id = $1", [id]);
+      await encolarCorreo(c, {
+        tipo: "rechazo", origenTipo: "cuenta_cobro", origenId: id,
+        para: rows[0]?.correo ?? null, actor: user.email,
+        datos: { ref: `CC-${id}`, proveedor: rows[0]?.razon_social, motivo: nota,
+                 token: rows[0]?.token },
+      });
+    }
     if (accion === "reabrir") {
       // Un pago registrado no se deshace devolviendo el envío a la bandeja: el
       // dinero ya salió y el `pagos` seguiría ahí. Si de verdad hay que

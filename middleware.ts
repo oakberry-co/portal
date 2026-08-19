@@ -12,6 +12,9 @@ export const { auth: middleware } = NextAuth(authConfig);
 
 // Las rutas de intake PÚBLICO (cuentas-de-cobro, cotizaciones) quedan fuera del
 // candado: un proveedor externo entra sin login a subir su documentación.
+// `/completar/<token>` también: es el enlace que le mandamos por correo para que
+// suba SOLO lo que falta, en vez de repetir todo el formulario. El token largo
+// es la credencial, y esa página no deja cambiar valor, cuenta ni NIT.
 //
 // `robots.txt`, `sitemap.xml` y las tarjetas `/og/*` TAMBIÉN quedan fuera, y no
 // por comodidad: si el middleware los intercepta, el crawler pide directivas,
@@ -28,6 +31,6 @@ export const { auth: middleware } = NextAuth(authConfig);
 // use una página pública hay que agregarlo aquí.
 export const config = {
   matcher: [
-    "/((?!api/auth|cuentas-de-cobro|cotizaciones|robots.txt|sitemap.xml|og/|oakberry-logo|_next/static|_next/image|favicon.ico).*)",
+    "/((?!api/auth|cuentas-de-cobro|cotizaciones|completar|robots.txt|sitemap.xml|og/|oakberry-logo|_next/static|_next/image|favicon.ico).*)",
   ],
 };

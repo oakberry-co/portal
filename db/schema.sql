@@ -500,6 +500,22 @@ ALTER TABLE cuentas_cobro ADD COLUMN IF NOT EXISTS observaciones  TEXT;
 ALTER TABLE cuentas_cobro ADD COLUMN IF NOT EXISTS retenciones_por TEXT;
 ALTER TABLE cuentas_cobro ADD COLUMN IF NOT EXISTS retenciones_en  TIMESTAMPTZ;
 
+-- ENLACE PARA COMPLETAR — que el proveedor no repita TODO por un archivo.
+--
+-- Si su certificación no sirve o le rechazamos la solicitud, antes le tocaba
+-- llenar de nuevo los 10 campos y subir los 4 documentos. Por un PDF. Eso es
+-- fricción pura: el proveedor abandona el trámite o llama por teléfono, que
+-- cuesta más que el trámite.
+--
+-- El token es un secreto largo y aleatorio (24 bytes): quien lo tiene puede ver
+-- el resumen de ESA solicitud y subirle documentos, nada más. NO deja cambiar el
+-- valor, la cuenta ni el NIT — si se pudiera, sería el formulario público con
+-- los candados quitados. Viaja en el correo, que es donde ya se le escribe.
+ALTER TABLE cuentas_cobro ADD COLUMN IF NOT EXISTS token TEXT;
+ALTER TABLE cotizaciones  ADD COLUMN IF NOT EXISTS token TEXT;
+CREATE UNIQUE INDEX IF NOT EXISTS ux_cc_token  ON cuentas_cobro (token) WHERE token IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS ux_cot_token ON cotizaciones  (token) WHERE token IS NOT NULL;
+
 -- Plazo de las cuentas de cobro: 30 días desde que el proveedor la sube.
 ALTER TABLE cuentas_cobro ADD COLUMN IF NOT EXISTS fecha_pago_prog DATE;
 -- Enlace al pago que generó su aprobación (para no crear dos por la misma).

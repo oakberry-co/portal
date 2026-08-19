@@ -100,10 +100,50 @@ def envoltura(cuerpo: str) -> str:
 </div>"""
 
 
+PORTAL = os.environ.get("PORTAL_URL", "https://www.manelfoods.co")
+
+
+def boton_completar(d: dict) -> str:
+    """El enlace que evita que el proveedor repita TODO el formulario.
+
+    Sin esto, "vuelve a enviarlo" significa llenar diez campos y subir cuatro
+    documentos por un solo archivo — y ahí es donde el proveedor abandona o
+    llama por teléfono, que sale más caro que el trámite.
+    """
+    tk = d.get("token")
+    if not tk:
+        return ""
+    return (f"""<p style="margin:18px 0"><a href="{PORTAL}/completar/{tk}"
+        style="background:#5f4b8b;color:#fff;text-decoration:none;border-radius:10px;
+        padding:13px 22px;font-weight:700;font-size:15px;display:inline-block">
+        Subir el documento</a></p>
+        <p style="font-size:13px;color:#8b849b;line-height:1.5">Ese enlace es solo tuyo y ya tiene
+        tus datos: <b>no tienes que llenar el formulario otra vez</b>.</p>""")
+
+
 def plantilla(tipo: str, d: dict) -> tuple[str, str, str]:
     """-> (asunto, html, texto_plano)."""
     prov = d.get("proveedor") or "Hola"
     ref = d.get("ref") or ""
+
+    if tipo == "rechazo":
+        # Antes rechazar no mandaba NADA: el proveedor quedaba esperando para
+        # siempre, sin saber que su solicitud se había devuelto ni por qué.
+        asunto = f"Devolvimos tu solicitud {ref} — falta algo"
+        cuerpo = f"""
+        <p style="font-size:15px;line-height:1.6">Hola <b>{prov}</b>,</p>
+        <p style="font-size:15px;line-height:1.6">Tuvimos que <b>devolver</b> tu solicitud
+        <b>{ref}</b>. No la perdimos: queda esperando a que la completes.</p>
+        <p style="font-size:14px;line-height:1.6;background:{CREMA};border-radius:10px;padding:12px 14px">
+        <b>Motivo:</b> {d.get('motivo') or 'falta información'}</p>
+        {boton_completar(d)}
+        <p style="font-size:15px;line-height:1.6">Si algo no te queda claro, responde este correo.</p>"""
+        texto = (f"Hola {prov}, devolvimos tu solicitud {ref}. Motivo: "
+                 f"{d.get('motivo') or 'falta información'}. "
+                 + (f"Complétala acá: {PORTAL}/completar/{d.get('token')} — el enlace ya tiene tus "
+                    "datos, no tienes que llenar el formulario otra vez."
+                    if d.get("token") else "Responde este correo y te ayudamos."))
+        return asunto, envoltura(cuerpo), texto
 
     if tipo == "certificacion_invalida":
         # Un certificado con CANDADO no es lo mismo que uno ilegible: puede
@@ -122,8 +162,9 @@ def plantilla(tipo: str, d: dict) -> tuple[str, str, str]:
           <li>tómale una <b>foto o captura nítida</b> donde se vean el banco y el número de cuenta, o</li>
           <li>descárgalo otra vez desde tu banca en línea eligiendo la opción sin protección.</li>
         </ul>
-        <p style="font-size:15px;line-height:1.6">Vuelve a enviarlo por el mismo formulario y seguimos
-        con el trámite. <b>No nos mandes la clave por correo</b>, no la necesitamos.</p>"""
+        {boton_completar(d)}
+        <p style="font-size:15px;line-height:1.6"><b>No nos mandes la clave por correo</b>,
+        no la necesitamos.</p>"""
             texto = (f"Hola {prov}, tu certificación bancaria de la solicitud {ref} viene protegida "
                      "con clave y no pudimos abrirla. Envíanos una versión sin clave: ábrela y "
                      "vuelve a guardarla como PDF, o mándanos una foto nítida donde se vean el banco "
@@ -146,12 +187,13 @@ def plantilla(tipo: str, d: dict) -> tuple[str, str, str]:
         <p style="font-size:15px;line-height:1.6">De ese documento sacamos la cuenta
         a la que te vamos a pagar, por eso no la tomamos de otra parte:
         <b>así nadie puede cambiarla por error</b>.</p>
-        <p style="font-size:15px;line-height:1.6">Vuelve a enviarla por el mismo
-        formulario y seguimos con el trámite.</p>"""
+        {boton_completar(d)}"""
         texto = (f"Hola {prov}, no pudimos validar la certificación bancaria de tu "
                  f"solicitud {ref}. Motivo: {motivo}. Necesitamos el documento que "
-                 "emite tu banco (certificado de cuenta bancaria). Vuelve a enviarlo "
-                 "por el mismo formulario.")
+                 "emite tu banco (certificado de cuenta bancaria)."
+                 + (f" Súbelo acá: {PORTAL}/completar/{d.get('token')} — el enlace ya tiene tus "
+                    "datos, no tienes que llenar el formulario otra vez."
+                    if d.get("token") else " Vuelve a enviarlo por el mismo formulario."))
         return asunto, envoltura(cuerpo), texto
 
     if tipo == "aprobacion":

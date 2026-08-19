@@ -11,7 +11,7 @@ import type { PoolClient } from "pg";
 // Va SIEMPRE dentro de la transacción que causó el hecho: si la aprobación se
 // revierte, el correo no queda encolado. Nunca al revés.
 
-export type TipoCorreo = "certificacion_invalida" | "aprobacion" | "pago_hecho";
+export type TipoCorreo = "certificacion_invalida" | "aprobacion" | "pago_hecho" | "rechazo";
 
 export type CorreoInput = {
   tipo: TipoCorreo;

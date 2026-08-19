@@ -414,7 +414,8 @@ def encolar_aviso(cur, cid: int, otipo: str, oid: int, motivo: str, protegido: b
     # vacío, sin saber de cuál de sus solicitudes le están hablando.
     ref_sql = ("'CC-' || id" if otipo == "cuenta_cobro"
                else "coalesce(codigo, 'COT-' || id)")
-    cur.execute(f"SELECT razon_social, correo, {ref_sql} FROM {tabla} WHERE id=%s", (oid,))
+    # El token va en el correo: es el enlace para subir SOLO lo que falta.
+    cur.execute(f"SELECT razon_social, correo, {ref_sql}, token FROM {tabla} WHERE id=%s", (oid,))
     fila = cur.fetchone()
     if not fila or not (fila[1] or "").strip():
         return False                      # no dejó correo: la bandeja lo muestra
@@ -422,10 +423,11 @@ def encolar_aviso(cur, cid: int, otipo: str, oid: int, motivo: str, protegido: b
                      (tipo, origen_tipo, origen_id, para, datos, creado_por)
                    VALUES ('certificacion_invalida', %s, %s, %s,
                            jsonb_build_object('proveedor', %s::text, 'motivo', %s::text,
-                                              'ref', %s::text, 'protegido', %s::boolean),
+                                              'ref', %s::text, 'protegido', %s::boolean,
+                                              'token', %s::text),
                            'lector_certificaciones')
                    ON CONFLICT (tipo, origen_tipo, origen_id) DO NOTHING""",
-                (otipo, oid, fila[1].strip(), fila[0], motivo, fila[2], protegido))
+                (otipo, oid, fila[1].strip(), fila[0], motivo, fila[2], protegido, fila[3]))
     encolado = cur.rowcount > 0
     cur.execute("UPDATE certificacion_bancaria SET avisado_en=now() WHERE id=%s", (cid,))
     return encolado
