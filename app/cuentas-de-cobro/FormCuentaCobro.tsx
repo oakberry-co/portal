@@ -67,26 +67,26 @@ export function FormCuentaCobro() {
         </label>
       </div>
       <div className="pub-row">
-        <label>Nombre de contacto<input name="contacto" placeholder="Quién responde" /></label>
-        <label>Teléfono / WhatsApp<input name="telefono" inputMode="tel" placeholder="300 000 0000" /></label>
+        <label>Nombre de contacto *<input name="contacto" required placeholder="Quién responde" /></label>
+        <label>Teléfono / WhatsApp *<input name="telefono" required inputMode="tel" placeholder="300 000 0000" /></label>
       </div>
-      <label className="pub-full">Correo electrónico
-        <input name="correo" type="email" placeholder="correo@dominio.com" />
+      <label className="pub-full">Correo electrónico *
+        <input name="correo" type="email" required placeholder="correo@dominio.com" />
       </label>
 
       <div className="pub-sec">El cobro</div>
       <div className="pub-row">
-        <label>Área con la que trataste
-          <select name="area" defaultValue="">
+        <label>Área con la que trataste *
+          <select name="area" required defaultValue="">
             <option value="">Selecciona…</option>
             {AREAS.map((a) => <option key={a} value={a}>{a}</option>)}
           </select>
         </label>
-        <label>Valor a cobrar (COP)<input name="valor" inputMode="numeric" placeholder="$ 0" /></label>
+        <label>Valor a cobrar (COP) *<input name="valor" required inputMode="numeric" placeholder="$ 0" /></label>
       </div>
-      <label className="pub-full">Concepto<input name="concepto" placeholder="¿Por qué es el cobro?" /></label>
-      <label className="pub-full">Descripción / detalle
-        <textarea name="descripcion" rows={2} placeholder="Detalle del servicio o producto" />
+      <label className="pub-full">Concepto *<input name="concepto" required placeholder="¿Por qué es el cobro?" /></label>
+      <label className="pub-full">Descripción / detalle *
+        <textarea name="descripcion" rows={2} required placeholder="Detalle del servicio o producto" />
       </label>
 
       {/* Los campos de banco/cuenta se quitaron a propósito (2026-08-17): la cuenta

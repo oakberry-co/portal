@@ -49,6 +49,7 @@ export function CasillasDocumentos({ documento }: { documento?: string }) {
               name={c.name}
               type="file"
               accept=".pdf,image/*"
+              required
               onChange={async (e) => {
                 const f = e.target.files?.[0];
                 setElegidos((prev) => ({ ...prev, [c.name]: f?.name ?? "" }));
@@ -58,7 +59,7 @@ export function CasillasDocumentos({ documento }: { documento?: string }) {
             />
             <span className="pub-doc-ico" aria-hidden="true">{nombre ? "✓" : "+"}</span>
             <span className="pub-doc-txt">
-              <b>{c.label}</b>
+              <b>{c.label} *</b>
               <i>{nombre || c.ayuda}</i>
             </span>
           </label>

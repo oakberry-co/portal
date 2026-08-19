@@ -11,18 +11,39 @@ export type Resultado = { ok: boolean; error?: string; codigo?: string; aviso?: 
 
 export async function enviarCotizacion(_prev: Resultado | null, formData: FormData): Promise<Resultado> {
   const s = (k: string) => String(formData.get(k) ?? "").trim();
+
+  // Todas obligatorias, validadas también en el servidor: el `required` del
+  // HTML se salta desde la consola (ver el comentario en cuentas-de-cobro).
+  const OBLIGATORIOS: [string, string][] = [
+    ["razon_social", "la razón social / nombre"],
+    ["nit", "el NIT"],
+    ["contacto", "el nombre de contacto"],
+    ["telefono", "el teléfono / WhatsApp"],
+    ["correo", "el correo electrónico"],
+    ["numero_cotizacion", "el número de tu cotización"],
+    ["area", "el área con la que trataste"],
+    ["valor", "el valor cotizado"],
+    ["concepto", "el concepto"],
+    ["descripcion", "la descripción / detalle"],
+  ];
+  const faltan = OBLIGATORIOS.filter(([k]) => !s(k)).map(([, etiqueta]) => etiqueta);
+  if (faltan.length) {
+    return { ok: false, error: "Falta " + (faltan.length === 1 ? faltan[0]
+      : faltan.slice(0, -1).join(", ") + " y " + faltan[faltan.length - 1]) + "." };
+  }
   const razon = s("razon_social");
   const nit = s("nit");
-  if (!razon) return { ok: false, error: "Falta la razón social / nombre." };
-  if (!nit) return { ok: false, error: "Falta el NIT." };
 
-  // El área llega de un <select> cerrado, pero el servidor no se fía del cliente:
-  // lo que no esté en la lista entra como vacío, no como texto libre.
   const areaRaw = s("area").toUpperCase();
-  const area = (AREAS as readonly string[]).includes(areaRaw) ? areaRaw : null;
+  if (!(AREAS as readonly string[]).includes(areaRaw)) {
+    return { ok: false, error: "Elige un área de la lista." };
+  }
+  const area = areaRaw;
 
-  const valorRaw = s("valor").replace(/[^\d]/g, "");
-  const valor = valorRaw ? Number(valorRaw) : null;
+  const valor = Number(s("valor").replace(/[^\d]/g, ""));
+  if (!Number.isFinite(valor) || valor <= 0) {
+    return { ok: false, error: "El valor cotizado tiene que ser un número mayor que cero." };
+  }
 
   // Adelanto OBLIGATORIO: este formulario existe solo para cotizaciones con
   // anticipo. Se topa a 1-100 — un "500%" mal escrito sería un compromiso de

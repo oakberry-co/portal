@@ -61,29 +61,29 @@ export function FormCotizacion() {
       <div className="pub-row">
         <label>NIT *<input name="nit" required inputMode="numeric" placeholder="900123456"
                  onChange={(e) => setDoc(e.target.value)} /></label>
-        <label>Teléfono / WhatsApp<input name="telefono" inputMode="tel" placeholder="300 000 0000" /></label>
+        <label>Teléfono / WhatsApp *<input name="telefono" required inputMode="tel" placeholder="300 000 0000" /></label>
       </div>
       <div className="pub-row">
-        <label>Nombre de contacto<input name="contacto" placeholder="Quién responde" /></label>
-        <label>Correo electrónico<input name="correo" type="email" placeholder="correo@dominio.com" /></label>
+        <label>Nombre de contacto *<input name="contacto" required placeholder="Quién responde" /></label>
+        <label>Correo electrónico *<input name="correo" type="email" required placeholder="correo@dominio.com" /></label>
       </div>
 
       <div className="pub-sec">La cotización</div>
       <div className="pub-row">
-        <label>Número de tu cotización
-          <input name="numero_cotizacion" placeholder="El consecutivo que tú le pusiste" />
+        <label>Número de tu cotización *
+          <input name="numero_cotizacion" required placeholder="El consecutivo que tú le pusiste" />
         </label>
-        <label>Área con la que trataste
-          <select name="area" defaultValue="">
+        <label>Área con la que trataste *
+          <select name="area" required defaultValue="">
             <option value="">Selecciona…</option>
             {AREAS.map((a) => <option key={a} value={a}>{a}</option>)}
           </select>
         </label>
       </div>
-      <label className="pub-full">Valor cotizado (COP)<input name="valor" inputMode="numeric" placeholder="$ 0" /></label>
-      <label className="pub-full">Concepto<input name="concepto" placeholder="¿Qué cotizas?" /></label>
-      <label className="pub-full">Descripción / detalle
-        <textarea name="descripcion" rows={2} placeholder="Detalle de la propuesta" />
+      <label className="pub-full">Valor cotizado (COP) *<input name="valor" required inputMode="numeric" placeholder="$ 0" /></label>
+      <label className="pub-full">Concepto *<input name="concepto" required placeholder="¿Qué cotizas?" /></label>
+      <label className="pub-full">Descripción / detalle *
+        <textarea name="descripcion" rows={2} required placeholder="Detalle de la propuesta" />
       </label>
 
       {/* El adelanto es OBLIGATORIO: este formulario existe solo para cotizaciones

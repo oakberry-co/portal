@@ -12,18 +12,44 @@ export type Resultado = { ok: boolean; error?: string; aviso?: string };
 
 export async function enviarCuentaCobro(_prev: Resultado | null, formData: FormData): Promise<Resultado> {
   const s = (k: string) => String(formData.get(k) ?? "").trim();
+
+  // TODAS las casillas son obligatorias, y se validan ACÁ además de en el
+  // navegador: el atributo `required` del HTML se salta desde la consola en dos
+  // líneas, y ya nos pasó — entró una cuenta de cobro SIN VALOR (#10, 18-ago) y
+  // nadie se enteró hasta que Daniel la vio en la bandeja. Un cobro sin monto no
+  // se puede programar ni pagar: es una solicitud muerta que ocupa una tarjeta.
+  const OBLIGATORIOS: [string, string][] = [
+    ["razon_social", "la razón social / nombre"],
+    ["num_doc", "el número de documento"],
+    ["contacto", "el nombre de contacto"],
+    ["telefono", "el teléfono / WhatsApp"],
+    ["correo", "el correo electrónico"],
+    ["area", "el área con la que trataste"],
+    ["valor", "el valor a cobrar"],
+    ["concepto", "el concepto"],
+    ["descripcion", "la descripción / detalle"],
+  ];
+  const faltan = OBLIGATORIOS.filter(([k]) => !s(k)).map(([, etiqueta]) => etiqueta);
+  if (faltan.length) {
+    return { ok: false, error: "Falta " + (faltan.length === 1 ? faltan[0]
+      : faltan.slice(0, -1).join(", ") + " y " + faltan[faltan.length - 1]) + "." };
+  }
   const razon = s("razon_social");
   const numDoc = s("num_doc");
-  if (!razon) return { ok: false, error: "Falta la razón social / nombre." };
-  if (!numDoc) return { ok: false, error: "Falta el número de documento." };
 
   // El área llega de un <select> cerrado, pero el servidor no se fía del cliente:
-  // lo que no esté en la lista entra como vacío, no como texto libre.
+  // lo que no esté en la lista se rechaza en vez de entrar como texto libre.
   const areaRaw = s("area").toUpperCase();
-  const area = (AREAS as readonly string[]).includes(areaRaw) ? areaRaw : null;
+  if (!(AREAS as readonly string[]).includes(areaRaw)) {
+    return { ok: false, error: "Elige un área de la lista." };
+  }
+  const area = areaRaw;
 
-  const valorRaw = s("valor").replace(/[^\d]/g, "");
-  const valor = valorRaw ? Number(valorRaw) : null;
+  // Sin monto no hay nada que programar; un 0 tampoco es un cobro.
+  const valor = Number(s("valor").replace(/[^\d]/g, ""));
+  if (!Number.isFinite(valor) || valor <= 0) {
+    return { ok: false, error: "El valor a cobrar tiene que ser un número mayor que cero." };
+  }
 
   // Subir documentos a Drive (vía la VM). Quedan en CONTABILIDAD/Intake, privados.
   // Su falla NO tumba el envío: el proveedor ya llenó el formulario.
