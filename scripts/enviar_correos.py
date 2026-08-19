@@ -253,6 +253,56 @@ def plantilla(tipo: str, d: dict) -> tuple[str, str, str]:
 
 
 # ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# LA REVISIÓN ANTES DE ENVIAR
+#
+# Cada correo malo cuesta un reproceso: el proveedor hace algo que no debía, o
+# toca escribirle otra vez a mano. En un solo día salieron dos —uno con el
+# asunto "...bancaria ()" porque faltaba la referencia, y otro pidiéndole una
+# factura a una CUENTA DE COBRO, que por definición no tiene—. Los dos eran
+# detectables leyendo el correo ya armado.
+#
+# Así que se lee. Si algo huele mal, NO se manda: queda en 'revisar' con el
+# motivo y el sentinela lo reporta. Un correo que no sale se arregla en 5
+# minutos; uno que salió mal cuesta una llamada y la confianza del proveedor.
+# ---------------------------------------------------------------------------
+
+# Frases que delatan un dato que no se resolvió al armar la plantilla.
+HUECOS = ["()", "( )", "None", "undefined", "null", "$ —", "{", "NaN"]
+
+# Pedirle factura a una cuenta de cobro es el error de fondo: no existe.
+PIDE_FACTURA = ["envíanos la factura", "envianos la factura", "con tu factura",
+                "número de factura", "numero de factura", "respóndenos con ella"]
+
+
+def revisar_correo(fila: dict, asunto: str, texto: str) -> list[str]:
+    """Qué está mal en este correo. Lista vacía = se puede enviar."""
+    problemas = []
+    plano = " ".join((asunto + " " + texto).split())
+    bajo = plano.lower()
+
+    if "@" not in (fila.get("para") or ""):
+        problemas.append("destinatario inválido")
+    for h in HUECOS:
+        if h in plano:
+            problemas.append(f"quedó un hueco sin llenar en el texto ({h!r})")
+            break
+    if not (fila.get("datos") or {}).get("ref"):
+        problemas.append("sin referencia (el proveedor no sabría de qué solicitud le hablan)")
+    # Una cuenta de cobro NO tiene factura: pedírsela es mandarlo a un trámite
+    # que no existe.
+    if fila.get("origen_tipo") == "cuenta_cobro":
+        for f in PIDE_FACTURA:
+            if f in bajo:
+                problemas.append("le pide FACTURA a una cuenta de cobro (no tiene)")
+                break
+    if fila.get("tipo") == "pago_hecho":
+        monto = (fila.get("datos") or {}).get("monto")
+        if not monto or float(monto) <= 0:
+            problemas.append("avisa un pago sin monto")
+    return problemas
+
+
 def bajar_adjunto(url: str) -> tuple[str, bytes] | None:
     """Baja de Drive el soporte del pago para adjuntarlo al correo."""
     m = RE_ID_DRIVE.search(url or "")
@@ -380,6 +430,20 @@ def main() -> int:
                     conn.commit()
             msg, asunto, mid = armar(f)
             print(f"  #{f['id']} {f['tipo']} → {f['para']}\n     « {asunto} »")
+
+            # Se lee el correo ya armado antes de soltarlo.
+            pegas = revisar_correo(f, asunto, msg.get_body(("plain",)).get_content()
+                                   if msg.get_body(("plain",)) else asunto)
+            if pegas:
+                print("     ⛔ NO se envía: " + "; ".join(pegas))
+                if args.commit:
+                    cur.execute("""UPDATE correo_saliente
+                                      SET estado='revisar', error=%s, asunto=%s
+                                    WHERE id=%s""", ("; ".join(pegas)[:400], asunto, f["id"]))
+                    conn.commit()
+                err += 1
+                continue
+
             if not args.commit:
                 continue
             dest = [f["para"]] + [x for x in [(f["cc"] or BUZON_COMPRAS)] if x]
