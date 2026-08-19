@@ -90,3 +90,51 @@ export async function darClaveCertificacion(fd: FormData) {
   });
   refrescar();
 }
+
+/** EL PASO FINAL: un humano abrió el documento y escribió la cuenta.
+ *
+ *  No es un "confirmo que revisé" —eso se marca sin mirar—: es doble digitación.
+ *  Si lo escrito coincide con lo leído, la cuenta queda confirmada por dos
+ *  fuentes independientes. Si NO coincide, no se resuelve solo: se le muestran
+ *  los dos números al revisor, que es el único con el documento delante.
+ *
+ *  `forzar` es esa resolución: el humano dice "lo que está en el papel es lo que
+ *  yo escribí". Su número gana sobre el del OCR — tiene el documento a la vista
+ *  y el OCR no. Queda en la bitácora con los dos valores. */
+export async function verificarCuenta(fd: FormData) {
+  const user = await exigirCap("intake");
+  const id = Number(fd.get("cert_id"));
+  const escrita = String(fd.get("cuenta") ?? "").replace(/[^\d]/g, "");
+  const forzar = String(fd.get("forzar") ?? "") === "1";
+  if (!id) throw new Error("Falta la certificación.");
+  if (escrita.length < 6) throw new Error("Escribe el número de cuenta completo, como aparece en el documento.");
+
+  return withTx(async (c) => {
+    const { rows } = await c.query<{ num_cuenta: string | null; estado: string }>(
+      "SELECT num_cuenta, estado FROM certificacion_bancaria WHERE id = $1 FOR UPDATE", [id]);
+    if (!rows.length) throw new Error("Certificación no encontrada.");
+    const leida = (rows[0].num_cuenta ?? "").replace(/\D/g, "");
+    const coincide = leida.replace(/^0+/, "") === escrita.replace(/^0+/, "");
+
+    if (!coincide && !forzar) {
+      // No se decide por el humano: se le muestran los dos y él resuelve.
+      return { discrepa: true as const, leida: rows[0].num_cuenta ?? "", escrita };
+    }
+
+    await c.query(
+      `UPDATE certificacion_bancaria
+          SET cuenta_verificada = $2, verificada_por = $3, verificada_en = now(),
+              verificacion_nota = $4
+        WHERE id = $1`,
+      [id, escrita, user.email,
+       coincide ? "coincide con lo leído" : `el revisor corrigió lo leído (${leida || "sin lectura"})`]);
+    await registrarEvento(c, {
+      cufe: null, tipo: "verifica_cuenta", campo: "cuenta_verificada",
+      valorAnterior: { leida_por_ocr: leida || null },
+      valorNuevo: { verificada: escrita, coincide, certificacion_id: id },
+      actor: user.email, actorRol: user.rol, origen: "web",
+    });
+    refrescar();
+    return { discrepa: false as const, coincide };
+  });
+}

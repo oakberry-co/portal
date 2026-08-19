@@ -1,5 +1,7 @@
 "use client";
 
+import { useState, useTransition } from "react";
+
 // Lo que la bandeja tiene que mostrar ANTES de dejar aprobar: qué documentos
 // llegaron, qué dice la certificación del banco y a qué cuenta se pagaría.
 // Compartido por las dos bandejas (cuentas de cobro y cotizaciones) para que
@@ -7,7 +9,7 @@
 
 import { CLASES_DOC, etiquetaClase, type DocGuardado } from "@/lib/areas";
 import { cola, type CertEstado, type CuentaMaestro } from "@/lib/certificaciones";
-import { confirmarCambioCuenta, rechazarCambioCuenta, darClaveCertificacion } from "@/lib/certificacion-actions";
+import { confirmarCambioCuenta, rechazarCambioCuenta, darClaveCertificacion, verificarCuenta } from "@/lib/certificacion-actions";
 
 export type DocIntake = DocGuardado & { nombre?: string; path?: string; tipo?: string };
 
@@ -70,9 +72,82 @@ export function CorreosIntake({ correos }: { correos: CorreoEnviado[] }) {
   );
 }
 
+/** EL PASO FINAL, y el más importante: alguien abre el documento y ESCRIBE la
+ *  cuenta. No un "confirmo que revisé" —eso se marca sin mirar— sino doble
+ *  digitación contra dos fuentes independientes.
+ *
+ *  Si coincide con lo que leyó el OCR, la cuenta queda confirmada por partida
+ *  doble. Si NO coincide, no se resuelve solo: se muestran los dos números y
+ *  decide quien tiene el documento delante. */
+function VerificarCuenta({ cert, docUrl }: { cert: CertEstado; docUrl?: string }) {
+  const [valor, setValor] = useState("");
+  const [choque, setChoque] = useState<{ leida: string; escrita: string } | null>(null);
+  const [pend, start] = useTransition();
+
+  if (cert.cuenta_verificada) {
+    return (
+      <div className="cc-verif ok">
+        ✓ <b>Cuenta verificada contra el documento</b> — {cola(cert.cuenta_verificada)}
+        {cert.verificada_por && <i> · la revisó {cert.verificada_por.split("@")[0]}</i>}
+      </div>
+    );
+  }
+
+  const enviar = (forzar: boolean) => start(async () => {
+    try {
+      const fd = new FormData();
+      fd.set("cert_id", String(cert.id));
+      fd.set("cuenta", forzar ? (choque?.escrita ?? valor) : valor);
+      if (forzar) fd.set("forzar", "1");
+      const r = await verificarCuenta(fd);
+      if (r?.discrepa) setChoque({ leida: r.leida, escrita: r.escrita });
+      else setChoque(null);
+    } catch (e) { alert((e as Error).message); }
+  });
+
+  return (
+    <div className="cc-verif">
+      <div className="cc-verif-tit">🔍 Falta el paso final: verifica la cuenta</div>
+      <p>
+        {docUrl
+          ? <>Abre <a href={docUrl} target="_blank" rel="noopener noreferrer"><b>la certificación</b></a> y escribe
+             el número de cuenta que ves en el papel.</>
+          : <>Abre la certificación y escribe el número de cuenta que ves en el papel.</>}{" "}
+        No copiamos lo que leyó el sistema a propósito: <b>a esa cuenta se le manda plata</b>.
+      </p>
+
+      {!choque ? (
+        <div className="cc-verif-form">
+          <input value={valor} onChange={(e) => setValor(e.target.value)} inputMode="numeric"
+                 placeholder="Número de cuenta del documento" autoComplete="off" disabled={pend} />
+          <button type="button" className="cc-act" disabled={pend || valor.replace(/\D/g, "").length < 6}
+                  onClick={() => enviar(false)}>Verificar</button>
+        </div>
+      ) : (
+        <div className="cc-choque">
+          <div><b>No coinciden.</b> Mira bien el documento y dinos cuál es el número que aparece:</div>
+          <div className="cc-choque-ops">
+            <div><i>El sistema leyó</i><b className="mono">{choque.leida || "—"}</b></div>
+            <div><i>Tú escribiste</i><b className="mono">{choque.escrita}</b></div>
+          </div>
+          <div className="cc-cambio-acts">
+            <button type="button" className="cc-act" disabled={pend} onClick={() => enviar(true)}>
+              La del documento es la que escribí
+            </button>
+            <button type="button" className="cc-act ghost" disabled={pend}
+                    onClick={() => { setChoque(null); setValor(""); }}>
+              Me equivoqué, escribir de nuevo
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /** La cuenta a la que se pagaría + por qué no se puede aprobar todavía. */
-export function PanelCuenta({ cert, cuenta, bloqueo }: {
-  cert: CertEstado | null; cuenta: CuentaMaestro; bloqueo: string | null;
+export function PanelCuenta({ cert, cuenta, bloqueo, docUrl }: {
+  cert: CertEstado | null; cuenta: CuentaMaestro; bloqueo: string | null; docUrl?: string;
 }) {
   const cambio = cert?.estado === "valida" && !cert.aplicada && !!cert.cuenta_anterior;
 
@@ -150,7 +225,14 @@ export function PanelCuenta({ cert, cuenta, bloqueo }: {
         </div>
       )}
 
-      {bloqueo && !cambio && <div className="cc-bloqueo">🔒 No se puede aprobar: {bloqueo}</div>}
+      {/* El paso humano se pide cuando ya no hay nada más que arreglar. */}
+      {cert?.estado === "valida" && cert.num_cuenta && !cambio && (
+        <VerificarCuenta cert={cert} docUrl={docUrl} />
+      )}
+
+      {bloqueo && !cambio && !(cert?.estado === "valida" && !cert.cuenta_verificada) && (
+        <div className="cc-bloqueo">🔒 No se puede aprobar: {bloqueo}</div>
+      )}
     </div>
   );
 }

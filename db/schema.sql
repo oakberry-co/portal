@@ -647,6 +647,24 @@ ALTER TABLE certificacion_bancaria ADD COLUMN IF NOT EXISTS cuenta_anterior TEXT
 -- en el formulario público a propósito: mucha gente reusa contraseñas, y una
 -- clave tecleada en internet abierto es un riesgo que no existía. Pedir la clave
 -- NO autentica a nadie — es una comodidad, no un control.
+-- EL OCR AYUDA; LA CUENTA LA CONFIRMA UN HUMANO (decisión de Daniel 2026-08-19).
+--
+-- Ningún lector va a acertar el 100% de los formatos, y a esa cuenta se le manda
+-- plata. Así que el OCR deja de ser la autoridad y pasa a ser el asistente: para
+-- aprobar, alguien tiene que ABRIR el documento y ESCRIBIR el número de cuenta.
+--
+-- No es un checkbox de "ya revisé" —eso se marca sin mirar—: es doble digitación
+-- contra dos fuentes independientes. Si lo escrito coincide con lo leído, la
+-- cuenta está confirmada por partida doble. Si no coincide, saltó un error que
+-- ninguna expresión regular iba a atrapar, y decide el humano (que sí tiene el
+-- documento delante).
+--
+-- `cuenta_verificada` es la que MANDA al escribir el maestro de pagos.
+ALTER TABLE certificacion_bancaria ADD COLUMN IF NOT EXISTS cuenta_verificada TEXT;
+ALTER TABLE certificacion_bancaria ADD COLUMN IF NOT EXISTS verificada_por    TEXT;
+ALTER TABLE certificacion_bancaria ADD COLUMN IF NOT EXISTS verificada_en     TIMESTAMPTZ;
+ALTER TABLE certificacion_bancaria ADD COLUMN IF NOT EXISTS verificacion_nota TEXT;
+
 ALTER TABLE certificacion_bancaria ADD COLUMN IF NOT EXISTS clave_intento   TEXT;
 ALTER TABLE certificacion_bancaria ADD COLUMN IF NOT EXISTS clave_pedida_por TEXT;
 

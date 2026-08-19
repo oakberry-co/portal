@@ -83,7 +83,8 @@ export function CuentasCobroView({ items }: { items: CuentaCobro[] }) {
                 </div>
 
                 <DocsIntake docs={c.documentos ?? []} />
-                <PanelCuenta cert={c.cert} cuenta={c.cuenta} bloqueo={c.estado === "recibida" ? bloqueo : null} />
+                <PanelCuenta cert={c.cert} cuenta={c.cuenta} bloqueo={c.estado === "recibida" ? bloqueo : null}
+                             docUrl={(c.documentos ?? []).find((d) => d.clase === "certificacion_bancaria")?.path} />
 
                 <CorreosIntake correos={c.correos} />
                 {c.nota_revision && <div className="cc-nota">📝 {c.nota_revision}</div>}

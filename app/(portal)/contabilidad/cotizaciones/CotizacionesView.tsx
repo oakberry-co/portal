@@ -87,7 +87,8 @@ export function CotizacionesView({ cots, candidatos }: { cots: Cotizacion[]; can
                 )}
 
                 <DocsIntake docs={c.documentos ?? []} />
-                <PanelCuenta cert={c.cert} cuenta={c.cuenta} bloqueo={c.estado === "recibida" ? bloqueo : null} />
+                <PanelCuenta cert={c.cert} cuenta={c.cuenta} bloqueo={c.estado === "recibida" ? bloqueo : null}
+                             docUrl={(c.documentos ?? []).find((d) => d.clase === "certificacion_bancaria")?.path} />
 
                 {/* Abonos */}
                 <div className="cot-abonos">

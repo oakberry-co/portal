@@ -1100,6 +1100,22 @@ button.ghost { background: #fff; color: var(--purple); }
   background: var(--cream-2); color: var(--lav); border: 1px solid var(--border); }
 .cc-correo.enviado { background: #e6f4ea; color: #1e7d47; border-color: rgba(39,174,96,.28); }
 .cc-correo.fallido { background: #fdeef0; color: var(--danger); border-color: rgba(192,57,43,.28); }
+/* El paso humano: doble digitación de la cuenta contra el documento. */
+.cc-verif { margin-top: 9px; background: #f4f1fb; border: 1px solid var(--border-lav);
+  border-radius: 11px; padding: 12px 14px; font-size: 13px; color: var(--ink); line-height: 1.55; }
+.cc-verif.ok { background: #e6f4ea; border-color: rgba(39,174,96,.3); color: #1e7d47; font-weight: 600; }
+.cc-verif.ok i { font-style: normal; font-weight: 400; color: #3d8f63; }
+.cc-verif-tit { font-weight: 800; color: var(--purple-deep); margin-bottom: 4px; }
+.cc-verif p { margin: 0 0 9px; font-size: 12.5px; color: var(--lav); }
+.cc-verif-form { display: flex; gap: 8px; flex-wrap: wrap; }
+.cc-verif-form input { width: auto; flex: 1; min-width: 190px; font-size: 14px; padding: 9px 12px;
+  border: 1.5px solid var(--border-lav); border-radius: 9px; font-family: var(--mono); }
+.cc-choque { background: #fff8e6; border: 1px solid rgba(212,160,23,.4); border-radius: 10px;
+  padding: 11px 13px; color: #6b4d05; font-size: 12.5px; }
+.cc-choque-ops { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 9px 0; }
+.cc-choque-ops i { display: block; font-style: normal; font-size: 10px; text-transform: uppercase;
+  letter-spacing: .05em; color: #8a6100; font-weight: 700; }
+.cc-choque-ops b { font-size: 15px; color: var(--ink); }
 .cc-enpagos { font-size: 12px; font-weight: 700; color: var(--purple); background: var(--lav-soft);
   border-radius: 999px; padding: 4px 12px; }
 .cc-act.ghost { background: #fff; color: var(--purple); border: 1px solid var(--border-lav); }

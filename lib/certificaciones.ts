@@ -10,7 +10,8 @@
 //   1. los 4 documentos obligatorios, subidos de verdad a Drive;
 //   2. la certificación bancaria leída y VÁLIDA (la emite el banco, no el
 //      proveedor), con número de cuenta;
-//   3. si el NIT ya tenía otra cuenta, el cambio confirmado por un humano.
+//   3. si el NIT ya tenía otra cuenta, el cambio confirmado por un humano;
+//   4. y el paso final: un humano ABRIÓ el documento y ESCRIBIÓ la cuenta.
 // Aprobar es además lo que ESCRIBE esa cuenta en el maestro de pagos.
 //
 // Módulo PURO (sin base ni sesión): se importa en cliente para pintar el aviso
@@ -26,7 +27,18 @@ export type CertEstado = {
   aplicada: boolean;         // ¿su cuenta se escribió en el maestro?
   cuenta_anterior: string | null;  // la que el NIT ya tenía (cambio de cuenta)
   leido_en: string | null;
+  // La cuenta que un HUMANO leyó del documento y escribió. Es la que manda.
+  cuenta_verificada: string | null;
+  verificada_por: string | null;
 };
+
+/** Dos números de cuenta, ¿son el mismo? Ceros a la izquierda y separadores no
+ *  cuentan: el banco imprime '05314486074' y la gente escribe '5314486074'. */
+export function mismaCuenta(a: string | null | undefined, b: string | null | undefined): boolean {
+  const x = (a ?? "").replace(/\D/g, "").replace(/^0+/, "");
+  const y = (b ?? "").replace(/\D/g, "").replace(/^0+/, "");
+  return x.length > 0 && x === y;
+}
 
 /** La cuenta que hoy tiene el proveedor en el maestro (la que iría al banco). */
 export type CuentaMaestro = {
@@ -41,7 +53,8 @@ export type CuentaMaestro = {
 export function sqlCertificacion(origen: "cuenta_cobro" | "cotizacion", refId: string): string {
   return `LEFT JOIN LATERAL (
     SELECT cb.id, cb.estado, cb.motivo, cb.banco, cb.num_cuenta, cb.aplicada,
-           cb.cuenta_anterior, cb.leido_en::text AS leido_en
+           cb.cuenta_anterior, cb.leido_en::text AS leido_en,
+           cb.cuenta_verificada, cb.verificada_por
       FROM certificacion_bancaria cb
      WHERE cb.origen_tipo = '${origen}' AND cb.origen_id = ${refId}
      ORDER BY cb.id DESC LIMIT 1) cert ON TRUE`;
@@ -88,6 +101,14 @@ export function bloqueoAprobacion(
   if (cert.cuenta_anterior && !cert.aplicada) {
     return `Cambió la cuenta: este NIT ya tenía la cuenta ${cola(cert.cuenta_anterior)} y la certificación trae `
          + `${cola(cert.num_cuenta)}. Confirma el cambio antes de aprobar.`;
+  }
+  // EL PASO HUMANO. El OCR ayuda, no decide: a esa cuenta se le manda plata, y
+  // ningún lector acierta el 100% de los formatos. Alguien tiene que abrir el
+  // documento y escribir el número. Es lo último que se exige, para que el
+  // revisor no lo haga hasta que todo lo demás esté en orden.
+  if (!(cert.cuenta_verificada ?? "").trim()) {
+    return "Falta el paso final: abre la certificación y escribe el número de cuenta que ves. "
+         + "Lo que leyó el sistema no basta para mover plata.";
   }
   // Estado raro (la aplicó alguien y el maestro quedó sin número): no se calla.
   if (cert.aplicada && !(cuenta?.num_cuenta ?? "").trim()) {
