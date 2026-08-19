@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sys
 
 import psycopg2
@@ -46,11 +47,61 @@ def check(ok: bool, titulo: str, detalle: str = "") -> None:
         fallos.append(titulo)
 
 
+def revisar_sql_certificacion() -> None:
+    """SENTINELA (Regla 14) del bug del 19-ago: el guard de aprobación tenía su
+    PROPIA copia del sub-select de la certificación y se quedó sin la columna
+    `cuenta_verificada`. El candado la leyó como `undefined` -> "nadie verificó"
+    -> bloqueaba SIEMPRE, y como un Server Action que lanza excepción se ve como
+    "Application error" con un digest, en pantalla no salía ningún motivo:
+    aprobar simplemente rompía el portal.
+
+    Dos reglas quedan cuidadas acá:
+
+      1. quien arma un `CertEstado` (la firma es `to_jsonb(cert)`) tiene que
+         hacerlo con sqlCertificacion(). Copiar el LEFT JOIN LATERAL a mano es
+         lo que envejece en silencio: el genérico de `query<CertEstado>()` es una
+         PROMESA, no una verificación — TypeScript no mira el SQL;
+
+      2. sqlCertificacion() selecciona TODOS los campos del tipo CertEstado. Si
+         mañana se agrega un candado con su columna nueva y el SQL se queda
+         atrás, vuelve exactamente el mismo bug.
+
+    Otras consultas a la tabla (el aplicador, el lector, la página de completar)
+    no se tocan: leen columnas sueltas para lo suyo, no arman el candado.
+    """
+    print("\n0) Sentinela: el SQL del candado se arma en un solo lugar")
+    raiz = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    culpables: list[str] = []
+    for base, dirs, archivos in os.walk(raiz):
+        dirs[:] = [d for d in dirs if d not in (".next", "node_modules", ".git")]
+        for a in archivos:
+            if not a.endswith((".ts", ".tsx")):
+                continue
+            ruta = os.path.join(base, a)
+            txt = open(ruta, encoding="utf-8").read()
+            if "to_jsonb(cert)" in txt and "sqlCertificacion" not in txt:
+                culpables.append(os.path.relpath(ruta, raiz))
+    check(not culpables,
+          "nadie arma un CertEstado con su propia copia del LEFT JOIN LATERAL",
+          ", ".join(culpables) if culpables else "sqlCertificacion() es la única fuente")
+
+    # El tipo se lee del código, no se copia acá: así el chequeo no envejece.
+    fuente = open(os.path.join(raiz, "lib/certificaciones.ts"), encoding="utf-8").read()
+    cuerpo = re.search(r"export type CertEstado = \{(.*?)\n\};", fuente, re.S)
+    campos = re.findall(r"^\s*(\w+)\s*[?]?\s*:", cuerpo.group(1), re.M) if cuerpo else []
+    sql = re.search(r"export function sqlCertificacion\((.*?)\n\}", fuente, re.S)
+    faltan = [c for c in campos if not re.search(r"\bcb\." + c + r"\b", sql.group(1))] if sql else campos
+    check(bool(campos) and not faltan,
+          "sqlCertificacion() trae todos los campos de CertEstado",
+          ("faltan: " + ", ".join(faltan)) if faltan else f"{len(campos)}/{len(campos)}")
+
+
 def main() -> int:
     dsn = cargar_database_url()
     if not dsn:
         print("ERROR: falta DATABASE_URL", file=sys.stderr)
         return 2
+    revisar_sql_certificacion()
     conn = psycopg2.connect(dsn)
     cur = conn.cursor()
 

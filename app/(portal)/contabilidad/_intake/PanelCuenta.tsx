@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useActionState, useState, useTransition, type ReactNode } from "react";
 
 // Lo que la bandeja tiene que mostrar ANTES de dejar aprobar: qué documentos
 // llegaron, qué dice la certificación del banco y a qué cuenta se pagaría.
@@ -8,8 +8,11 @@ import { useState, useTransition } from "react";
 // digan exactamente lo mismo.
 
 import { CLASES_DOC, etiquetaClase, type DocGuardado } from "@/lib/areas";
-import { cola, type CertEstado, type CuentaMaestro } from "@/lib/certificaciones";
-import { confirmarCambioCuenta, rechazarCambioCuenta, darClaveCertificacion, verificarCuenta } from "@/lib/certificacion-actions";
+import { cola, mismaCuenta, unaEsLaOtraConPrefijo, type CertEstado, type CuentaMaestro } from "@/lib/certificaciones";
+import { confirmarCambioCuenta, mantenerCuentaDelMaestro, rechazarCambioCuenta,
+         darClaveCertificacion, verificarCuenta } from "@/lib/certificacion-actions";
+import { ErrorAccion } from "./ErrorAccion";
+import type { Resultado } from "@/lib/resultado";
 
 export type DocIntake = DocGuardado & { nombre?: string; path?: string; tipo?: string };
 
@@ -145,11 +148,45 @@ function VerificarCuenta({ cert, docUrl }: { cert: CertEstado; docUrl?: string }
   );
 }
 
+/** Un botón que decide sobre la certificación. Se queda con el resultado: si el
+ *  servidor dice que no, el motivo se lee acá y no en una pantalla en blanco. */
+function BotonCert({ certId, accion, ghost, children }: {
+  certId: number;
+  accion: (prev: Resultado | null, fd: FormData) => Promise<Resultado>;
+  ghost?: boolean; children: ReactNode;
+}) {
+  const [res, run, pend] = useActionState<Resultado | null, FormData>(accion, null);
+  return (
+    <>
+      <form action={run} style={{ display: "inline" }}>
+        <input type="hidden" name="cert_id" value={certId} />
+        <button type="submit" className={"cc-act" + (ghost ? " ghost" : "")} disabled={pend}>
+          {pend ? "…" : children}
+        </button>
+      </form>
+      {res?.error && <ErrorAccion msg={res.error} />}
+    </>
+  );
+}
+
 /** La cuenta a la que se pagaría + por qué no se puede aprobar todavía. */
 export function PanelCuenta({ cert, cuenta, bloqueo, docUrl }: {
   cert: CertEstado | null; cuenta: CuentaMaestro; bloqueo: string | null; docUrl?: string;
 }) {
-  const cambio = cert?.estado === "valida" && !cert.aplicada && !!cert.cuenta_anterior;
+  // ORDEN: primero se VERIFICA (un humano lee el papel), después se decide si
+  // la cuenta cambió. Al revés quedaba un callejón sin salida — confirmar el
+  // cambio exige una cuenta verificada, y la verificación no se mostraba hasta
+  // resolver el cambio. Es además el orden con sentido: hasta que alguien no lea
+  // el documento no se sabe SI cambió, porque lo que leyó el OCR puede estar mal.
+  const verificada = (cert?.cuenta_verificada ?? "").trim();
+  const pedirVerificacion = cert?.estado === "valida" && !!cert.num_cuenta && !verificada;
+  // La que de verdad iría al banco es la que escribió el humano.
+  const cambio = cert?.estado === "valida" && !cert.aplicada && !!cert.cuenta_anterior
+              && !!verificada && !mismaCuenta(cert.cuenta_anterior, verificada);
+  // El mismo número con el prefijo del banco delante NO es un cambio de cuenta,
+  // y presentarlo como tal ('•••8827 por •••8827') hace que el revisor deje de
+  // creerle a la alarma — que es justo la alarma que no queremos que ignore.
+  const soloPrefijo = cambio && unaEsLaOtraConPrefijo(cert!.cuenta_anterior, verificada);
 
   return (
     <div className="cc-cuenta">
@@ -204,33 +241,48 @@ export function PanelCuenta({ cert, cuenta, bloqueo, docUrl }: {
         </div>
       )}
 
+      {/* PRIMERO el paso humano: sin leer el papel no se decide nada más. */}
+      {pedirVerificacion && cert && <VerificarCuenta cert={cert} docUrl={docUrl} />}
+
       {/* CAMBIO DE CUENTA: el caso peligroso. La cuenta anterior sigue intacta. */}
       {cambio && (
         <div className="cc-cambio">
-          <div>
-            ⚠️ <b>Cambió la cuenta.</b> Este NIT ya tenía <b>{cola(cert!.cuenta_anterior)}</b> y la certificación
-            de este envío trae <b>{cola(cert!.num_cuenta)}</b> ({cert!.banco ?? "banco no leído"}).
-            Confírmalo con el proveedor por un canal que ya conozcas antes de aceptar.
-          </div>
+          {soloPrefijo ? (
+            <div>
+              ⚠️ <b>La misma cuenta, escrita distinto.</b> El certificado de {cert!.banco ?? "el banco"} trae{" "}
+              <b>{verificada}</b> y en el maestro está <b>{cert!.cuenta_anterior}</b>: <b>terminan igual</b>,
+              así que casi seguro es la misma cuenta con el prefijo del banco delante.
+              Elige cuál es la que va al archivo del banco.
+            </div>
+          ) : (
+            <div>
+              ⚠️ <b>Cambió la cuenta.</b> Este NIT ya tenía <b>{cola(cert!.cuenta_anterior)}</b> y la certificación
+              de este envío trae <b>{cola(verificada)}</b> ({cert!.banco ?? "banco no leído"}).
+              Confírmalo con el proveedor por un canal que ya conozcas antes de aceptar.
+            </div>
+          )}
           <div className="cc-cambio-acts">
-            <form action={confirmarCambioCuenta} style={{ display: "inline" }}>
-              <input type="hidden" name="cert_id" value={cert!.id} />
-              <button type="submit" className="cc-act">✓ Sí, cambió: usar la nueva</button>
-            </form>
-            <form action={rechazarCambioCuenta} style={{ display: "inline" }}>
-              <input type="hidden" name="cert_id" value={cert!.id} />
-              <button type="submit" className="cc-act ghost">✗ No la reconozco</button>
-            </form>
+            <BotonCert certId={cert!.id} accion={confirmarCambioCuenta}>
+              {soloPrefijo ? "✓ Usar la del certificado" : "✓ Sí, cambió: usar la nueva"}
+            </BotonCert>
+            {/* Cuando es el mismo número con prefijo, la salida NO es matar la
+                certificación de un proveedor honesto: es quedarse con el formato
+                que el banco ya acepta. Rechazar sigue disponible para el caso de
+                verdad sospechoso, que es el otro. */}
+            {soloPrefijo ? (
+              <BotonCert certId={cert!.id} accion={mantenerCuentaDelMaestro} ghost>
+                ✓ Dejar la del maestro
+              </BotonCert>
+            ) : (
+              <BotonCert certId={cert!.id} accion={rechazarCambioCuenta} ghost>
+                ✗ No la reconozco
+              </BotonCert>
+            )}
           </div>
         </div>
       )}
 
-      {/* El paso humano se pide cuando ya no hay nada más que arreglar. */}
-      {cert?.estado === "valida" && cert.num_cuenta && !cambio && (
-        <VerificarCuenta cert={cert} docUrl={docUrl} />
-      )}
-
-      {bloqueo && !cambio && !(cert?.estado === "valida" && !cert.cuenta_verificada) && (
+      {bloqueo && !cambio && !pedirVerificacion && (
         <div className="cc-bloqueo">🔒 No se puede aprobar: {bloqueo}</div>
       )}
     </div>

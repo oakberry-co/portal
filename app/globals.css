@@ -1078,6 +1078,12 @@ button.ghost { background: #fff; color: var(--purple); }
 .cc-adelanto { display: inline-block; margin: 4px 0 2px; padding: 5px 11px; border-radius: 8px;
   background: #fff8e6; border: 1px solid rgba(212,160,23,.35); color: #8a6100;
   font-size: 12.5px; font-weight: 600; }
+/* El motivo por el que una acción de la bandeja NO se pudo hacer. Ocupa toda la
+   fila para que no se pierda entre los botones. */
+.cc-error { flex-basis: 100%; font-size: 12.5px; margin: 8px 0 0;
+            color: #8a2140; background: #fdeef2; border: 1px solid #f5c6d2;
+            border-left: 3px solid #c0395f; border-radius: 8px; padding: 8px 11px; line-height: 1.45; }
+.cc-error b { color: #6d1a33; }
 .cc-nota { font-size: 12.5px; color: var(--lav); background: var(--cream-2); border-radius: 8px; padding: 7px 10px; margin: 6px 0; }
 .cc-acts { display: flex; gap: 8px; margin-top: 12px; align-items: center; flex-wrap: wrap; }
 .cc-act { background: var(--purple); color: #fff; border: none; border-radius: 9px; padding: 8px 16px; font-weight: 700; font-size: 12.5px; cursor: pointer; }

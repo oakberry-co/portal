@@ -5,10 +5,11 @@ import { withTx } from "@/lib/db";
 import { registrarEvento } from "@/lib/eventos";
 import { exigirCap } from "@/lib/auth";
 import { docsFaltantes, type DocGuardado } from "@/lib/areas";
-import { bloqueoAprobacion, type CertEstado, type CuentaMaestro } from "@/lib/certificaciones";
+import { bloqueoAprobacion, sqlCertificacion, type CertEstado, type CuentaMaestro } from "@/lib/certificaciones";
 import { syncAbono } from "@/lib/abonos";
 import { aplicarCuentaCertificada } from "@/lib/cuenta-certificada";
 import { encolarCorreo } from "@/lib/correos";
+import { intentar, type Resultado } from "@/lib/resultado";
 import type { PoolClient } from "pg";
 
 async function guard() {
@@ -36,12 +37,7 @@ async function exigirAprobable(c: PoolClient, id: number): Promise<Aprobable> {
             cot.razon_social, cot.correo, cot.codigo, cot.plazo_dias,
             to_jsonb(cert) AS cert, to_jsonb(cb) AS cuenta
        FROM cotizaciones cot
-       LEFT JOIN LATERAL (
-         SELECT x.id, x.estado, x.motivo, x.banco, x.num_cuenta, x.aplicada,
-                x.cuenta_anterior, x.leido_en::text AS leido_en
-           FROM certificacion_bancaria x
-          WHERE x.origen_tipo = 'cotizacion' AND x.origen_id = cot.id
-          ORDER BY x.id DESC LIMIT 1) cert ON TRUE
+       ${sqlCertificacion("cotizacion", "cot.id")}
        LEFT JOIN LATERAL (
          SELECT y.banco, y.tipo_cuenta, y.num_cuenta, y.certificada
            FROM cuentas_bancarias_proveedor y WHERE y.nit = cot.nit) cb ON TRUE
@@ -65,7 +61,8 @@ type Aprobable = {
   certId: number; adelanto: number;
 };
 
-export async function revisarCotizacion(fd: FormData) {
+export async function revisarCotizacion(_prev: Resultado | null, fd: FormData): Promise<Resultado> {
+  return intentar(async () => {
   const user = await guard();
   const id = Number(fd.get("id"));
   const accion = String(fd.get("accion") ?? "");
@@ -123,6 +120,7 @@ export async function revisarCotizacion(fd: FormData) {
     await registrarEvento(c, { cufe: null, tipo: "revisa_cotizacion", campo: "estado", valorNuevo: { id, estado: nuevo }, actor: user.email, actorRol: user.rol, origen: "web" });
   });
   done();
+  });
 }
 
 /** Registra un abono (anticipo) contra la cotización. Si ya está enlazada a una

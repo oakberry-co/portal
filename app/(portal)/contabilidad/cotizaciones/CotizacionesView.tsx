@@ -1,11 +1,13 @@
 "use client";
 
-import { useMemo, useState, type ReactNode } from "react";
+import { useActionState, useMemo, useState, type ReactNode } from "react";
 import { revisarCotizacion, agregarAbono, enlazarFactura, quitarEnlace } from "./actions";
 import { docsFaltantes } from "@/lib/areas";
 import { bloqueoAprobacion, type CertEstado, type CuentaMaestro } from "@/lib/certificaciones";
 import { CorreosIntake, DocsIntake, PanelCuenta, type CorreoEnviado, type DocIntake } from "../_intake/PanelCuenta";
 import { useFiltrosIntake } from "../_intake/FiltrosIntake";
+import { ErrorAccion } from "../_intake/ErrorAccion";
+import type { Resultado } from "@/lib/resultado";
 
 export type Cotizacion = {
   id: number; codigo: string | null; razon_social: string; nit: string;
@@ -150,12 +152,7 @@ export function CotizacionesView({ cots, candidatos }: { cots: Cotizacion[]; can
                               title={bloqueo ?? "El adelanto pasa a Pagos › Validación semana en curso"}>
                         ✓ Aprobar adelanto{adelanto != null ? ` (${$(adelanto)})` : ""}
                       </Accion>
-                      <form action={revisarCotizacion} className="cc-rechazo">
-                        <input type="hidden" name="id" value={c.id} />
-                        <input type="hidden" name="accion" value="rechazar" />
-                        <input name="nota" required placeholder="¿Por qué la devuelves? (lo lee el proveedor)" />
-                        <button type="submit" className="cc-act ghost">Devolver</button>
-                      </form>
+                      <Rechazo id={c.id} />
                     </>
                   )}
                   {c.estado === "aprobada" && (
@@ -177,14 +174,36 @@ export function CotizacionesView({ cots, candidatos }: { cots: Cotizacion[]; can
   );
 }
 
+// Mismo trato que en cuentas de cobro: el "no se pudo" se lee al lado del botón.
 function Accion({ id, accion, children, ghost, disabled, title }: {
   id: number; accion: string; children: ReactNode; ghost?: boolean; disabled?: boolean; title?: string;
 }) {
+  const [res, run, pend] = useActionState<Resultado | null, FormData>(revisarCotizacion, null);
   return (
-    <form action={revisarCotizacion} style={{ display: "inline" }}>
-      <input type="hidden" name="id" value={id} />
-      <input type="hidden" name="accion" value={accion} />
-      <button type="submit" className={"cc-act" + (ghost ? " ghost" : "")} disabled={disabled} title={title}>{children}</button>
-    </form>
+    <>
+      <form action={run} style={{ display: "inline" }}>
+        <input type="hidden" name="id" value={id} />
+        <input type="hidden" name="accion" value={accion} />
+        <button type="submit" className={"cc-act" + (ghost ? " ghost" : "")}
+                disabled={disabled || pend} title={title}>{pend ? "…" : children}</button>
+      </form>
+      {res?.error && <ErrorAccion msg={res.error} />}
+    </>
+  );
+}
+
+/** Devolver al proveedor con el motivo (que va en el correo). */
+function Rechazo({ id }: { id: number }) {
+  const [res, run, pend] = useActionState<Resultado | null, FormData>(revisarCotizacion, null);
+  return (
+    <>
+      <form action={run} className="cc-rechazo">
+        <input type="hidden" name="id" value={id} />
+        <input type="hidden" name="accion" value="rechazar" />
+        <input name="nota" required placeholder="¿Por qué la devuelves? (lo lee el proveedor)" />
+        <button type="submit" className="cc-act ghost" disabled={pend}>{pend ? "…" : "Devolver"}</button>
+      </form>
+      {res?.error && <ErrorAccion msg={res.error} />}
+    </>
   );
 }

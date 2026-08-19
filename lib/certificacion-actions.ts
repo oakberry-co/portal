@@ -17,6 +17,7 @@ import { withTx } from "@/lib/db";
 import { registrarEvento } from "@/lib/eventos";
 import { exigirCap } from "@/lib/auth";
 import { aplicarCuentaCertificada } from "@/lib/cuenta-certificada";
+import { intentar, type Resultado } from "@/lib/resultado";
 
 function refrescar() {
   revalidatePath("/contabilidad/cuentas-de-cobro");
@@ -26,17 +27,69 @@ function refrescar() {
 /** Acepta la cuenta nueva: la escribe en el maestro y deja la certificación
  *  aplicada. A partir de aquí el proveedor entra al archivo del banco con ESA
  *  cuenta, y la anterior queda en la bitácora. */
-export async function confirmarCambioCuenta(fd: FormData) {
-  const user = await exigirCap("intake");
-  const id = Number(fd.get("cert_id"));
-  if (!id) throw new Error("Falta la certificación.");
-  await withTx(async (c) => aplicarCuentaCertificada(c, id, user));
-  refrescar();
+export async function confirmarCambioCuenta(_prev: Resultado | null, fd: FormData): Promise<Resultado> {
+  return intentar(async () => {
+    const user = await exigirCap("intake");
+    const id = Number(fd.get("cert_id"));
+    if (!id) throw new Error("Falta la certificación.");
+    await withTx(async (c) => aplicarCuentaCertificada(c, id, user));
+    refrescar();
+  });
+}
+
+/** LA OTRA SALIDA: la cuenta buena es la que YA está en el maestro.
+ *
+ *  Pasa de verdad y no es fraude: el banco certifica '0570006270388827' y el
+ *  equipo tiene cargado '6270388827' — la misma cuenta con el prefijo del banco
+ *  delante. Cuál de los dos formatos acepta el archivo del banco no lo decide
+ *  este portal: lo sabe quien arma el pago.
+ *
+ *  Sin esta salida el revisor quedaba encerrado: "confirmar" pisaba el maestro
+ *  con un formato que quizá el banco rechaza, y "no la reconozco" mataba la
+ *  certificación de un proveedor honesto. Acá se da por resuelto el cambio SIN
+ *  tocar el maestro: la certificación queda aplicada (ya no bloquea) y la cuenta
+ *  que va al banco sigue siendo la de siempre. */
+export async function mantenerCuentaDelMaestro(_prev: Resultado | null, fd: FormData): Promise<Resultado> {
+  return intentar(async () => {
+    const user = await exigirCap("intake");
+    const id = Number(fd.get("cert_id"));
+    if (!id) throw new Error("Falta la certificación.");
+    await withTx(async (c) => {
+      const { rows } = await c.query<{ nit: string | null; num_cuenta: string | null;
+                                       cuenta_anterior: string | null; estado: string }>(
+        `SELECT nit, num_cuenta, cuenta_anterior, estado
+           FROM certificacion_bancaria WHERE id = $1 FOR UPDATE`, [id]);
+      const cert = rows[0];
+      if (!cert) throw new Error("Certificación no encontrada.");
+      if (cert.estado !== "valida") throw new Error("Solo aplica a una certificación válida.");
+      // Sin cuenta previa no hay "la del maestro" que mantener: sería dejar al
+      // proveedor aprobado y sin cuenta a la hora de pagar.
+      if (!(cert.cuenta_anterior ?? "").trim()) {
+        throw new Error("Este proveedor no tenía una cuenta anterior que mantener.");
+      }
+      const m = await c.query(
+        `SELECT num_cuenta FROM cuentas_bancarias_proveedor WHERE nit = $1`, [cert.nit]);
+      if (!(m.rows[0]?.num_cuenta ?? "").trim()) {
+        throw new Error("El maestro ya no tiene cuenta para este NIT: no hay cuál mantener.");
+      }
+      // 'aplicada' = el cambio quedó resuelto. El maestro NO se toca.
+      await c.query("UPDATE certificacion_bancaria SET aplicada = TRUE WHERE id = $1", [id]);
+      await registrarEvento(c, {
+        cufe: null, tipo: "mantiene_cuenta_banco", campo: "num_cuenta",
+        valorAnterior: { nit: cert.nit, num_cuenta: cert.cuenta_anterior },
+        valorNuevo: { nit: cert.nit, num_cuenta: cert.cuenta_anterior,
+                      descartada_del_certificado: cert.num_cuenta, certificacion_id: id },
+        actor: user.email, actorRol: user.rol, origen: "web",
+      });
+    });
+    refrescar();
+  });
 }
 
 /** Rechaza la cuenta nueva: la anterior queda intacta y el envío no se puede
  *  aprobar. Es la salida para un intento de suplantación. */
-export async function rechazarCambioCuenta(fd: FormData) {
+export async function rechazarCambioCuenta(_prev: Resultado | null, fd: FormData): Promise<Resultado> {
+  return intentar(async () => {
   const user = await exigirCap("intake");
   const id = Number(fd.get("cert_id"));
   if (!id) throw new Error("Falta la certificación.");
@@ -54,6 +107,7 @@ export async function rechazarCambioCuenta(fd: FormData) {
     });
   });
   refrescar();
+  });
 }
 
 /** Guarda, SOLO de paso, la clave que el equipo consiguió para abrir un

@@ -1,12 +1,14 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useActionState, useState, type ReactNode } from "react";
 import { revisarCuentaCobro } from "./actions";
 import { docsFaltantes } from "@/lib/areas";
 import { bloqueoAprobacion, type CertEstado, type CuentaMaestro } from "@/lib/certificaciones";
 import { CorreosIntake, DocsIntake, PanelCuenta, type CorreoEnviado, type DocIntake } from "../_intake/PanelCuenta";
 import { RetencionesCuentaCobro } from "./RetencionesCuentaCobro";
 import { useFiltrosIntake } from "../_intake/FiltrosIntake";
+import { ErrorAccion } from "../_intake/ErrorAccion";
+import type { Resultado } from "@/lib/resultado";
 
 export type CuentaCobro = {
   id: number; razon_social: string; tipo_doc: string | null; num_doc: string;
@@ -36,15 +38,38 @@ const TABS = [
   { key: "rechazada", label: "Rechazadas" },
 ] as const;
 
+// El botón se queda con el resultado: si el servidor dice que no, el motivo se
+// pinta acá mismo. Antes la excepción llegaba como pantalla en blanco.
 function Accion({ id, accion, children, ghost, disabled, title }: {
   id: number; accion: string; children: ReactNode; ghost?: boolean; disabled?: boolean; title?: string;
 }) {
+  const [res, run, pend] = useActionState<Resultado | null, FormData>(revisarCuentaCobro, null);
   return (
-    <form action={revisarCuentaCobro} style={{ display: "inline" }}>
-      <input type="hidden" name="id" value={id} />
-      <input type="hidden" name="accion" value={accion} />
-      <button type="submit" className={"cc-act" + (ghost ? " ghost" : "")} disabled={disabled} title={title}>{children}</button>
-    </form>
+    <>
+      <form action={run} style={{ display: "inline" }}>
+        <input type="hidden" name="id" value={id} />
+        <input type="hidden" name="accion" value={accion} />
+        <button type="submit" className={"cc-act" + (ghost ? " ghost" : "")}
+                disabled={disabled || pend} title={title}>{pend ? "…" : children}</button>
+      </form>
+      {res?.error && <ErrorAccion msg={res.error} />}
+    </>
+  );
+}
+
+/** Devolver al proveedor con el motivo (que va en el correo). */
+function Rechazo({ id }: { id: number }) {
+  const [res, run, pend] = useActionState<Resultado | null, FormData>(revisarCuentaCobro, null);
+  return (
+    <>
+      <form action={run} className="cc-rechazo">
+        <input type="hidden" name="id" value={id} />
+        <input type="hidden" name="accion" value="rechazar" />
+        <input name="nota" required placeholder="¿Por qué la devuelves? (lo lee el proveedor)" />
+        <button type="submit" className="cc-act ghost" disabled={pend}>{pend ? "…" : "Devolver"}</button>
+      </form>
+      {res?.error && <ErrorAccion msg={res.error} />}
+    </>
   );
 }
 
@@ -146,12 +171,7 @@ export function CuentasCobroView({ items }: { items: CuentaCobro[] }) {
                               title={bloqueo ?? "Pasa a Pagos › Validación semana en curso"}>
                         ✓ Aprobar y pasar a Pagos
                       </Accion>
-                      <form action={revisarCuentaCobro} className="cc-rechazo">
-                        <input type="hidden" name="id" value={c.id} />
-                        <input type="hidden" name="accion" value="rechazar" />
-                        <input name="nota" required placeholder="¿Por qué la devuelves? (lo lee el proveedor)" />
-                        <button type="submit" className="cc-act ghost">Devolver</button>
-                      </form>
+                      <Rechazo id={c.id} />
                     </>
                   )}
                   {c.estado === "aprobada" && (

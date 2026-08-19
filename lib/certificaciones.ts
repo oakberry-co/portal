@@ -40,6 +40,18 @@ export function mismaCuenta(a: string | null | undefined, b: string | null | und
   return x.length > 0 && x === y;
 }
 
+/** ¿Una es la otra con el prefijo del banco delante? Davivienda certifica
+ *  '0570006270388827' y en el maestro está '6270388827': la MISMA cuenta en el
+ *  formato largo. No se puede dar por buena sola —el prefijo también podría
+ *  esconder otra cuenta— pero sí hay que decirlo con esas palabras, porque
+ *  "cambió la cuenta •••8827 por •••8827" se lee como que el portal delira. */
+export function unaEsLaOtraConPrefijo(a: string | null | undefined, b: string | null | undefined): boolean {
+  const x = (a ?? "").replace(/\D/g, "");
+  const y = (b ?? "").replace(/\D/g, "");
+  if (x.length < 8 || y.length < 8 || x === y) return false;
+  return x.endsWith(y) || y.endsWith(x);
+}
+
 /** La cuenta que hoy tiene el proveedor en el maestro (la que iría al banco). */
 export type CuentaMaestro = {
   banco: string | null;
@@ -78,6 +90,16 @@ export function cola(num: string | null | undefined): string {
 export function bloqueoAprobacion(
   docsFaltan: string[], cert: CertEstado | null, cuenta: CuentaMaestro,
 ): string | null {
+  // SENTINELA. Si la consulta que trae `cert` no seleccionó `cuenta_verificada`,
+  // el campo llega `undefined` y este candado lo lee como "nadie la verificó":
+  // bloquea SIEMPRE, sin decir por qué. Pasó — el guard de aprobación tenía su
+  // propia copia del sub-select y se quedó atrás. `to_jsonb` incluye toda
+  // columna seleccionada (como null si está vacía), así que la AUSENCIA de la
+  // llave sólo puede ser un bug de código. Se grita, no se asume.
+  if (cert && !("cuenta_verificada" in cert)) {
+    throw new Error("Bug: la consulta de la certificación no trae 'cuenta_verificada'. "
+                  + "Ármala con sqlCertificacion() en vez de copiar el LEFT JOIN LATERAL.");
+  }
   if (docsFaltan.length) {
     return `Faltan documentos: ${docsFaltan.join(", ")}. Pídeselos al proveedor antes de aprobar.`;
   }
@@ -96,19 +118,36 @@ export function bloqueoAprobacion(
     return "La certificación se dio por válida pero no quedó con número de cuenta. "
          + "Vuelve a correr el lector (scripts/leer_certificaciones.py) sobre este documento.";
   }
-  // El caso peligroso: el NIT ya tenía otra cuenta. No se aprueba hasta que
-  // alguien diga si el cambio es real (el intake es público).
-  if (cert.cuenta_anterior && !cert.aplicada) {
-    return `Cambió la cuenta: este NIT ya tenía la cuenta ${cola(cert.cuenta_anterior)} y la certificación trae `
-         + `${cola(cert.num_cuenta)}. Confirma el cambio antes de aprobar.`;
-  }
-  // EL PASO HUMANO. El OCR ayuda, no decide: a esa cuenta se le manda plata, y
-  // ningún lector acierta el 100% de los formatos. Alguien tiene que abrir el
-  // documento y escribir el número. Es lo último que se exige, para que el
-  // revisor no lo haga hasta que todo lo demás esté en orden.
+  // EL PASO HUMANO, Y VA PRIMERO. El OCR ayuda, no decide: a esa cuenta se le
+  // manda plata y ningún lector acierta el 100% de los formatos. Alguien abre el
+  // documento y escribe el número.
+  //
+  // Antes esto iba DESPUÉS del cambio de cuenta y quedaba un callejón sin
+  // salida: no se podía confirmar el cambio sin verificar, y la verificación no
+  // se mostraba hasta resolver el cambio. Además el orden correcto es este:
+  // hasta que un humano no lea el papel no se sabe siquiera SI cambió — lo que
+  // leyó el OCR puede estar mal.
   if (!(cert.cuenta_verificada ?? "").trim()) {
     return "Falta el paso final: abre la certificación y escribe el número de cuenta que ves. "
          + "Lo que leyó el sistema no basta para mover plata.";
+  }
+  // El caso peligroso: el NIT ya tenía otra cuenta. No se aprueba hasta que
+  // alguien diga si el cambio es real (el intake es público). Se compara contra
+  // la cuenta VERIFICADA —la que un humano leyó—, no contra la del OCR: es la
+  // que de verdad va a viajar al banco.
+  const cuentaFinal = (cert.cuenta_verificada ?? "").trim();
+  if (cert.cuenta_anterior && !cert.aplicada && !mismaCuenta(cert.cuenta_anterior, cuentaFinal)) {
+    // Mismo final = casi seguro la misma cuenta con el prefijo del banco. Se
+    // sigue exigiendo confirmación humana, pero se muestran COMPLETAS: el
+    // revisor tiene el documento al lado y necesita comparar, no adivinar entre
+    // dos colas idénticas ("cambió •••8827 por •••8827" se lee como un error).
+    if (unaEsLaOtraConPrefijo(cert.cuenta_anterior, cuentaFinal)) {
+      return `El certificado trae ${cuentaFinal} y en el maestro está ${cert.cuenta_anterior}: `
+           + "terminan igual, o sea que casi seguro es la MISMA cuenta con el prefijo del banco delante. "
+           + "Confirma cuál es la que va al banco y sigue.";
+    }
+    return `Cambió la cuenta: este NIT ya tenía la cuenta ${cola(cert.cuenta_anterior)} y la certificación trae `
+         + `${cola(cuentaFinal)}. Confirma el cambio antes de aprobar.`;
   }
   // Estado raro (la aplicó alguien y el maestro quedó sin número): no se calla.
   if (cert.aplicada && !(cuenta?.num_cuenta ?? "").trim()) {

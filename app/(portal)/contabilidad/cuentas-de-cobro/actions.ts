@@ -5,9 +5,10 @@ import { withTx } from "@/lib/db";
 import { registrarEvento } from "@/lib/eventos";
 import { exigirCap } from "@/lib/auth";
 import { docsFaltantes, type DocGuardado, PLAZO_CUENTA_COBRO_DIAS } from "@/lib/areas";
-import { bloqueoAprobacion, type CertEstado, type CuentaMaestro } from "@/lib/certificaciones";
+import { bloqueoAprobacion, sqlCertificacion, type CertEstado, type CuentaMaestro } from "@/lib/certificaciones";
 import { aplicarCuentaCertificada } from "@/lib/cuenta-certificada";
 import { encolarCorreo } from "@/lib/correos";
+import { intentar, type Resultado } from "@/lib/resultado";
 import type { PoolClient } from "pg";
 
 async function guard() {
@@ -35,12 +36,7 @@ async function exigirAprobable(c: PoolClient, id: number): Promise<Aprobable> {
             to_jsonb(cert) AS cert,
             to_jsonb(cb)   AS cuenta
        FROM cuentas_cobro cc
-       LEFT JOIN LATERAL (
-         SELECT x.id, x.estado, x.motivo, x.banco, x.num_cuenta, x.aplicada,
-                x.cuenta_anterior, x.leido_en::text AS leido_en
-           FROM certificacion_bancaria x
-          WHERE x.origen_tipo = 'cuenta_cobro' AND x.origen_id = cc.id
-          ORDER BY x.id DESC LIMIT 1) cert ON TRUE
+       ${sqlCertificacion("cuenta_cobro", "cc.id")}
        LEFT JOIN LATERAL (
          SELECT y.banco, y.tipo_cuenta, y.num_cuenta, y.certificada
            FROM cuentas_bancarias_proveedor y WHERE y.nit = cc.num_doc) cb ON TRUE
@@ -70,7 +66,8 @@ type Aprobable = {
  *  bloque "sin factura DIAN" de Validación semana en curso, con fecha de pago a
  *  30 días de su llegada. Por eso exige los documentos completos y la cuenta
  *  certificada por el banco. */
-export async function revisarCuentaCobro(fd: FormData) {
+export async function revisarCuentaCobro(_prev: Resultado | null, fd: FormData): Promise<Resultado> {
+  return intentar(async () => {
   const user = await guard();
   const id = Number(fd.get("id"));
   const accion = String(fd.get("accion") ?? "").trim();
@@ -141,6 +138,7 @@ export async function revisarCuentaCobro(fd: FormData) {
   });
   revalidatePath("/contabilidad/cuentas-de-cobro");
   revalidatePath("/contabilidad/pagos");
+  });
 }
 
 /** RETENCIONES DE UNA CUENTA DE COBRO — el mismo modelo que la factura.
