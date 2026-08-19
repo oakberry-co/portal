@@ -106,6 +106,30 @@ def plantilla(tipo: str, d: dict) -> tuple[str, str, str]:
     ref = d.get("ref") or ""
 
     if tipo == "certificacion_invalida":
+        # Un certificado con CANDADO no es lo mismo que uno ilegible: puede
+        # estar perfecto. Decirle "no se entiende" lo manda a reenviar lo mismo
+        # y el trámite se queda dando vueltas.
+        if d.get("protegido"):
+            asunto = f"Tu certificación bancaria viene con clave ({ref})"
+            cuerpo = f"""
+        <p style="font-size:15px;line-height:1.6">Hola <b>{prov}</b>,</p>
+        <p style="font-size:15px;line-height:1.6">Recibimos tu certificación bancaria de la
+        solicitud <b>{ref}</b>, pero <b>viene protegida con una clave</b> y no pudimos abrirla.</p>
+        <p style="font-size:15px;line-height:1.6">Varios bancos entregan el certificado con clave
+        (normalmente tu número de documento). Necesitamos una versión <b>sin clave</b>:</p>
+        <ul style="font-size:15px;line-height:1.7;padding-left:20px">
+          <li>Ábrelo en tu computador con la clave y guárdalo o imprímelo <b>como PDF nuevo</b>, o</li>
+          <li>tómale una <b>foto o captura nítida</b> donde se vean el banco y el número de cuenta, o</li>
+          <li>descárgalo otra vez desde tu banca en línea eligiendo la opción sin protección.</li>
+        </ul>
+        <p style="font-size:15px;line-height:1.6">Vuelve a enviarlo por el mismo formulario y seguimos
+        con el trámite. <b>No nos mandes la clave por correo</b>, no la necesitamos.</p>"""
+            texto = (f"Hola {prov}, tu certificación bancaria de la solicitud {ref} viene protegida "
+                     "con clave y no pudimos abrirla. Envíanos una versión sin clave: ábrela y "
+                     "vuelve a guardarla como PDF, o mándanos una foto nítida donde se vean el banco "
+                     "y el número de cuenta. No nos mandes la clave por correo.")
+            return asunto, envoltura(cuerpo), texto
+
         asunto = f"No pudimos validar tu certificación bancaria ({ref})"
         motivo = d.get("motivo") or "no se pudo leer el documento"
         cuerpo = f"""

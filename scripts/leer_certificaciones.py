@@ -27,6 +27,9 @@ documento real del banco:
   · lenguaje de certificación ('certifica', 'titular', 'cuenta'),
   · un número de cuenta plausible.
 Si falta alguna -> 'no_es_certificacion' (un Word hecho a mano no pasa).
+Si viene con CLAVE, se intenta abrir con el documento que el proveedor escribió
+en el formulario (así lo cifran los bancos); si ninguna variante abre ->
+'protegido', que NO es lo mismo que ilegible y lleva su propio correo.
 Si no se pudo extraer texto -> 'ilegible'.
 Los dos casos disparan el correo que le pide al proveedor el documento real.
 
@@ -116,6 +119,64 @@ def solo_digitos(s: str) -> str:
 # ---------------------------------------------------------------------------
 # Extracción de texto
 # ---------------------------------------------------------------------------
+def claves_probables(doc_num: str) -> list[str]:
+    """Claves con las que un certificado bancario suele venir protegido.
+
+    Los bancos (Bancolombia sobre todo) entregan el certificado cifrado con el
+    DOCUMENTO DEL TITULAR — que es justo el dato que el proveedor ya escribió en
+    el formulario. O sea: la llave no hay que pedírsela a nadie, ya la tenemos.
+
+    Se prueban pocas variantes y todas derivadas de ese número: esto NO es
+    fuerza bruta (no tendría sentido — si no abre con su documento, el que la
+    tiene es el proveedor y hay que pedírsela a él).
+    """
+    d = re.sub(r"\D", "", doc_num or "")
+    if not d:
+        return []
+    cand = [d]
+    if len(d) > 9:
+        cand.append(d[:-1])          # NIT sin dígito de verificación
+    cand += [(doc_num or "").strip(), d[-10:], d[:10]]
+    vistas, out = set(), []
+    for c in cand:
+        if c and c not in vistas:
+            vistas.add(c)
+            out.append(c)
+    return out
+
+
+def desproteger(ruta: str, doc_num: str) -> tuple[str, str | None]:
+    """-> (ruta utilizable, clave que sirvió | None si no estaba protegido).
+
+    Si el PDF viene con clave y ninguna de las probables abre, devuelve
+    (ruta, '?') para que el dictamen lo marque como protegido y se le pida al
+    proveedor el archivo sin candado. Guardar la clave sería innecesario y feo:
+    se re-deriva del documento cada vez.
+    """
+    try:
+        import fitz
+    except Exception:
+        return ruta, None
+    try:
+        doc = fitz.open(ruta)
+    except Exception:
+        return ruta, None
+    if not doc.needs_pass:
+        doc.close()
+        return ruta, None
+    for clave in claves_probables(doc_num):
+        if doc.authenticate(clave):
+            libre = ruta + ".libre.pdf"
+            # Se guarda una copia SIN candado para que el resto del camino
+            # (pdftotext y, si toca, el render a imagen para OCR) funcione igual
+            # que con cualquier otro documento.
+            doc.save(libre)
+            doc.close()
+            return libre, clave
+    doc.close()
+    return ruta, "?"
+
+
 def texto_de_pdf(ruta: str) -> str:
     """Texto embebido. pdftotext primero (rápido y fiel); PyMuPDF de respaldo."""
     try:
@@ -181,8 +242,14 @@ def interpretar(texto: str) -> dict:
             "titular_doc": titular_doc, "tiene_lenguaje": tiene_lenguaje}
 
 
-def dictaminar(d: dict, texto: str) -> tuple[str, str | None]:
+def dictaminar(d: dict, texto: str, protegido: bool = False) -> tuple[str, str | None]:
     """-> (estado, motivo). Conservador a propósito: en duda, NO valida."""
+    if protegido:
+        # NO es "ilegible": el documento puede estar perfecto. Decirle al
+        # proveedor "no se entiende" cuando el problema es un candado lo manda a
+        # reenviar lo mismo, y el trámite se queda dando vueltas.
+        return "protegido", ("El certificado viene protegido con una clave y no pudimos abrirlo "
+                             "con tu número de documento.")
     if len(texto.strip()) < 40:
         return "ilegible", ("No pudimos leer el documento (llegó vacío, en blanco o "
                             "con una imagen ilegible).")
@@ -225,7 +292,7 @@ ORIGEN_TABLA = {"cuenta_cobro": ("cuentas_cobro", "num_doc"),
                 "cotizacion": ("cotizaciones", "nit")}
 
 
-def encolar_aviso(cur, cid: int, otipo: str, oid: int, motivo: str) -> bool:
+def encolar_aviso(cur, cid: int, otipo: str, oid: int, motivo: str, protegido: bool = False) -> bool:
     """Le pide al proveedor el documento REAL del banco.
 
     Sin este correo el proveedor sube un papel que no sirve, no se entera, y su
@@ -246,10 +313,11 @@ def encolar_aviso(cur, cid: int, otipo: str, oid: int, motivo: str) -> bool:
     cur.execute("""INSERT INTO correo_saliente
                      (tipo, origen_tipo, origen_id, para, datos, creado_por)
                    VALUES ('certificacion_invalida', %s, %s, %s,
-                           jsonb_build_object('proveedor', %s::text, 'motivo', %s::text),
+                           jsonb_build_object('proveedor', %s::text, 'motivo', %s::text,
+                                              'protegido', %s::boolean),
                            'lector_certificaciones')
                    ON CONFLICT (tipo, origen_tipo, origen_id) DO NOTHING""",
-                (otipo, oid, fila[1].strip(), fila[0], motivo))
+                (otipo, oid, fila[1].strip(), fila[0], motivo, protegido))
     encolado = cur.rowcount > 0
     cur.execute("UPDATE certificacion_bancaria SET avisado_en=now() WHERE id=%s", (cid,))
     return encolado
@@ -296,17 +364,30 @@ def main() -> int:
             res["sin_archivo"] += 1
             continue
         ruta, es_pdf = bajado
+        libre = None
+        protegido = False
         try:
+            if es_pdf:
+                # Los bancos mandan el certificado cifrado con la cédula del
+                # titular: se abre con el documento que el proveedor ya escribió.
+                libre, clave = desproteger(ruta, nit)
+                protegido = (clave == "?")
+                if clave and clave != "?":
+                    print(f"    (venía protegido; abierto con el documento del proveedor)")
+                if not protegido:
+                    ruta = libre
             metodo = "texto_pdf"
-            texto = texto_de_pdf(ruta) if es_pdf else ""
-            if len(texto.strip()) < 40:            # PDF escaneado o imagen
+            texto = "" if protegido else (texto_de_pdf(ruta) if es_pdf else "")
+            if not protegido and len(texto.strip()) < 40:   # PDF escaneado o imagen
                 texto = texto_por_ocr(ruta, es_pdf)
                 metodo = "ocr"
         finally:
-            os.unlink(ruta)
+            for f in {ruta, libre}:
+                if f and os.path.exists(f):
+                    os.unlink(f)
 
         d = interpretar(texto)
-        estado, motivo = dictaminar(d, texto)
+        estado, motivo = dictaminar(d, texto, protegido)
         res[estado] += 1
         print(f"  #{cid} [{metodo}] -> {estado}"
               + (f" · {d['banco']} {d['tipo_cuenta'] or ''} {d['num_cuenta'] or ''}"
@@ -323,9 +404,9 @@ def main() -> int:
                      estado, motivo, metodo, texto[:8000], cid))
 
         # Certificación que no sirve -> se le pide al proveedor la de verdad.
-        if estado in ("ilegible", "no_es_certificacion"):
+        if estado in ("ilegible", "no_es_certificacion", "protegido"):
             try:
-                if encolar_aviso(cur, cid, otipo, oid, motivo or estado):
+                if encolar_aviso(cur, cid, otipo, oid, motivo or estado, estado == "protegido"):
                     res["aviso_encolado"] += 1
             except Exception as e:                    # Regla 12: un correo que
                 print(f"    (no se pudo encolar el aviso: {e})")   # falla no
