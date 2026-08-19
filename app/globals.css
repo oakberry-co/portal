@@ -901,6 +901,18 @@ button.ghost { background: #fff; color: var(--purple); }
   font-weight: 400; font-size: 14px; padding: 10px 12px; border: 1.5px solid var(--border-lav);
   border-radius: 11px; background: #fff; color: var(--ink); width: 100%; }
 .pub-form textarea { resize: vertical; font-family: var(--sans); }
+/* PEGAR TIENE QUE FUNCIONAR. En iOS, un <input> metido dentro de un <label> se
+   pelea el toque largo con la etiqueta: el menú de "Pegar" alcanza a salir y la
+   etiqueta lo tumba al re-enfocar. Estas tres líneas devuelven el menú nativo y
+   la selección de texto — el proveedor casi siempre PEGA su NIT y su correo
+   desde otra app, no los teclea. */
+.pub-form input, .pub-form textarea, .pub-form select {
+  -webkit-user-select: text;
+  user-select: text;
+  -webkit-touch-callout: default;
+}
+/* La etiqueta no debe capturar el toque largo que va dirigido al campo. */
+.pub-form label { -webkit-touch-callout: default; }
 .pub-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .pub-row3 { display: grid; grid-template-columns: 1.2fr 1fr 1fr; gap: 12px; }
 .pub-full { width: 100%; }
