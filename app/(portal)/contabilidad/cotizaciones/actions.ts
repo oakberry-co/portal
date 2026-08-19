@@ -86,6 +86,20 @@ export async function revisarCotizacion(fd: FormData) {
                  adelanto_pct: Number(ap.adelanto_pct), plazo_dias: ap.plazo_dias },
       });
     }
+    if (accion === "rechazar") {
+      // Igual que en cuentas de cobro: devolver sin avisar deja al proveedor
+      // esperando, y sin motivo no sabe qué corregir.
+      if (!nota) throw new Error("Escribe por qué la devuelves: el proveedor lo va a leer.");
+      const { rows } = await c.query<{ correo: string | null; razon_social: string;
+                                       codigo: string | null; token: string | null }>(
+        "SELECT correo, razon_social, codigo, token FROM cotizaciones WHERE id = $1", [id]);
+      await encolarCorreo(c, {
+        tipo: "rechazo", origenTipo: "cotizacion", origenId: id,
+        para: rows[0]?.correo ?? null, actor: user.email,
+        datos: { ref: rows[0]?.codigo ?? `COT-${id}`, proveedor: rows[0]?.razon_social,
+                 motivo: nota, token: rows[0]?.token },
+      });
+    }
     if (accion === "reabrir") {
       const { rows } = await c.query<{ pago_id: number | null }>(
         "SELECT pago_id FROM cotizaciones WHERE id = $1", [id]);

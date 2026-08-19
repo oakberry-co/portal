@@ -5,6 +5,7 @@ import { revisarCotizacion, agregarAbono, enlazarFactura, quitarEnlace } from ".
 import { docsFaltantes } from "@/lib/areas";
 import { bloqueoAprobacion, type CertEstado, type CuentaMaestro } from "@/lib/certificaciones";
 import { CorreosIntake, DocsIntake, PanelCuenta, type CorreoEnviado, type DocIntake } from "../_intake/PanelCuenta";
+import { useFiltrosIntake } from "../_intake/FiltrosIntake";
 
 export type Cotizacion = {
   id: number; codigo: string | null; razon_social: string; nit: string;
@@ -41,11 +42,19 @@ export function CotizacionesView({ cots, candidatos }: { cots: Cotizacion[]; can
     return m;
   }, [candidatos]);
 
-  const cuenta = (k: string) => cots.filter((c) => (k === "cerrada" ? ["cerrada", "rechazada"].includes(c.estado) : c.estado === k)).length;
-  const lista = cots.filter((c) => (tab === "cerrada" ? ["cerrada", "rechazada"].includes(c.estado) : c.estado === tab));
+  // Los mismos filtros de Conciliación y de cuentas de cobro: dos barras que se
+  // ven distinto obligan a aprender dos pantallas que hacen lo mismo.
+  const { filtrados, barra } = useFiltrosIntake(cots, (c) => ({
+    texto: [c.razon_social, c.nit, c.concepto, c.descripcion, c.contacto,
+            c.codigo, c.numero_cotizacion].filter(Boolean).join(" "),
+    fecha: c.creado_en, area: c.area, proveedor: c.razon_social,
+  }));
+  const cuenta = (k: string) => filtrados.filter((c) => (k === "cerrada" ? ["cerrada", "rechazada"].includes(c.estado) : c.estado === k)).length;
+  const lista = filtrados.filter((c) => (tab === "cerrada" ? ["cerrada", "rechazada"].includes(c.estado) : c.estado === tab));
 
   return (
     <div>
+      {barra}
       <div className="pg-tabs">
         {TABS.map((t) => (
           <button key={t.key} className={tab === t.key ? "on" : ""} onClick={() => setTab(t.key)}>{t.label}<i>{cuenta(t.key)}</i></button>
@@ -53,7 +62,7 @@ export function CotizacionesView({ cots, candidatos }: { cots: Cotizacion[]; can
       </div>
 
       {!lista.length ? (
-        <div className="pg-empty">No hay cotizaciones en este estado.</div>
+        <div className="pg-empty">Ninguna cotización coincide con los filtros en este estado.</div>
       ) : (
         <div className="cc-list">
           {lista.map((c) => {
@@ -141,7 +150,12 @@ export function CotizacionesView({ cots, candidatos }: { cots: Cotizacion[]; can
                               title={bloqueo ?? "El adelanto pasa a Pagos › Validación semana en curso"}>
                         ✓ Aprobar adelanto{adelanto != null ? ` (${$(adelanto)})` : ""}
                       </Accion>
-                      <Accion id={c.id} accion="rechazar" ghost>Rechazar</Accion>
+                      <form action={revisarCotizacion} className="cc-rechazo">
+                        <input type="hidden" name="id" value={c.id} />
+                        <input type="hidden" name="accion" value="rechazar" />
+                        <input name="nota" required placeholder="¿Por qué la devuelves? (lo lee el proveedor)" />
+                        <button type="submit" className="cc-act ghost">Devolver</button>
+                      </form>
                     </>
                   )}
                   {c.estado === "aprobada" && (

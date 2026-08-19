@@ -6,6 +6,7 @@ import { docsFaltantes } from "@/lib/areas";
 import { bloqueoAprobacion, type CertEstado, type CuentaMaestro } from "@/lib/certificaciones";
 import { CorreosIntake, DocsIntake, PanelCuenta, type CorreoEnviado, type DocIntake } from "../_intake/PanelCuenta";
 import { RetencionesCuentaCobro } from "./RetencionesCuentaCobro";
+import { useFiltrosIntake } from "../_intake/FiltrosIntake";
 
 export type CuentaCobro = {
   id: number; razon_social: string; tipo_doc: string | null; num_doc: string;
@@ -50,11 +51,19 @@ function Accion({ id, accion, children, ghost, disabled, title }: {
 export function CuentasCobroView({ items }: { items: CuentaCobro[] }) {
   const [tab, setTab] = useState<string>("recibida");
   const [retenDe, setRetenDe] = useState<CuentaCobro | null>(null);
-  const cuenta = (k: string) => items.filter((i) => i.estado === k).length;
-  const lista = items.filter((i) => i.estado === tab);
+  // Los mismos filtros de Conciliación. Las PESTAÑAS filtran por estado; esto
+  // por lo demás: quién, cuándo, de qué área.
+  const { filtrados, barra } = useFiltrosIntake(items, (i) => ({
+    texto: [i.razon_social, i.num_doc, i.concepto, i.descripcion, i.contacto, "CC-" + i.id]
+      .filter(Boolean).join(" "),
+    fecha: i.creado_en, area: i.area, proveedor: i.razon_social,
+  }));
+  const cuenta = (k: string) => filtrados.filter((i) => i.estado === k).length;
+  const lista = filtrados.filter((i) => i.estado === tab);
 
   return (
     <div>
+      {barra}
       <div className="pg-tabs">
         {TABS.map((t) => (
           <button key={t.key} className={tab === t.key ? "on" : ""} onClick={() => setTab(t.key)}>
@@ -64,7 +73,7 @@ export function CuentasCobroView({ items }: { items: CuentaCobro[] }) {
       </div>
 
       {!lista.length ? (
-        <div className="pg-empty">No hay cuentas de cobro en este estado.</div>
+        <div className="pg-empty">Ninguna cuenta de cobro coincide con los filtros en este estado.</div>
       ) : (
         <div className="cc-list">
           {lista.map((c) => {
