@@ -7,6 +7,8 @@ import { exigirCap } from "@/lib/auth";
 import { guardarRetenciones } from "@/lib/retenciones";
 import { clasificar } from "@/lib/documentos-no-dian";
 import { intentar, type Resultado } from "@/lib/resultado";
+import { limpiarTextoHumano } from "@/lib/texto";
+import { esBancoConocido } from "@/lib/bancos";
 import type { PoolClient } from "pg";
 
 // Si el valor no existe en el maestro, lo crea (autoridad humana) y lo registra.
@@ -343,5 +345,99 @@ export async function clasificarDocumento(fd: FormData): Promise<Resultado> {
     revalidatePath("/contabilidad/conciliacion");
     revalidatePath("/contabilidad/pagos");
     revalidatePath("/contabilidad/cuentas-de-cobro");
+  });
+}
+
+/** Manda el pago de UNA factura a una cuenta distinta de la del maestro.
+ *
+ *  El caso real: el proveedor pide que ESA factura se le consigne a otra cuenta.
+ *  Pasa poco, y por eso NO se guarda en el maestro — si se guardara, la
+ *  siguiente factura suya, y todas las demás, se irían a la cuenta del favor
+ *  puntual. La excepción vive pegada a la factura y muere con ella.
+ *
+ *  Se pone a mano, de una factura en una: no hay "aplicar a todas". Si el
+ *  proveedor pide desviar tres, se hacen tres veces. Eso es a propósito —
+ *  desviar plata es justo donde un atajo se paga caro.
+ *
+ *  Los datos se copian ENTEROS y no se referencia el maestro: el archivo del
+ *  banco tiene que poder reconstruirse igual dentro de un año. */
+export async function cambiarCuentaDestino(fd: FormData): Promise<Resultado> {
+  return intentar(async () => {
+    const user = await exigirCap("pagos");   // desviar un pago no es clasificar
+    const cufe = String(fd.get("cufe") ?? "").trim();
+    if (!cufe) throw new Error("Falta la factura.");
+    const t = (k: string) => limpiarTextoHumano(String(fd.get(k) ?? ""));
+
+    // Quitar el desvío: la factura vuelve a la cuenta del maestro.
+    if (String(fd.get("quitar") ?? "") === "1") {
+      await withTx(async (c) => {
+        const cur = await c.query<{ cta_dest_numero: string | null; cta_dest_banco: string | null; pago_estado: string }>(
+          "SELECT cta_dest_numero, cta_dest_banco, coalesce(pago_estado,'pendiente') AS pago_estado FROM factura_estado WHERE cufe = $1 FOR UPDATE", [cufe]);
+        if (!cur.rowCount) throw new Error("Factura no encontrada.");
+        if (cur.rows[0].pago_estado === "pagado") throw new Error("Esta factura ya se pagó: la cuenta no se cambia.");
+        await c.query(
+          `UPDATE factura_estado SET cta_dest_banco = NULL, cta_dest_tipo = NULL, cta_dest_numero = NULL,
+                  cta_dest_titular = NULL, cta_dest_doc = NULL, cta_dest_tipo_doc = NULL,
+                  cta_dest_motivo = NULL, cta_dest_por = NULL, cta_dest_en = NULL, actualizado_en = now()
+            WHERE cufe = $1`, [cufe]);
+        await registrarEvento(c, {
+          cufe, tipo: "quita_cuenta_destino", campo: "cta_dest_numero",
+          valorAnterior: { banco: cur.rows[0].cta_dest_banco, num_cuenta: cur.rows[0].cta_dest_numero },
+          valorNuevo: { vuelve_al_maestro: true },
+          actor: user.email, actorRol: user.rol, origen: "web",
+        });
+      });
+      revalidatePath("/contabilidad/conciliacion");
+      revalidatePath("/contabilidad/pagos");
+      return;
+    }
+
+    const banco = t("banco");
+    if (!esBancoConocido(banco ?? "")) {
+      throw new Error(`"${banco ?? ""}" no está en la lista de bancos. Elígelo del desplegable: `
+        + "de ese nombre sale el código al que se transfiere.");
+    }
+    const numero = (t("num_cuenta") ?? "").replace(/[^\d]/g, "");
+    if (!numero) throw new Error("Escribe el número de cuenta.");
+    const tipoCuenta = String(fd.get("tipo_cuenta") ?? "").trim();
+    if (!["ahorros", "corriente", "deposito"].includes(tipoCuenta)) {
+      throw new Error("Elige si la cuenta es de ahorros, corriente o depósito electrónico.");
+    }
+    const titular = t("titular");
+    if (!titular) throw new Error("Escribe a nombre de quién está la cuenta.");
+    // El MOTIVO es obligatorio: dentro de tres meses, "por qué esta factura se
+    // pagó a otra cuenta" tiene que poder responderse sin llamar a nadie.
+    const motivo = t("motivo");
+    if (!motivo) throw new Error("Escribe por qué el pago va a otra cuenta (queda en la bitácora).");
+
+    await withTx(async (c) => {
+      const cur = await c.query<{ estado: string; pago_estado: string; numero: string; nombre: string | null }>(
+        `SELECT e.estado, coalesce(e.pago_estado,'pendiente') AS pago_estado, f.numero, f.nombre_proveedor AS nombre
+           FROM factura_estado e JOIN facturas f USING (cufe) WHERE e.cufe = $1 FOR UPDATE`, [cufe]);
+      if (!cur.rowCount) throw new Error("Factura no encontrada.");
+      // Una vez pagada, cambiar la cuenta dejaría el registro diciendo algo
+      // distinto de lo que salió del banco.
+      if (cur.rows[0].pago_estado === "pagado") throw new Error("Esta factura ya se pagó: la cuenta no se cambia.");
+
+      await c.query(
+        `UPDATE factura_estado
+            SET cta_dest_banco = $2, cta_dest_tipo = $3, cta_dest_numero = $4,
+                cta_dest_titular = $5, cta_dest_doc = $6, cta_dest_tipo_doc = $7,
+                cta_dest_motivo = $8, cta_dest_por = $9, cta_dest_en = now(), actualizado_en = now()
+          WHERE cufe = $1`,
+        [cufe, banco, tipoCuenta, numero, titular,
+         (t("doc") ?? "").replace(/[^\d]/g, "") || null, String(fd.get("tipo_doc") ?? "CC"),
+         motivo, user.email]);
+
+      await registrarEvento(c, {
+        cufe, tipo: "cambia_cuenta_destino", campo: "cta_dest_numero",
+        valorNuevo: { factura: cur.rows[0].numero, proveedor: cur.rows[0].nombre,
+                      banco, tipo_cuenta: tipoCuenta, num_cuenta: numero,
+                      titular, motivo, solo_esta_factura: true },
+        actor: user.email, actorRol: user.rol, origen: "web",
+      });
+    });
+    revalidatePath("/contabilidad/conciliacion");
+    revalidatePath("/contabilidad/pagos");
   });
 }

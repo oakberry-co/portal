@@ -272,11 +272,30 @@ def plantilla(tipo: str, d: dict) -> tuple[str, str, str]:
     if tipo == "pago_hecho":
         asunto = f"Te pagamos {pesos(d.get('monto'))} — solicitud {ref}"
         saldo = float(d.get("saldo") or 0)
-        if d.get("_con_adjunto"):
-            soporte = """<p style="font-size:15px;line-height:1.6">Adjuntamos el
-            <b>soporte de la transferencia</b>.</p>"""
-        else:
-            soporte = """<p style="font-size:15px;line-height:1.6">El pago ya salió
+
+        # EL AVISO VA POR ESCRITO, NO ADJUNTO (decisión del 20-ago).
+        #
+        # Antes se mandaba el soporte de la transferencia. Ahora se le dice al
+        # proveedor lo mismo con palabras: qué documento se le pagó, cuánto era,
+        # cuánto se le retuvo y cuánto se le transfirió. El desglose no es
+        # adorno: sin él le llega un total más bajo que su cuenta de cobro y no
+        # tiene cómo saber por qué (Regla 18). El comprobante se sigue
+        # guardando en Drive; lo que cambia es que no sale por correo.
+        bruto = float(d.get("bruto") or 0)
+        reten = float(d.get("retenciones") or 0)
+        docu = d.get("documento")
+        filas = [("Documento", f"{ref}" + (f" · {docu}" if docu else ""))]
+        if bruto > 0:
+            filas.append(("Valor del documento", pesos(bruto)))
+        if reten > 0:
+            filas.append(("Retenciones", "− " + pesos(reten)))
+        filas.append(("<b>Total transferido</b>", "<b>" + pesos(d.get("monto")) + "</b>"))
+        detalle = "".join(
+            f'<tr><td style="padding:4px 12px 4px 0;font-size:14px;color:#5b5566">{k}</td>'
+            f'<td style="padding:4px 0;font-size:14px;text-align:right">{v}</td></tr>'
+            for k, v in filas)
+        soporte = f"""<table style="border-collapse:collapse;margin:14px 0">{detalle}</table>
+            <p style="font-size:15px;line-height:1.6">El pago ya salió
             de nuestro banco: <b>revisa tu cuenta</b>. Si en 24 horas no lo ves,
             respóndenos a este correo y lo revisamos contigo.</p>"""
         if d.get("_es_cuenta_cobro"):
@@ -299,8 +318,9 @@ def plantilla(tipo: str, d: dict) -> tuple[str, str, str]:
         {pendiente}"""
         texto = (f"Hola {prov}, te transferimos {pesos(d.get('monto'))} el "
                  f"{d.get('fecha')} por la solicitud {ref}. "
-                 + ("Adjuntamos el soporte. " if d.get("_con_adjunto")
-                    else "El pago ya salió de nuestro banco: revisa tu cuenta. ")
+                 + (f"Valor del documento {pesos(bruto)}. " if bruto > 0 else "")
+                 + (f"Retenciones -{pesos(reten)}. " if reten > 0 else "")
+                 + "El pago ya salió de nuestro banco: revisa tu cuenta. "
                  + ("Con esto queda saldada tu cuenta de cobro." if d.get("_es_cuenta_cobro")
                     else f"Queda un saldo de {pesos(saldo)}: respóndenos con tu factura." if saldo > 0
                     else "Si aún no nos enviaste la factura, respóndenos con ella."))
@@ -385,7 +405,13 @@ def bajar_adjunto(url: str) -> tuple[str, bytes] | None:
 def armar(fila: dict) -> tuple[EmailMessage, str, str]:
     """-> (mensaje MIME listo, asunto, message-id propio)."""
     datos = dict(fila["datos"] or {})
-    adjunto = bajar_adjunto(fila["adjunto_url"]) if fila["adjunto_url"] else None
+    # EL AVISO DE PAGO NO LLEVA ADJUNTO (decisión del 20-ago): se le cuenta al
+    # proveedor por escrito qué se le pagó y cuánto. El candado está acá y no
+    # solo en quien encola, porque puede haber correos ya en cola con su
+    # `adjunto_url` puesto — y "ya no adjuntamos" tiene que valer también para
+    # esos. El comprobante se sigue guardando en Drive.
+    sin_adjunto = fila["tipo"] == "pago_hecho"
+    adjunto = None if sin_adjunto else (bajar_adjunto(fila["adjunto_url"]) if fila["adjunto_url"] else None)
     datos["_con_adjunto"] = bool(adjunto)
     # De qué carril viene: una cuenta de cobro NO termina en factura.
     datos["_es_cuenta_cobro"] = fila["origen_tipo"] == "cuenta_cobro"

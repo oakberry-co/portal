@@ -47,7 +47,12 @@ async function cargar(): Promise<{ filas: FacturaRow[]; conceptos: string[]; des
             rc.retefuente::text AS rc_rf, rc.reteica::text AS rc_ica,
             rc.aplica AS rc_aplica, rc.n_casos AS rc_n,
             rc.concordancia::text AS rc_conc, rc.fuente AS rc_fuente,
-            vs.soporte_url, vs.n_soportes, vs.destino_drive
+            vs.soporte_url, vs.n_soportes, vs.destino_drive,
+            -- Desvío del pago de ESTA factura + la cuenta del maestro, para
+            -- poder mostrar de dónde se está desviando.
+            e.cta_dest_banco, e.cta_dest_tipo, e.cta_dest_numero, e.cta_dest_titular,
+            e.cta_dest_doc, e.cta_dest_motivo, e.cta_dest_por,
+            cb.banco AS cb_banco, cb.num_cuenta AS cb_num_cuenta
        FROM facturas f
        JOIN factura_estado e USING (cufe)
        LEFT JOIN factura_propuesta p USING (cufe)
@@ -64,6 +69,7 @@ async function cargar(): Promise<{ filas: FacturaRow[]; conceptos: string[]; des
        -- diciendo en cuántos casos se basa, y decide un humano.
        LEFT JOIN regla_retencion_concepto rc ON rc.concepto = e.concepto
        LEFT JOIN v_factura_soportes vs USING (cufe)
+       LEFT JOIN cuentas_bancarias_proveedor cb ON cb.nit = f.nit_proveedor
        -- La cotización cuyo adelanto ya se aplicó a esta factura (el cruce).
        LEFT JOIN cotizaciones cot ON cot.cufe_factura = f.cufe
       ORDER BY (e.estado = 'capturada') DESC, f.fecha_emision DESC`

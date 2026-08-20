@@ -209,6 +209,7 @@ export function ConciliacionView({
           <div className="c-btn" />
           <Th col="pagar"    clase="c-pagar" orden={orden} on={ordenarPor}>A pagar</Th>
           <div className="c-btn" />
+          <div className="c-btn" />
           <div className="c-docs">Docs</div>
           <Th col="estado"   clase="c-sems"  orden={orden} on={ordenarPor}>Estado</Th>
         </div>

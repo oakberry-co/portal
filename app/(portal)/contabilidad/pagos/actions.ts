@@ -259,17 +259,21 @@ export async function confirmarPagoIntake(fd: FormData) {
   await withTx(async (c: PoolClient) => {
     const q = tipo === "cuenta_cobro"
       ? `SELECT id, razon_social AS nombre, num_doc AS nit, estado, cuenta_pago, pago_id,
-                correo, coalesce(valor_a_pagar, valor, 0) AS debido, 0 AS saldo, 'CC-' || id AS ref
+                correo, coalesce(valor_a_pagar, valor, 0) AS debido, 0 AS saldo, 'CC-' || id AS ref,
+                coalesce(valor, 0) AS bruto, coalesce(reten_total, 0) AS retenciones,
+                coalesce(numero, '') AS documento
            FROM cuentas_cobro WHERE id = $1 FOR UPDATE`
       : `SELECT id, razon_social AS nombre, nit, estado, cuenta_pago, pago_id,
                 correo, round(coalesce(valor,0) * coalesce(adelanto_pct,0) / 100) AS debido,
                 coalesce(valor,0) - round(coalesce(valor,0) * coalesce(adelanto_pct,0) / 100) AS saldo,
-                coalesce(codigo, 'COT-' || id) AS ref
+                coalesce(codigo, 'COT-' || id) AS ref,
+                coalesce(valor, 0) AS bruto, 0 AS retenciones,
+                coalesce(numero_cotizacion, '') AS documento
            FROM cotizaciones WHERE id = $1 FOR UPDATE`;
     const { rows } = await c.query<{
       id: number; nombre: string; nit: string; estado: string; correo: string | null;
       cuenta_pago: string | null; pago_id: number | null; debido: string;
-      saldo: string; ref: string;
+      saldo: string; ref: string; bruto: string; retenciones: string; documento: string;
     }>(q, [id]);
     const s = rows[0];
     if (!s) throw new Error("Solicitud no encontrada.");
@@ -305,13 +309,20 @@ export async function confirmarPagoIntake(fd: FormData) {
     }
 
     // "Ya te pagamos": va en el MISMO HILO del correo de aprobación (el emisor
-    // encadena por Message-ID) con el soporte adjunto. Si no hay comprobante, el
-    // correo le dice que revise su cuenta — pero se manda igual: el proveedor
-    // tiene que saber que salió la plata.
+    // encadena por Message-ID).
+    //
+    // SIN ADJUNTO, por decisión del 20-ago: el aviso va POR ESCRITO —qué
+    // documento se pagó, cuánto era, cuánto se retuvo y cuánto se transfirió—
+    // en vez de mandar el soporte de la transferencia. El comprobante se sigue
+    // guardando en Drive; lo que cambia es que no sale del portal por correo.
+    // Por eso el desglose viaja en `datos`: si no, el correo diría un total
+    // pelado y el proveedor no podría cuadrar por qué le llegó menos.
     await encolarCorreo(c, {
       tipo: "pago_hecho", origenTipo: tipo, origenId: id,
-      para: s.correo, actor: user.email, adjuntoUrl: comprobante,
+      para: s.correo, actor: user.email,
       datos: { ref: s.ref, proveedor: s.nombre, monto, fecha,
+               documento: s.documento || null,
+               bruto: Number(s.bruto), retenciones: Number(s.retenciones),
                saldo: tipo === "cotizacion" ? Number(s.saldo) : 0 },
     });
 

@@ -304,8 +304,8 @@ button.ghost { background: #fff; color: var(--purple); }
 .fila-head, .fila {
   display: grid;
   grid-template-columns:
-    minmax(122px, 1.1fr) 70px 62px 34px 86px minmax(100px, 1fr) minmax(100px, 1fr)
-    60px 52px 92px 52px 48px 92px;
+    minmax(112px, 1.1fr) 68px 60px 32px 84px minmax(96px, 1fr) minmax(96px, 1fr)
+    56px 50px 90px 50px 62px 46px 88px;   /* +1 columna: el botón de cuenta destino */
   align-items: center; gap: 8px; padding: 7px 14px;
 }
 .fila-head {
@@ -1356,3 +1356,19 @@ tr.desfasada td { background: #fff8e6; }
 .gasto-ok { color: var(--ok); font-size: 12.5px; font-weight: 600; }
 /* 16px en los inputs evita el zoom automático de iOS al enfocar (Regla 20). */
 @media (max-width: 700px) { .gasto-grid { grid-template-columns: 1fr; } }
+
+/* --- Cambiar la cuenta de destino de UNA factura --------------------------- */
+/* Se ve distinto del modal de retenciones a propósito: esto no es un cálculo,
+   es desviar plata a otro lado. El aviso amarillo y el motivo obligatorio están
+   para que nadie lo haga en piloto automático. */
+.modal.cta-dest { max-width: 640px; }
+.cta-dest-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 16px; margin: 14px 0 4px; }
+.cta-dest-grid .campo.ancho { grid-column: 1 / -1; }
+.cta-dest-actual { background: #fff8e6; border: 1px solid var(--yellow); border-radius: 10px;
+  padding: 10px 12px; margin: 12px 0; font-size: 12.5px; display: flex;
+  flex-direction: column; gap: 6px; align-items: flex-start; }
+.cta-dest-err { color: var(--coral); font-size: 12.5px; font-weight: 600; margin: 8px 0 0; }
+.modal-pie { display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px; }
+/* Chip de la grilla: la factura que va desviada se ve de un golpe. */
+.c-desvio { background: var(--yellow); color: var(--ink) !important; border-color: var(--yellow) !important; }
+@media (max-width: 640px) { .cta-dest-grid { grid-template-columns: 1fr; } }

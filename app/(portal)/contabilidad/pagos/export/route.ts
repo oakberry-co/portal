@@ -32,6 +32,9 @@ type Fila = {
   titular_nombre: string | null; titular_apellido: string | null;
   tipo_doc: string | null; num_doc: string | null; banco: string | null;
   tipo_cuenta: string | null; num_cuenta: string | null; correo: string | null; referencia: string | null;
+  /** Esta línea va a una cuenta DISTINTA de la del maestro: el proveedor pidió
+   *  que esa(s) factura(s) se le paguen a otro lado. Se cuenta y se avisa. */
+  desviada: boolean;
 };
 
 const limpiaDoc = (s: string) => s.replace(/[.\-\s]/g, "");
@@ -50,8 +53,13 @@ export async function GET(req: NextRequest) {
 
   const { rows } = await pool.query<Fila>(
     `WITH facturas_val AS (
+       -- Las columnas cta_dest_* son el DESVÍO de esa factura: el proveedor
+       -- pidió que ESA se le pague a otra cuenta. Viajan hasta el GROUP BY de
+       -- abajo, que es lo que parte al proveedor en dos líneas.
        SELECT f.nit_proveedor AS nit, f.nombre_proveedor AS nombre, 0 AS es_intake,
-              coalesce(e.valor_a_pagar, f.total) - coalesce(e.pago_monto,0) - coalesce(e.abono_aplicado,0) AS monto
+              coalesce(e.valor_a_pagar, f.total) - coalesce(e.pago_monto,0) - coalesce(e.abono_aplicado,0) AS monto,
+              e.cta_dest_banco, e.cta_dest_tipo, e.cta_dest_numero,
+              e.cta_dest_titular, e.cta_dest_doc, e.cta_dest_tipo_doc
          FROM factura_estado e JOIN facturas f USING (cufe)
         WHERE e.estado = 'aprobada_pago' AND e.cuenta_pago = $1
           AND coalesce(e.pago_estado,'pendiente') <> 'pagado'
@@ -60,24 +68,39 @@ export async function GET(req: NextRequest) {
        -- valor bruto al banco es pagarle de más al proveedor, y eso después hay
        -- que pedírselo de vuelta.
        SELECT num_doc AS nit, razon_social AS nombre, 1 AS es_intake,
-              coalesce(valor_a_pagar, valor, 0) AS monto
+              coalesce(valor_a_pagar, valor, 0) AS monto,
+              NULL::text, NULL::text, NULL::text, NULL::text, NULL::text, NULL::text
          FROM cuentas_cobro cc
         WHERE ${LISTO_PARA_PAGOS("cc")} AND cc.cuenta_pago = $1
        UNION ALL
-       SELECT nit, razon_social, 1, round(coalesce(valor,0) * coalesce(adelanto_pct,0) / 100)
+       SELECT nit, razon_social, 1, round(coalesce(valor,0) * coalesce(adelanto_pct,0) / 100),
+              NULL::text, NULL::text, NULL::text, NULL::text, NULL::text, NULL::text
          FROM cotizaciones
         WHERE estado IN ('aprobada','facturada') AND pago_id IS NULL AND requiere_adelanto
           AND cuenta_pago = $1
      ), todo AS (SELECT * FROM facturas_val UNION ALL SELECT * FROM intake_val)
+     -- UNA LÍNEA POR PROVEEDOR **Y POR CUENTA DE DESTINO**.
+     --
+     -- El banco hace una transferencia por línea, así que si una factura de un
+     -- proveedor va desviada a otra cuenta, ese proveedor necesita DOS líneas:
+     -- una por lo normal y otra por lo desviado. Agrupar solo por NIT —como
+     -- estaba— habría sumado las dos y mandado todo a una sola cuenta, que es
+     -- exactamente el error que el desvío existe para evitar.
      SELECT t.nit, max(t.nombre) AS nombre, round(sum(t.monto))::float AS monto,
             sum(t.es_intake)::int AS n_intake,
-            max(cb.titular_nombre) titular_nombre, max(cb.titular_apellido) titular_apellido,
-            max(cb.tipo_doc) tipo_doc, max(cb.num_doc) num_doc, max(cb.banco) banco,
-            max(cb.tipo_cuenta) tipo_cuenta, max(cb.num_cuenta) num_cuenta,
+            (t.cta_dest_numero IS NOT NULL) AS desviada,
+            coalesce(t.cta_dest_titular, max(cb.titular_nombre)) titular_nombre,
+            CASE WHEN t.cta_dest_numero IS NOT NULL THEN NULL ELSE max(cb.titular_apellido) END titular_apellido,
+            coalesce(t.cta_dest_tipo_doc, max(cb.tipo_doc)) tipo_doc,
+            coalesce(t.cta_dest_doc, max(cb.num_doc)) num_doc,
+            coalesce(t.cta_dest_banco, max(cb.banco)) banco,
+            coalesce(t.cta_dest_tipo, max(cb.tipo_cuenta)) tipo_cuenta,
+            coalesce(t.cta_dest_numero, max(cb.num_cuenta)) num_cuenta,
             max(cb.correo) correo, max(cb.referencia) referencia
        FROM todo t
        LEFT JOIN cuentas_bancarias_proveedor cb ON cb.nit = t.nit
-      GROUP BY t.nit
+      GROUP BY t.nit, t.cta_dest_banco, t.cta_dest_tipo, t.cta_dest_numero,
+               t.cta_dest_titular, t.cta_dest_doc, t.cta_dest_tipo_doc
      HAVING sum(t.monto) > 0
       ORDER BY nombre`,
     [cuenta]);
@@ -89,6 +112,9 @@ export async function GET(req: NextRequest) {
   // cerrando. Para un proveedor del intake la ÚNICA forma de tener cuenta es
   // que su certificación bancaria se haya leído bien.
   const sinCuenta = rows.filter((r) => !(r.num_cuenta ?? "").trim());
+  // Un pago desviado a otra cuenta NO se calla: va en el nombre del archivo,
+  // porque quien lo sube al banco tiene que saber que ahí hay una excepción.
+  const desviadas = rows.filter((r) => r.desviada).length;
   const pagables = rows.filter((r) => (r.num_cuenta ?? "").trim());
 
   const nombre = (r: Fila) => (r.titular_nombre ?? r.nombre ?? "").trim();
@@ -193,11 +219,13 @@ export async function GET(req: NextRequest) {
     "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     "Content-Disposition": `attachment; filename="pagos_${slugDe(cuenta)}_${hoyISO()}`
       + (sinCuenta.length ? `_FALTAN-${sinCuenta.length}` : "")
-      + (revisar ? `_REVISAR-${revisar}` : "") + `.xlsx"`,
+      + (revisar ? `_REVISAR-${revisar}` : "")
+      + (desviadas ? `_DESVIADAS-${desviadas}` : "") + `.xlsx"`,
     "X-Proveedores-Incluidos": String(pagables.length),
     "X-Proveedores-Sin-Cuenta": String(sinCuenta.length),
     "X-Filas-Por-Revisar": String(revisar),
     "X-Solicitudes-Sin-Factura-Dian": String(rows.reduce((n, r) => n + (r.n_intake || 0), 0)),
+    "X-Lineas-Desviadas": String(desviadas),
   }});
 }
 

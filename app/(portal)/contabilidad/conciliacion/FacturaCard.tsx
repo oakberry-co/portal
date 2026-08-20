@@ -3,6 +3,7 @@
 import { memo, useState, useTransition } from "react";
 import { type Estado } from "@/lib/estados";
 import { Combobox } from "./Combobox";
+import { CuentaDestinoModal } from "./CuentaDestinoModal";
 import { guardarClasificacion, marcarTipoPago } from "./actions";
 import { RetencionesModal } from "./RetencionesModal";
 
@@ -20,6 +21,12 @@ export type FacturaRow = {
   link_drive: string | null;
   // Soporte archivado a mano por compras en Drive (tabla `factura_soportes`).
   soporte_url: string | null;
+  // Desvío de pago de ESTA factura (no toca el maestro). Ver CuentaDestinoModal.
+  cta_dest_banco: string | null; cta_dest_tipo: string | null; cta_dest_numero: string | null;
+  cta_dest_titular: string | null; cta_dest_doc: string | null;
+  cta_dest_motivo: string | null; cta_dest_por: string | null;
+  // La del maestro, para poder mostrar de dónde se desvía.
+  cb_banco: string | null; cb_num_cuenta: string | null;
   n_soportes: number | null;
   destino_drive: string | null;
   estado: Estado;
@@ -91,6 +98,7 @@ export const FacturaCard = memo(function FacturaCard({
   puedeClasificar: boolean;   // false = contador (solo puede Reten., no clasificar)
 }) {
   const [modal, setModal] = useState(false);
+  const [modalCta, setModalCta] = useState(false);
   const [pending, start] = useTransition();
   const [faltaDest, setFaltaDest] = useState(false);
 
@@ -214,6 +222,21 @@ export const FacturaCard = memo(function FacturaCard({
         Reten.
       </button>
 
+      {/* Desviar el pago de ESTA factura a otra cuenta. Es la excepción rara y
+          se ve como tal: amarillo cuando está puesta, para que no pase de
+          agache en una revisión. */}
+      <button
+        type="button"
+        className={"c-btn ghost" + (f.cta_dest_numero ? " c-desvio" : "")}
+        disabled={f.pago_estado === "pagado"}
+        onClick={() => setModalCta(true)}
+        title={f.cta_dest_numero
+          ? `Esta factura se paga a ${f.cta_dest_banco} ••••${f.cta_dest_numero.slice(-4)} — ${f.cta_dest_motivo ?? ""}`
+          : "Pagar esta factura a una cuenta distinta de la del maestro (solo esta)"}
+      >
+        {f.cta_dest_numero ? "↪ Cuenta" : "Cuenta"}
+      </button>
+
       <div className="c-docs">
         <a
           className="ic dian"
@@ -259,6 +282,21 @@ export const FacturaCard = memo(function FacturaCard({
           {esDebito ? "Débito" : "Crédito"}
         </button>
       </div>
+
+      {modalCta && (
+        <CuentaDestinoModal
+          cufe={f.cufe}
+          factura={f.numero}
+          proveedor={f.nombre_proveedor ?? f.nit_proveedor}
+          actual={f.cta_dest_numero ? {
+            banco: f.cta_dest_banco, tipo: f.cta_dest_tipo, numero: f.cta_dest_numero,
+            titular: f.cta_dest_titular, doc: f.cta_dest_doc,
+            motivo: f.cta_dest_motivo, por: f.cta_dest_por,
+          } : null}
+          cuentaMaestro={{ banco: f.cb_banco, numero: f.cb_num_cuenta }}
+          onClose={() => setModalCta(false)}
+        />
+      )}
 
       {modal && (
         <RetencionesModal

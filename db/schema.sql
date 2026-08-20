@@ -827,3 +827,28 @@ ALTER TABLE cuentas_cobro
 
 CREATE INDEX IF NOT EXISTS ix_cc_clasificar
   ON cuentas_cobro (estado) WHERE estado = 'aprobada' AND pago_id IS NULL;
+
+-- -----------------------------------------------------------------------------
+-- 21) CUENTA DE DESTINO POR FACTURA (2026-08-20)
+--
+-- El 99% de las facturas se pagan a la cuenta que el proveedor tiene en el
+-- maestro. De vez en cuando pide que ESA factura se le pague a otra cuenta.
+--
+-- La excepción NO toca el maestro, y eso es lo importante: si se guardara, la
+-- siguiente factura de ese proveedor —y todas las demás— se irían a la cuenta
+-- del favor puntual. Vive pegada a la factura, se pone a mano de una en una
+-- (varias facturas = varias veces), y muere con ella.
+--
+-- Los datos se copian ENTEROS, no se referencia una fila del maestro: el
+-- archivo del banco tiene que poder reconstruirse igual dentro de un año,
+-- aunque el maestro haya cambiado desde entonces.
+ALTER TABLE factura_estado
+  ADD COLUMN IF NOT EXISTS cta_dest_banco      TEXT,
+  ADD COLUMN IF NOT EXISTS cta_dest_tipo       TEXT,      -- ahorros | corriente | deposito
+  ADD COLUMN IF NOT EXISTS cta_dest_numero     TEXT,
+  ADD COLUMN IF NOT EXISTS cta_dest_titular    TEXT,
+  ADD COLUMN IF NOT EXISTS cta_dest_doc        TEXT,      -- documento del titular
+  ADD COLUMN IF NOT EXISTS cta_dest_tipo_doc   TEXT,
+  ADD COLUMN IF NOT EXISTS cta_dest_motivo     TEXT,      -- por qué se desvía: obligatorio
+  ADD COLUMN IF NOT EXISTS cta_dest_por        TEXT,
+  ADD COLUMN IF NOT EXISTS cta_dest_en         TIMESTAMPTZ;
