@@ -8,6 +8,7 @@ import { subirDocumentos, avisoDocs, archivosDelForm, registrarCertificacion, et
 import { AREAS, CLASES_DOC, PLAZO_CUENTA_COBRO_DIAS } from "@/lib/areas";
 import { revisarArchivos } from "@/lib/documentos";
 import { getPool } from "@/lib/db";
+import { nitCanonico } from "@/lib/nit";
 
 export type Resultado = { ok: boolean; error?: string; aviso?: string };
 
@@ -97,7 +98,11 @@ export async function enviarCuentaCobro(_prev: Resultado | null, formData: FormD
     return { ok: false, error: "Falta " + (faltan.length === 1 ? faltan[0]
       : faltan.slice(0, -1).join(", ") + " y " + faltan[faltan.length - 1]) + "." };
   }
-  const numDoc = s("num_doc");
+  // El proveedor teclea su NIT como le sale: '901675059', '901.675.059-9'…
+  // Si se guarda con el dígito de verificación, este envío no cruza con las
+  // facturas del MISMO proveedor ni con su cuenta del maestro, y el pago se cae
+  // del archivo del banco sin un solo error (ver lib/nit.ts).
+  const numDoc = nitCanonico(s("num_doc"));
   let razon = s("razon_social");
   let contacto = s("contacto") || null;
   let telefono = s("telefono") || null;

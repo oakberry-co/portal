@@ -9,6 +9,8 @@
  *  que la bandeja pueda decir "falta el RUT" en vez de listar archivos sueltos.
  *  `path` vacío + estado 'pendiente' = el archivo NO llegó a Drive (el proveedor
  *  sí quedó registrado; el equipo le pide el adjunto por correo). */
+import { nitCanonico } from "@/lib/nit";
+
 export type DocIntake = {
   nombre: string;
   path: string;
@@ -145,7 +147,13 @@ export async function registrarCertificacion(
     const r = await pool.query(
       `INSERT INTO certificacion_bancaria (origen_tipo, origen_id, nit, drive_url, drive_file_id)
        VALUES ($1,$2,$3,$4,$5) RETURNING id`,
-      [origenTipo, origenId, nit, cert.path, fileId]) as { rows?: { id: number }[] };
+      // El NIT va canónico (sin dígito de verificación). Esto NO es cosmética:
+      // el lector detecta el "cambió la cuenta" comparando por NIT contra el
+      // maestro. Si acá entrara '9016750599' y el maestro tuviera '901675059',
+      // el lector NO vería la cuenta que el proveedor ya tiene, no levantaría la
+      // alarma de cambio de cuenta, y al aprobar se sobrescribiría la cuenta del
+      // proveedor real. Es justo el agujero que el candado existe para tapar.
+      [origenTipo, origenId, nitCanonico(nit), cert.path, fileId]) as { rows?: { id: number }[] };
     const certId = r?.rows?.[0]?.id;
     if (certId) await pedirLecturaYa(certId);
   } catch (e) {

@@ -22,6 +22,8 @@ import sys
 import requests
 import psycopg2
 
+from nit import digito_verificacion
+
 sys.path.insert(0, "/home/daniel/proyectos/datawarehouse/contabilidad/facturacion")
 from drive_links import drive_token  # noqa: E402
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -96,15 +98,25 @@ def main() -> int:
             sospechosas.append(f"  {numero:12} {nombre[:24]:24} cuenta CORRUPTA={cuenta!r} (formatea la celda del Sheet como TEXTO)")
             continue
 
-        es_nit = tipo_id == "3"
+        # POR ACÁ ENTRARON las 4 cuentas con el dígito de verificación pegado que
+        # dejaron a MODAL TRACK ($37M) fuera del archivo del banco: el Sheet trae
+        # el tipo como texto ("NIT") en vez de "3", `es_nit` daba False y el DV
+        # nunca se quitaba. Se acepta cualquiera de las dos formas.
+        es_nit = str(tipo_id).strip().upper() in ("3", "12", "NIT")
         if numero in NIT_OVERRIDE:               # el Sheet trae otro id que la factura
             nit_key = NIT_OVERRIDE[numero]
         else:
-            # NIT sin DV para la llave (matchea facturas). Prueba número y número[:-1].
-            cand = [numero, numero[:-1]] if es_nit else [numero]
-            nit_key = next((c for c in cand if c in nits_fact), None)
-            if nit_key is None:
-                nit_key = (numero[:-1] if es_nit and len(numero) == 10 else numero)
+            # El DV se quita cuando DE VERDAD lo es (verifica con el algoritmo
+            # DIAN), no por longitud: una CÉDULA de 10 dígitos tiene ~9% de
+            # probabilidad de que su último dígito sea el DV de los 9 anteriores
+            # por pura casualidad, y truncarla la rompería. Por eso además se
+            # exige que el documento sea un NIT.
+            canon = numero
+            if es_nit and len(numero) >= 10 and digito_verificacion(numero[:-1]) == numero[-1]:
+                canon = numero[:-1]
+            # Gana el canónico; si por lo que sea las facturas traen el largo, se
+            # respeta la realidad de las facturas.
+            nit_key = canon if canon in nits_fact else (numero if numero in nits_fact else canon)
 
         banco = COD_NOMBRE.get(codigo, "")
         if not banco:

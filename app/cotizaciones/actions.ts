@@ -7,6 +7,7 @@ import { subirDocumentos, avisoDocs, archivosDelForm, registrarCertificacion, et
 import { AREAS, CLASES_DOC } from "@/lib/areas";
 import { revisarArchivos } from "@/lib/documentos";
 import { getPool } from "@/lib/db";
+import { nitCanonico } from "@/lib/nit";
 
 export type Resultado = { ok: boolean; error?: string; codigo?: string; aviso?: string };
 
@@ -33,7 +34,9 @@ export async function enviarCotizacion(_prev: Resultado | null, formData: FormDa
       : faltan.slice(0, -1).join(", ") + " y " + faltan[faltan.length - 1]) + "." };
   }
   const razon = s("razon_social");
-  const nit = s("nit");
+  // Mismo cuidado que en cuentas de cobro: el NIT con dígito de verificación
+  // pegado deja la cotización sin cruzar con su proveedor (ver lib/nit.ts).
+  const nit = nitCanonico(s("nit"));
 
   const areaRaw = s("area").toUpperCase();
   if (!(AREAS as readonly string[]).includes(areaRaw)) {

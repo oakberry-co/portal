@@ -33,7 +33,7 @@ export function nitCanonico(t: string | null | undefined): string {
   const d = soloDigitos(bruto);
   if (d.length < 10) return d;
   // '901.675.059-9' o '901675059-9': el guion dice explícitamente dónde va el DV.
-  const conGuion = bruto.match(/^([\d.\s]+)-(\d)$/);
+  const conGuion = bruto.match(/^([\d.\s]+)-\s*(\d)\s*$/);
   if (conGuion) {
     const base = soloDigitos(conGuion[1]);
     if (digitoVerificacion(base) === conGuion[2]) return base;

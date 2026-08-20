@@ -67,7 +67,7 @@ export async function agregarDestino(fd: FormData) {
 
 export async function agregarProveedor(fd: FormData) {
   const user = await guard();
-  const nit = S(fd, "nit");
+  const nit = nitCanonico(S(fd, "nit"));
   if (!nit) throw new Error("Falta el NIT del proveedor.");
   const nombre = S(fd, "nombre") || null;
   const concepto = S(fd, "concepto_default") || null;
@@ -112,7 +112,7 @@ export async function agregarCuentaPuc(fd: FormData) {
 
 export async function agregarRetencion(fd: FormData) {
   const user = await guardRetenciones();
-  const nit = S(fd, "nit_proveedor");
+  const nit = nitCanonico(S(fd, "nit_proveedor"));
   if (!nit) throw new Error("Falta el NIT del proveedor.");
   const reglas: [string, number | null, string][] = [
     ["ReteFuente", N(fd, "retefuente"), "subtotal"],
@@ -136,7 +136,7 @@ export async function agregarRetencion(fd: FormData) {
 
 export async function agregarPlazo(fd: FormData) {
   const user = await guard();
-  const nit = S(fd, "nit_proveedor");
+  const nit = nitCanonico(S(fd, "nit_proveedor"));
   const plazo = N(fd, "plazo_dias");
   if (!nit || plazo == null) throw new Error("Falta NIT o plazo.");
   await withTx(async (c) => {
@@ -244,7 +244,7 @@ export async function actualizarCampo(fd: FormData) {
   }
   // Mismo cuidado al editar a mano: si alguien teclea el NIT con su DV, la
   // fila queda huérfana del resto del sistema.
-  if (grupo === "bancos" && campo === "nit" && typeof valor === "string") valor = nitCanonico(valor);
+  if (campo === "nit" && typeof valor === "string") valor = nitCanonico(valor);
   const keyVal: string | number = def.key === "id" ? Number(id) : id;
   const extra = grupo === "proveedores" || grupo === "bancos" ? ", fuente = 'humano', actualizado_en = now()" : "";
   await withTx(async (c) => {

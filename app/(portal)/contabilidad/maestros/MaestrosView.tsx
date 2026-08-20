@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { BANCOS } from "@/lib/bancos";
 import {
   agregarConcepto, agregarDestino, agregarProveedor,
   agregarCuentaPuc, agregarRetencion, agregarCuentaBanco, actualizarCampo, toggleMaestro,
@@ -206,7 +207,14 @@ export function MaestrosView({ data, soloRetenciones = false }: {
             <input name="titular_apellido" placeholder="Apellido (si es persona)" />
             <select name="tipo_doc" defaultValue="NIT"><option value="NIT">NIT</option><option value="CC">CC</option><option value="CE">CE</option><option value="PPT">PPT</option></select>
             <input name="num_doc" placeholder="N° documento" />
-            <input name="banco" placeholder="Banco" />
+            {/* Lista, no texto libre: de este nombre sale el CÓDIGO al que
+                viaja la plata. Escrito a mano entraron "BACOLOMBIA" y "BANDO DE
+                BOGOTA", que no resuelven a ningún código y dejan la fila del
+                archivo del banco con el campo vacío. */}
+            <input name="banco" placeholder="Banco" list="lista-bancos" autoComplete="off" />
+            <datalist id="lista-bancos">
+              {BANCOS.map((b) => <option key={b.codigo} value={b.nombre} />)}
+            </datalist>
             <select name="tipo_cuenta" defaultValue=""><option value="">Tipo cuenta</option><option value="ahorros">Ahorros</option><option value="corriente">Corriente</option><option value="deposito">Depósito</option></select>
             <input name="num_cuenta" placeholder="N° cuenta" />
             <input name="correo" placeholder="Correo (opc)" />
