@@ -457,6 +457,16 @@ button.ghost { background: #fff; color: var(--purple); }
   text-decoration: none !important;
 }
 .export-btn:hover { filter: brightness(1.07); }
+/* OJO: `.export-btn` fuerza `color:#fff !important` y `button.ghost` pone el
+   fondo blanco. Sin esta regla el botón sale BLANCO SOBRE BLANCO — existe, es
+   clicable, y no se ve. Pasó con "Subir retenciones" y Daniel no lo encontraba.
+   Segunda vez que muerde el mismo patrón (la primera fue en la página pública,
+   con `--acc`): un `!important` de color obliga a que TODA variante lo repita. */
+.export-btn.ghost { background: #fff; color: var(--purple) !important;
+                    border: 1.5px solid var(--purple); }
+.export-btn.ghost:hover { background: var(--lav-soft); }
+/* El trámite completo se lee de un vistazo: bajar → llenar → subir. */
+.export-bar .flecha { color: var(--lav); font-size: 12px; font-weight: 600; }
 
 /* densidad de los controles dentro de la fila */
 .fila input, .fila .cbx-input { font-size: 12px; padding: 6px 8px; border-radius: 8px; }

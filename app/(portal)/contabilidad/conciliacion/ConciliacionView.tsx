@@ -157,9 +157,14 @@ export function ConciliacionView({
         <input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} title="Hasta (fecha de emisión)" />
         <a className="export-btn" href={exportHref} title="Descargar informe en Excel">⬇ Excel</a>
         <span className="muted mini">(vacío = todas)</span>
-        {/* El viaje de vuelta: el equipo llena las retenciones en ESE Excel y lo
-            sube acá mismo. Bajar y subir en el mismo sitio, o se pierde. */}
-        {puedeRetenciones && <SubirRetenciones />}
+        {/* El viaje de vuelta, pegado a la ida: se baja el Excel, se llenan las
+            retenciones a mano y se sube acá mismo. La flecha está para que se
+            lea como UN trámite y no como dos botones sueltos — Daniel no
+            encontraba el de subir. */}
+        {puedeRetenciones && <>
+          <span className="flecha">→ llénalo y súbelo →</span>
+          <SubirRetenciones />
+        </>}
       </div>
       )}
 

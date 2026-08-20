@@ -23,7 +23,7 @@ export function SubirRetenciones() {
     return (
       <button type="button" className="export-btn ghost" onClick={() => setAbierto(true)}
               title="Subir el Excel con las retenciones que llenó el equipo">
-        ⬆ Subir retenciones
+        ⬆ Subir Excel con retenciones
       </button>
     );
   }
