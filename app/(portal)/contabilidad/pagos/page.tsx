@@ -2,6 +2,7 @@ import { getPool } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { puede } from "@/lib/permisos";
 import { LISTO_PARA_PAGOS } from "@/lib/documentos-no-dian";
+import { NC_APLICADA, SALDO_NETO, NO_ES_NOTA } from "@/lib/notas-credito";
 import { PagosView, type FilaPago, type FilaIntake, type PagoHecho, type CuentaPago, type Adelanto } from "./PagosView";
 
 export const dynamic = "force-dynamic";
@@ -14,8 +15,15 @@ const CAMPOS = `
   coalesce(e.valor_a_pagar, f.total)::float AS a_pagar,
   coalesce(e.pago_monto,0)::float AS pagado,
   coalesce(e.abono_aplicado,0)::float AS abono_aplicado,
+  -- Lo que le quitan sus notas crédito, y las notas mismas para poder decirlo:
+  -- un saldo que baja sin explicación se lee como un error del sistema.
+  ${NC_APLICADA("f")}::float AS nc_aplicada,
+  (SELECT string_agg(nc.numero || ' · ' || coalesce(nc.ref_motivo, 'nota crédito'), ' | ')
+     FROM facturas nc WHERE nc.ref_cufe = f.cufe AND nc.doc_tipo = 'CreditNote') AS nc_detalle,
   coalesce(e.pago_estado,'pendiente') AS pago_estado,
-  (cb.nit IS NOT NULL) AS tiene_banco`;
+  (cb.nit IS NOT NULL) AS tiene_banco,
+  (e.cta_dest_numero IS NOT NULL) AS desviada,
+  e.cta_dest_banco, e.cta_dest_numero`;
 
 // Lo aprobado en las dos bandejas del intake: cuentas de cobro (por su valor
 // NETO de retenciones) y adelantos de cotización (por el % pactado). Van al bloque "sin
@@ -58,6 +66,13 @@ async function cargar(): Promise<{ pendientes: FilaPago[]; validacion: FilaPago[
     LEFT JOIN maestro_proveedores mp ON mp.nit = f.nit_proveedor
     WHERE e.estado = 'retenciones_ok' AND coalesce(e.pago_estado,'pendiente') <> 'pagado' AND e.cuenta_pago IS NULL
       AND coalesce(e.tipo_pago, mp.tipo_pago_default, 'credito') <> 'debito'
+      -- Una nota crédito NO es una cuenta por pagar: es un descuento. Como
+      -- línea propia saldría en negativo y el banco la rechaza (o alguien le
+      -- quita el signo "para que cuadre").
+      AND ${NO_ES_NOTA("f")}
+      -- Y lo que quedó en cero por sus notas ya no se debe: sacarlo del tablero
+      -- es lo que impide pagar una factura anulada (Uniandes, $22,9M).
+      AND ${SALDO_NETO("f", "e")} > 0
     ORDER BY semana_fecha, f.nombre_proveedor, f.fecha_emision`);
   // Columna 2 — VALIDACIÓN: cuenta asignada (aprobada_pago), aún no pagadas.
   const validacion = await pool.query<FilaPago>(`
@@ -65,6 +80,7 @@ async function cargar(): Promise<{ pendientes: FilaPago[]; validacion: FilaPago[
     FROM factura_estado e JOIN facturas f USING (cufe)
     LEFT JOIN cuentas_bancarias_proveedor cb ON cb.nit = f.nit_proveedor
     WHERE e.estado = 'aprobada_pago' AND coalesce(e.pago_estado,'pendiente') <> 'pagado'
+      AND ${NO_ES_NOTA("f")} AND ${SALDO_NETO("f", "e")} > 0
     ORDER BY e.cuenta_pago, f.nombre_proveedor, f.fecha_emision`);
   // Adelantos YA PAGADOS que todavía no se descontaron de ninguna factura. Es
   // plata que ya salió: si no se ve acá, la factura del proveedor se paga

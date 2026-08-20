@@ -1396,3 +1396,15 @@ tr.desfasada td { background: #fff8e6; }
 .det-aviso { margin-top: 7px; font-size: 10.5px; color: var(--warn); font-weight: 700; }
 /* En pantalla angosta se ancla a la derecha del viewport para que no se salga. */
 @media (max-width: 640px) { .det-pop { right: auto; left: 0; min-width: 210px; } }
+
+/* Nota crédito aplicada a una factura, y factura desviada a otra cuenta:
+   dos cosas que cambian a dónde y cuánto se paga, y por eso se ven en la fila. */
+.pg-nc { color: var(--coral); font-size: 10px; font-weight: 700; margin-right: 6px; }
+.pg-desv { color: var(--warn); font-weight: 700; margin-left: 4px; }
+
+/* Un documento que ES una nota crédito vs. una factura que TIENE notas: la
+   primera resta, la segunda quedó rebajada. Se marcan distinto porque se leen
+   distinto — sin la marca, un saldo más bajo parece un error del sistema. */
+.c-esnc { background: var(--coral); color: #fff; border-radius: 4px; padding: 0 4px;
+  font-size: 8.5px; font-weight: 800; margin-left: 4px; vertical-align: middle; }
+.c-tienenc { color: var(--coral); font-size: 9px; font-weight: 800; margin-left: 4px; }

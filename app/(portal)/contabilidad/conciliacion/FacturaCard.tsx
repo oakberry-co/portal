@@ -27,6 +27,10 @@ export type FacturaRow = {
   cta_dest_motivo: string | null; cta_dest_por: string | null;
   // La del maestro, para poder mostrar de dónde se desvía.
   cb_banco: string | null; cb_num_cuenta: string | null;
+  // Notas crédito: `doc_tipo`/`ref_*` es qué ES este documento; `nc_aplicada` es
+  // lo que le quitan las notas que lo corrigen.
+  doc_tipo: string | null; ref_numero: string | null; ref_motivo: string | null;
+  nc_aplicada: number | null; nc_detalle: string | null;
   n_soportes: number | null;
   destino_drive: string | null;
   estado: Estado;
@@ -158,7 +162,12 @@ export const FacturaCard = memo(function FacturaCard({
     ? num(f.reten_total)
     : num(f.retefuente_sug) + num(f.reteiva_sug) + num(f.reteica_sug);
   const otros = num(f.otros_valor);
-  const valorAPagar = total - retenTotal - otros;
+  // Lo que las notas crédito le quitan a ESTA factura. Se resta acá y no solo
+  // en Pagos: si la grilla dijera un número y el tablero otro, el equipo dejaría
+  // de creerle a los dos. Nunca baja de cero — una nota mayor que la factura no
+  // genera un pago negativo, genera un saldo a favor, y eso lo cruza una persona.
+  const notaCredito = Number(f.nc_aplicada ?? 0);
+  const valorAPagar = Math.max(0, total - retenTotal - otros - notaCredito);
 
   // Vencimiento (día de pago) y si ya toca pagar.
   const venc = f.fecha_vencimiento ? new Date(f.fecha_vencimiento) : null;
@@ -194,7 +203,19 @@ export const FacturaCard = memo(function FacturaCard({
         <div className="muted mini">NIT {f.nit_proveedor}{f.responsabilidad_dian ? ` · ${f.responsabilidad_dian}` : ""}</div>
       </div>
 
-      <div className="c-num mono" title={`Factura ${f.numero}`}>{f.numero}</div>
+      {/* Un documento que ES una nota crédito y una factura que TIENE notas se
+          leen distinto y por eso se marcan distinto: la primera resta, la
+          segunda quedó rebajada. Sin la marca, ver un valor negativo o un saldo
+          más bajo de lo esperado parece un error del sistema. */}
+      <div className="c-num mono" title={`Factura ${f.numero}`}>
+        {f.numero}
+        {f.doc_tipo === "CreditNote" && (
+          <span className="c-esnc" title={`Nota crédito de la factura ${f.ref_numero ?? "—"} · ${f.ref_motivo ?? ""}`}>NC</span>
+        )}
+        {Number(f.nc_aplicada) > 0 && (
+          <span className="c-tienenc" title={`Le descuentan notas crédito: ${f.nc_detalle ?? ""}`}>−NC</span>
+        )}
+      </div>
       <div className="c-fecha">
         <span title="Fecha de emisión (DIAN)">{ddmm(f.fecha_emision)}</span>
         {f.sincronizado_en && (
@@ -239,6 +260,10 @@ export const FacturaCard = memo(function FacturaCard({
             <div className="det-tit">{f.retencion_ok ? "Lo que se le retuvo" : "Lo que se le retendría"}</div>
             <table><tbody>
               <tr><td>Total factura</td><td className="num">{copN(total)}</td></tr>
+              {Number(f.nc_aplicada) > 0 && (
+                <tr><td>Notas crédito<i className="det-sug"> {f.nc_detalle}</i></td>
+                    <td className="num neg">− {copN(Number(f.nc_aplicada))}</td></tr>
+              )}
               {linea("ReteFuente", f.retefuente, f.retefuente_sug)}
               {linea("ReteIVA", f.reteiva, f.reteiva_sug)}
               {linea("ReteICA", f.reteica, f.reteica_sug)}

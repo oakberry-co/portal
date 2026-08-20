@@ -7,6 +7,7 @@ import { puede } from "@/lib/permisos";
 import type { FacturaRow } from "./FacturaCard";
 import { DocsNoDian, type DocNoDianUI } from "./DocsNoDian";
 import { porClasificar } from "@/lib/documentos-no-dian";
+import { NC_APLICADA } from "@/lib/notas-credito";
 
 export const dynamic = "force-dynamic"; // siempre lee el estado vivo
 
@@ -52,7 +53,12 @@ async function cargar(): Promise<{ filas: FacturaRow[]; conceptos: string[]; des
             -- poder mostrar de dónde se está desviando.
             e.cta_dest_banco, e.cta_dest_tipo, e.cta_dest_numero, e.cta_dest_titular,
             e.cta_dest_doc, e.cta_dest_motivo, e.cta_dest_por,
-            cb.banco AS cb_banco, cb.num_cuenta AS cb_num_cuenta
+            cb.banco AS cb_banco, cb.num_cuenta AS cb_num_cuenta,
+            -- Notas crédito que corrigen ESTA factura + qué es ella misma.
+            f.doc_tipo, f.ref_numero, f.ref_motivo,
+            ${NC_APLICADA("f")}::float AS nc_aplicada,
+            (SELECT string_agg(nc.numero || ' · ' || coalesce(nc.ref_motivo,'nota crédito'), ' | ')
+               FROM facturas nc WHERE nc.ref_cufe = f.cufe AND nc.doc_tipo = 'CreditNote') AS nc_detalle
        FROM facturas f
        JOIN factura_estado e USING (cufe)
        LEFT JOIN factura_propuesta p USING (cufe)

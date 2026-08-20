@@ -10,6 +10,10 @@ export type FilaPago = {
   fecha_emision: string; fecha_vencimiento: string | null; concepto: string | null; destino: string | null;
   cuenta_pago: string | null; semana_fecha: string; a_pagar: number; pagado: number;
   abono_aplicado: number; pago_estado: string; tiene_banco: boolean;
+  /** Lo que le quitan sus notas crédito (en positivo) y cuáles son. */
+  nc_aplicada: number; nc_detalle: string | null;
+  /** Esta factura se paga a una cuenta distinta de la del maestro. */
+  desviada: boolean; cta_dest_banco: string | null; cta_dest_numero: string | null;
 };
 /** Una solicitud del intake aprobada: cuenta de cobro o adelanto de cotización.
  *  No tiene CUFE (no hay factura electrónica) — por eso viaja aparte. */
@@ -37,8 +41,11 @@ export type Adelanto = {
 
 const cop = new Intl.NumberFormat("es-CO", { style: "currency", currency: "COP", maximumFractionDigits: 0 });
 const $ = (n: number) => cop.format(Math.round(n || 0));
-// Saldo = a pagar − ya pagado − abonos de cotización enlazada (nunca doble).
-const saldo = (f: FilaPago) => Math.max(0, f.a_pagar - f.pagado - (f.abono_aplicado || 0));
+// Saldo = a pagar − ya pagado − abonos de cotización − NOTAS CRÉDITO.
+// La nota crédito es lo que el proveedor ya nos devolvió en papel: si no se
+// resta acá, la pantalla dice un número y el archivo del banco otro.
+const saldo = (f: FilaPago) =>
+  Math.max(0, f.a_pagar - f.pagado - (f.abono_aplicado || 0) - (f.nc_aplicada || 0));
 const MESES = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
 const dm = (s: string) => { const x = new Date(s); return `${String(x.getUTCDate()).padStart(2, "0")}/${MESES[x.getUTCMonth()]}`; };
 const mesActual = new Date().toISOString().slice(0, 7);
@@ -359,7 +366,20 @@ export function PagosView({ pendientes, validacion, intake, adelantos, historial
                         <>
                           <table className="pg-tabla"><tbody>
                             {g.facturas.map((f) => (
-                              <tr key={f.cufe}><td className="mono">{f.numero}</td><td className="pg-fch">{dm(f.fecha_emision)}</td><td className="muted">{f.concepto ?? "—"}</td><td className="num">{f.pagado > 0 ? <span className="pg-abono">saldo </span> : ""}{$(saldo(f))}</td></tr>
+                              <tr key={f.cufe}>
+                                <td className="mono">
+                                  {f.numero}
+                                  {f.desviada && <span className="pg-desv" title={`Se paga a ${f.cta_dest_banco} ••••${(f.cta_dest_numero ?? "").slice(-4)}`}>↪</span>}
+                                </td>
+                                <td className="pg-fch">{dm(f.fecha_emision)}</td>
+                                <td className="muted">{f.concepto ?? "—"}</td>
+                                <td className="num">
+                                  {f.nc_aplicada > 0 && (
+                                    <span className="pg-nc" title={`Notas crédito: ${f.nc_detalle ?? ""}`}>−{$(f.nc_aplicada)} NC</span>
+                                  )}
+                                  {f.pagado > 0 ? <span className="pg-abono">saldo </span> : ""}{$(saldo(f))}
+                                </td>
+                              </tr>
                             ))}
                           </tbody></table>
                           <div className="pg-assign">

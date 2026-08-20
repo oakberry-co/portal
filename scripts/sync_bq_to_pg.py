@@ -141,6 +141,14 @@ def query_fuente(tenant: str, since: str | None) -> str:
       vc.link_drive                                 AS link_drive,
       vc.gcs_xml_path                               AS gcs_xml_path,
       COALESCE(f._ingested_at, TIMESTAMP(f.fecha))  AS recepcion,
+      -- A qué factura corrige, si es nota crédito/débito. Lo trae el propio XML
+      -- de la DIAN (cac:BillingReference): número, CUFE y motivo. No se cruza
+      -- por valor — el 45,7% de las facturas tiene una gemela con el mismo NIT
+      -- y total, así que el descuento caería en la equivocada.
+      f.doc_tipo                                    AS doc_tipo,
+      f.ref_numero                                  AS ref_numero,
+      f.ref_cufe                                    AS ref_cufe,
+      f.ref_motivo                                  AS ref_motivo,
       vc.concepto                                   AS concepto_sug,
       -- solo sugerir un destino REAL (tienda/transversal); 'Propia'/'Franquicia'
       -- son tipo, no destino → mejor NULL y que el humano elija de la lista.
@@ -347,20 +355,32 @@ def run_sync(conn, filas, *, purge_demo=False, actor="sistema", origen="sync",
         INSERT INTO facturas
           (cufe, nit_proveedor, nombre_proveedor, numero, consecutivo_num,
            fecha_emision, subtotal, iva, total, moneda, es_exterior,
-           responsabilidad_dian, link_drive, gcs_xml_path, sincronizado_en)
+           responsabilidad_dian, link_drive, gcs_xml_path, sincronizado_en,
+           doc_tipo, ref_numero, ref_cufe, ref_motivo)
         VALUES %s
         ON CONFLICT (cufe) DO UPDATE SET
           link_drive   = COALESCE(EXCLUDED.link_drive,   facturas.link_drive),
-          gcs_xml_path = COALESCE(EXCLUDED.gcs_xml_path, facturas.gcs_xml_path)
+          gcs_xml_path = COALESCE(EXCLUDED.gcs_xml_path, facturas.gcs_xml_path),
+          -- La referencia de una nota crédito se rellena igual que los enlaces:
+          -- el parser aprendió a leerla DESPUÉS de que muchas notas ya estaban
+          -- cargadas, así que llega en una corrida posterior. Nunca se borra
+          -- (COALESCE): lo que ya sabemos no se pierde por una fila incompleta.
+          doc_tipo   = COALESCE(EXCLUDED.doc_tipo,   facturas.doc_tipo),
+          ref_numero = COALESCE(EXCLUDED.ref_numero, facturas.ref_numero),
+          ref_cufe   = COALESCE(EXCLUDED.ref_cufe,   facturas.ref_cufe),
+          ref_motivo = COALESCE(EXCLUDED.ref_motivo, facturas.ref_motivo)
         WHERE facturas.link_drive   IS DISTINCT FROM COALESCE(EXCLUDED.link_drive,   facturas.link_drive)
            OR facturas.gcs_xml_path IS DISTINCT FROM COALESCE(EXCLUDED.gcs_xml_path, facturas.gcs_xml_path)
+           OR facturas.ref_cufe     IS DISTINCT FROM COALESCE(EXCLUDED.ref_cufe,     facturas.ref_cufe)
+           OR facturas.doc_tipo     IS DISTINCT FROM COALESCE(EXCLUDED.doc_tipo,     facturas.doc_tipo)
         RETURNING (xmax = 0) AS insertada
     """, [(
         r["cufe"], r["nit_proveedor"], r["nombre_proveedor"], r["numero"],
         r["consecutivo_num"], r["fecha_emision"], r["subtotal"], r["iva"],
         r["total"], r["moneda"], r["es_exterior"], r["responsabilidad_dian"],
         r["link_drive"], r["gcs_xml_path"], r["recepcion"],
-    ) for r in filas], template="(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+        r.get("doc_tipo"), r.get("ref_numero"), r.get("ref_cufe"), r.get("ref_motivo"),
+    ) for r in filas], template="(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
         page_size=1000, fetch=True)
     n_facturas = sum(1 for row in ret if row[0])       # insertadas
     n_enlaces = sum(1 for row in ret if not row[0])    # enlaces rellenados

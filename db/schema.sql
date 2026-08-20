@@ -852,3 +852,26 @@ ALTER TABLE factura_estado
   ADD COLUMN IF NOT EXISTS cta_dest_motivo     TEXT,      -- por qué se desvía: obligatorio
   ADD COLUMN IF NOT EXISTS cta_dest_por        TEXT,
   ADD COLUMN IF NOT EXISTS cta_dest_en         TIMESTAMPTZ;
+
+-- -----------------------------------------------------------------------------
+-- 22) LA NOTA CRÉDITO DESCUENTA DE LA FACTURA QUE CORRIGE (2026-08-20)
+--
+-- Universidad de los Andes facturó $23.544.000 y después emitió una nota crédito
+-- que la ANULA. La nota estaba capturada y guardada en negativo, pero no
+-- descontaba de nada: la factura seguía en el tablero lista para pagar
+-- $22.955.400 de algo que ya no se debía.
+--
+-- No hay que adivinar a cuál corrige. La DIAN lo escribe en el propio XML
+-- (cac:BillingReference): el número Y el CUFE de la factura corregida, más el
+-- motivo (cac:DiscrepancyResponse: "Anulación", "ERROR EN CANTIDAD FACTURADA").
+-- Cruzarlo por VALOR sería inviable: el 45,7% de las facturas comparte NIT y
+-- total con una gemela, así que el descuento caería en la equivocada casi la
+-- mitad de las veces (Regla 3).
+ALTER TABLE facturas
+  ADD COLUMN IF NOT EXISTS doc_tipo   TEXT,     -- Invoice | CreditNote | DebitNote
+  ADD COLUMN IF NOT EXISTS ref_numero TEXT,
+  ADD COLUMN IF NOT EXISTS ref_cufe   TEXT,
+  ADD COLUMN IF NOT EXISTS ref_motivo TEXT;
+
+-- Por acá se busca "¿esta factura tiene notas?" en cada carga del tablero.
+CREATE INDEX IF NOT EXISTS ix_facturas_ref_cufe ON facturas (ref_cufe) WHERE ref_cufe IS NOT NULL;

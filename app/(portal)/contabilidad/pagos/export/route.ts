@@ -5,6 +5,7 @@ import { puede } from "@/lib/permisos";
 import { codigoBanco, codigoBancoDavivienda, CODIGOS_DAVIVIENDA, TIPO_DOC_FULL, TIPO_CUENTA_FULL } from "@/lib/bancos";
 import { codigoTipoId, codigoProducto, textoBanco, revisarFila, type Aviso } from "@/lib/davivienda";
 import { LISTO_PARA_PAGOS } from "@/lib/documentos-no-dian";
+import { SALDO_NETO, NO_ES_NOTA } from "@/lib/notas-credito";
 import ExcelJS from "exceljs";
 
 export const dynamic = "force-dynamic";
@@ -56,13 +57,17 @@ export async function GET(req: NextRequest) {
        -- Las columnas cta_dest_* son el DESVÍO de esa factura: el proveedor
        -- pidió que ESA se le pague a otra cuenta. Viajan hasta el GROUP BY de
        -- abajo, que es lo que parte al proveedor en dos líneas.
+       -- El monto lleva descontadas las NOTAS CRÉDITO: es lo que de verdad se
+       -- le debe. Si el archivo mandara el bruto se le pagaría de más algo que
+       -- el proveedor ya nos devolvió en papel, y eso después hay que pedírselo.
        SELECT f.nit_proveedor AS nit, f.nombre_proveedor AS nombre, 0 AS es_intake,
-              coalesce(e.valor_a_pagar, f.total) - coalesce(e.pago_monto,0) - coalesce(e.abono_aplicado,0) AS monto,
+              ${SALDO_NETO("f", "e")} AS monto,
               e.cta_dest_banco, e.cta_dest_tipo, e.cta_dest_numero,
               e.cta_dest_titular, e.cta_dest_doc, e.cta_dest_tipo_doc
          FROM factura_estado e JOIN facturas f USING (cufe)
         WHERE e.estado = 'aprobada_pago' AND e.cuenta_pago = $1
           AND coalesce(e.pago_estado,'pendiente') <> 'pagado'
+          AND ${NO_ES_NOTA("f")}
      ), intake_val AS (
        -- El NETO de retenciones: lo que de verdad se transfiere. Mandar el
        -- valor bruto al banco es pagarle de más al proveedor, y eso después hay
