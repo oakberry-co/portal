@@ -21,13 +21,14 @@ const CAMPOS = [
   { name: "concepto", etiqueta: "Concepto" },
 ];
 
-export function FormCuentaCobro() {
+export function FormCuentaCobro({ conceptos }: { conceptos: string[] }) {
   const [estado, action, pending] = useActionState<Resultado | null, FormData>(enviarCuentaCobro, null);
   // Primero: ¿nos conoces? Quien ya cobró antes no repite sus documentos.
   const [modo, setModo] = useState<"nuevo" | "recurrente" | null>(null);
   const [recon, setRecon] = useState<Reconocido | null>(null);
   const [buscando, setBuscando] = useState(false);
   const [docBusca, setDocBusca] = useState("");
+  const [concepto, setConcepto] = useState("");
   const esRecurrente = modo === "recurrente" && !!recon?.ok;
   // Dos pasos: llenar -> revisar -> enviar. El formulario NUNCA se desmonta (se
   // oculta), porque desmontarlo perdería los archivos ya elegidos.
@@ -168,7 +169,25 @@ export function FormCuentaCobro() {
         </label>
         <label>Valor a cobrar (COP) *<input name="valor" required inputMode="numeric" placeholder="$ 0" /></label>
       </div>
-      <label className="pub-full">Concepto *<input name="concepto" required placeholder="¿Por qué es el cobro?" /></label>
+      <label className="pub-full">Concepto *
+        {conceptos.length ? (
+          <select name="concepto" required value={concepto} onChange={(e) => setConcepto(e.target.value)}>
+            <option value="">Selecciona…</option>
+            {conceptos.map((c) => <option key={c} value={c}>{c}</option>)}
+            <option value="__otro">Otro — no está en la lista</option>
+          </select>
+        ) : (
+          <input name="concepto" required placeholder="¿Por qué es el cobro?" />
+        )}
+      </label>
+      {/* Salida de emergencia: una lista cerrada sin escape deja a alguien sin
+          poder cobrar. Lo que escriba acá entra marcado y contabilidad decide si
+          merece ser un concepto nuevo del maestro. */}
+      {concepto === "__otro" && (
+        <label className="pub-full">¿Cómo lo llamarías? *
+          <input name="concepto_otro" required placeholder="Ej. Alquiler de sonido" />
+        </label>
+      )}
       <label className="pub-full">Descripción / detalle *
         <textarea name="descripcion" rows={2} required placeholder="Detalle del servicio o producto" />
       </label>

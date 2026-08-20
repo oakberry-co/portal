@@ -1078,6 +1078,13 @@ button.ghost { background: #fff; color: var(--purple); }
 .cc-adelanto { display: inline-block; margin: 4px 0 2px; padding: 5px 11px; border-radius: 8px;
   background: #fff8e6; border: 1px solid rgba(212,160,23,.35); color: #8a6100;
   font-size: 12.5px; font-weight: 600; }
+/* De dónde salió la retención precargada. Sin esto el revisor ve números
+   puestos por arte de magia y no sabe si creerles. */
+.ret-sugerencia { margin: 0 0 12px; font-size: 12.5px; line-height: 1.5; color: #1f5c33;
+                  background: #eef8f0; border: 1px solid #bfe0c7; border-left: 3px solid #3f9d5a;
+                  border-radius: 9px; padding: 9px 12px; }
+.ret-sugerencia.flojo { color: #7a5b12; background: #fff8e6; border-color: #f0dfae; border-left-color: #d4a017; }
+
 /* PASO 0 del portal público: ¿ya nos habías cobrado? Botones grandes, pensados
    para el pulgar — de acá arranca todo y la mayoría llega desde el celular. */
 .pub-elige { display: flex; flex-direction: column; gap: 12px; }

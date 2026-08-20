@@ -126,6 +126,26 @@ export async function enviarCuentaCobro(_prev: Resultado | null, formData: FormD
   }
   const area = areaRaw;
 
+  // CONCEPTO: viene de una lista cerrada (el maestro) porque de él cuelga la
+  // retención. Se valida CONTRA LA BASE — si el navegador manda algo que no está
+  // en el maestro, no entra como concepto: entraría a ensuciar justo la columna
+  // sobre la que se aprenden las tarifas.
+  let concepto = s("concepto");
+  if (concepto === "__otro") {
+    concepto = s("concepto_otro");
+    if (!concepto) return { ok: false, error: "Escribe cómo llamarías el concepto." };
+  } else if (concepto) {
+    try {
+      const r = await getPool().query(
+        "SELECT 1 FROM maestro_conceptos WHERE activo AND nombre = $1", [concepto]);
+      if (!r.rowCount) {
+        const libre = s("concepto_otro");
+        if (!libre) return { ok: false, error: "Elige un concepto de la lista." };
+        concepto = libre;
+      }
+    } catch { /* base caída: se acepta lo que venga, no se bloquea el cobro */ }
+  }
+
   // Sin monto no hay nada que programar; un 0 tampoco es un cobro.
   const valor = Number(s("valor").replace(/[^\d]/g, ""));
   if (!Number.isFinite(valor) || valor <= 0) {
@@ -161,7 +181,7 @@ export async function enviarCuentaCobro(_prev: Resultado | null, formData: FormD
                (now() AT TIME ZONE 'America/Bogota')::date + $13::int)
        RETURNING id`,
       [razon, tipoDoc, numDoc, contacto, s("correo") || null,
-       telefono, area, s("concepto") || null, s("descripcion") || null,
+       telefono, area, concepto || null, s("descripcion") || null,
        valor, JSON.stringify(docs), recurrente, PLAZO_CUENTA_COBRO_DIAS]);
     await registrarCertificacion(pool, "cuenta_cobro", r.rows[0].id, numDoc, docs);
   } catch (e) {

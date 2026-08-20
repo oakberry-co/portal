@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { withTx } from "@/lib/db";
 import { registrarEvento } from "@/lib/eventos";
 import { exigirCap } from "@/lib/auth";
+import { nitCanonico } from "@/lib/nit";
 
 /** Los maestros se alimentan de dos lados: (1) manualmente aquí, (2) de lo que se
  *  hace en la grilla de conciliación (al clasificar, al usar "+agregar"). Todo lo
@@ -161,7 +162,11 @@ export async function agregarPlazo(fd: FormData) {
  *  en Pagos). Se puede llenar a mano aquí o cargando el Sheet. fuente='humano'. */
 export async function agregarCuentaBanco(fd: FormData) {
   const user = await guard();
-  const nit = S(fd, "nit");
+  // La clave canónica es el NIT SIN dígito de verificación: así llegan las
+  // facturas de la DIAN. Cargarlo con el DV pegado ('901675059-9') hace que la
+  // cuenta exista y aun así el proveedor NO salga en el archivo del banco — sin
+  // un solo error en pantalla. Pasó con MODAL TRACK: $37 millones (ver lib/nit.ts).
+  const nit = nitCanonico(S(fd, "nit"));
   if (!nit) throw new Error("Falta el NIT del proveedor.");
   const v = (k: string) => S(fd, k) || null;
   await withTx(async (c) => {
@@ -237,6 +242,9 @@ export async function actualizarCampo(fd: FormData) {
     if (!Number.isFinite(n)) throw new Error("Número inválido.");
     valor = n;
   }
+  // Mismo cuidado al editar a mano: si alguien teclea el NIT con su DV, la
+  // fila queda huérfana del resto del sistema.
+  if (grupo === "bancos" && campo === "nit" && typeof valor === "string") valor = nitCanonico(valor);
   const keyVal: string | number = def.key === "id" ? Number(id) : id;
   const extra = grupo === "proveedores" || grupo === "bancos" ? ", fuente = 'humano', actualizado_en = now()" : "";
   await withTx(async (c) => {

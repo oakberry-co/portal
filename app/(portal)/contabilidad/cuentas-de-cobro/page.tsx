@@ -23,7 +23,7 @@ async function cargar(): Promise<CuentaCobro[]> {
             cc.reten_total::float AS reten_total, cc.otros_valor::float AS otros_valor,
             cc.otros_concepto, cc.observaciones, cc.retencion_ok,
             coalesce(cc.valor_a_pagar, cc.valor)::float AS valor_a_pagar,
-            mr.ret_rf, mr.ret_iva, mr.ret_ica,
+            mr.ret_rf, mr.ret_iva, mr.ret_ica, to_jsonb(rc) AS regla,
             to_jsonb(cert) AS cert, to_jsonb(cb) AS cuenta,
             coalesce(cor.lista, '[]') AS correos
        FROM cuentas_cobro cc
@@ -38,6 +38,12 @@ async function cargar(): Promise<CuentaCobro[]> {
                 max(CASE WHEN tipo='ReteIVA'    THEN tarifa END)::text AS ret_iva,
                 max(CASE WHEN tipo='ReteICA'    THEN tarifa END)::text AS ret_ica
            FROM maestro_retenciones WHERE nit_proveedor = cc.num_doc) mr ON TRUE
+       -- Lo que el equipo ya viene practicando para ESTE concepto. No lo aplica
+       -- solo: lo SUGIERE en el modal, diciendo en cuántos casos se basa.
+       LEFT JOIN LATERAL (
+         SELECT r.retefuente::text, r.reteica::text, r.aplica, r.n_casos,
+                r.concordancia::text, r.fuente
+           FROM regla_retencion_concepto r WHERE r.concepto = cc.concepto) rc ON TRUE
        LEFT JOIN LATERAL (
          SELECT json_agg(json_build_object('tipo', tipo, 'estado', estado,
                             'enviado_en', enviado_en::text, 'error', left(error, 120))

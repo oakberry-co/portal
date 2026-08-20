@@ -1,5 +1,20 @@
 import type { Metadata } from "next";
 import { FormCuentaCobro } from "./FormCuentaCobro";
+import { getPool } from "@/lib/db";
+
+// La lista de conceptos sale del maestro, no de una constante: es la MISMA que
+// usa contabilidad adentro, y de ella cuelga la retención que se practica.
+// Texto libre no sirve para eso — "Video UGC" y "2 Videos UGC - OAKBERRY" son
+// el mismo concepto y ninguna regla los va a reconocer nunca.
+async function conceptos(): Promise<string[]> {
+  try {
+    const r = await getPool().query<{ nombre: string }>(
+      "SELECT nombre FROM maestro_conceptos WHERE activo ORDER BY nombre");
+    return r.rows.map((x) => x.nombre);
+  } catch {
+    return [];   // si la base no responde, el formulario cae a texto libre
+  }
+}
 
 // Landing pública: sin login, sin menú del portal y SIN tocar la base para pintar
 // (las áreas son una lista fija en lib/areas.ts). Solo escribe al enviar.
@@ -23,7 +38,8 @@ export const metadata: Metadata = {
   },
 };
 
-export default function CuentaDeCobroPage() {
+export default async function CuentaDeCobroPage() {
+  const lista = await conceptos();
   return (
     <div className="pub">
       <div className="pub-card">
@@ -32,7 +48,7 @@ export default function CuentaDeCobroPage() {
         <p className="pub-sub">
           Envía tus datos y documentos para que Oakberry (ManelFoods) procese tu pago. Toma 2 minutos.
         </p>
-        <FormCuentaCobro />
+        <FormCuentaCobro conceptos={lista} />
         <p className="pub-foot">Tus datos se usan solo para el trámite de pago. Oakberry Colombia · ManelFoods S.A.S.</p>
       </div>
     </div>

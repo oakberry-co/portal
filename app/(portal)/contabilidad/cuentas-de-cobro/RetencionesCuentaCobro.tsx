@@ -15,15 +15,26 @@ import { confirmarRetencionesCuentaCobro } from "./actions";
 const cop = new Intl.NumberFormat("es-CO", { style: "currency", currency: "COP", maximumFractionDigits: 0 });
 const $ = (n: number) => cop.format(Math.round(n || 0));
 
+/** La tarifa que el equipo ya viene practicando para un concepto. No la inventa
+ *  el sistema: sale de contar las retenciones que ya confirmó un humano. */
+export type ReglaConcepto = {
+  retefuente: string | null; reteica: string | null;
+  aplica: boolean; n_casos: number; concordancia: string | null; fuente: string;
+};
+
 export function RetencionesCuentaCobro({
   id, proveedor, valor, ivaIncluido, retefuente, reteiva, reteica,
   tarRf, tarIva, tarIca, otrosValor, otrosConcepto, observaciones, yaConfirmada, onClose,
+  concepto, regla,
 }: {
   id: number; proveedor: string; valor: number; ivaIncluido: number | null;
   retefuente: number | null; reteiva: number | null; reteica: number | null;
   tarRf: string | null; tarIva: string | null; tarIca: string | null;
   otrosValor: number | null; otrosConcepto: string | null; observaciones: string | null;
   yaConfirmada: boolean; onClose: () => void;
+  concepto: string | null;
+  /** Lo que el equipo ya practicó para ESTE concepto (scripts/aprender_retenciones.py). */
+  regla: ReglaConcepto | null;
 }) {
   // % inicial: retro-calcula desde el monto confirmado; si no hay, usa la TARIFA
   // que el proveedor ya tiene en el maestro (la misma fuente que las facturas).
@@ -34,9 +45,17 @@ export function RetencionesCuentaCobro({
   const ivaNum = Number(String(iva).replace(/[^\d]/g, "")) || 0;
   const base = Math.max(0, valor - ivaNum);
 
-  const [rf, setRf] = useState(pctIni(retefuente, base) || (tarRf ?? ""));
+  // Orden de precedencia, del más específico al más general:
+  //   1. lo que ya se confirmó en esta cuenta de cobro;
+  //   2. la tarifa pactada con ESTE proveedor (maestro de retenciones);
+  //   3. lo que el equipo viene practicando para ESTE concepto.
+  // Un concepto que aprendimos que NO retiene entra en 0, no vacío: la decisión
+  // "aquí no se retiene" también es una decisión y hay que poder verla.
+  const delConcepto = (t: string | null) =>
+    regla ? (regla.aplica ? (t ?? "") : "0") : "";
+  const [rf, setRf] = useState(pctIni(retefuente, base) || (tarRf ?? "") || delConcepto(regla?.retefuente ?? null));
   const [ri, setRi] = useState(pctIni(reteiva, ivaNum) || (tarIva ?? ""));
-  const [ric, setRic] = useState(pctIni(reteica, base) || (tarIca ?? ""));
+  const [ric, setRic] = useState(pctIni(reteica, base) || (tarIca ?? "") || delConcepto(regla?.reteica ?? null));
   const [otros, setOtros] = useState(otrosValor && otrosValor > 0 ? String(Math.round(otrosValor)) : "");
 
   const amtRf = Math.round((base * (Number(rf) || 0)) / 100);
@@ -56,6 +75,27 @@ export function RetencionesCuentaCobro({
           </div>
           <button type="button" className="modal-x" onClick={onClose} aria-label="Cerrar">×</button>
         </div>
+
+        {/* De dónde salió lo que está precargado. Sin esto el revisor ve unos
+            números puestos por arte de magia y no sabe si creerles. */}
+        {regla && !yaConfirmada && (
+          <div className={"ret-sugerencia" + (regla.n_casos < 3 ? " flojo" : "")}>
+            {regla.fuente === "humano" ? (
+              <>📌 <b>Regla fijada por el contador</b> para <b>{concepto}</b>
+                {regla.aplica
+                  ? <>: ReteFuente {regla.retefuente}%{regla.reteica ? ` · ReteICA ${regla.reteica}%` : ""}.</>
+                  : <>: este concepto <b>no retiene</b>.</>}</>
+            ) : regla.aplica ? (
+              <>💡 En <b>{concepto}</b> vienes reteniendo <b>{regla.retefuente}%</b>
+                {regla.reteica ? <> y <b>{regla.reteica}%</b> de ICA</> : null}
+                {" — "}{regla.n_casos} {regla.n_casos === 1 ? "vez" : "veces"}, coincidiendo el {regla.concordancia}%.
+                {regla.n_casos < 3 && <> <b>Son pocos casos: confírmalo.</b></>}</>
+            ) : (
+              <>💡 En <b>{concepto}</b> <b>no has retenido</b> ninguna de las {regla.n_casos} veces
+                anteriores. Va en cero — cámbialo si esta vez sí toca.</>
+            )}
+          </div>
+        )}
 
         <form action={async (fd) => { await confirmarRetencionesCuentaCobro(fd); onClose(); }}>
           <input type="hidden" name="id" value={id} />

@@ -5,7 +5,7 @@ import { revisarCuentaCobro } from "./actions";
 import { docsFaltantes } from "@/lib/areas";
 import { bloqueoAprobacion, type CertEstado, type CuentaMaestro } from "@/lib/certificaciones";
 import { CorreosIntake, DocsIntake, PanelCuenta, type CorreoEnviado, type DocIntake } from "../_intake/PanelCuenta";
-import { RetencionesCuentaCobro } from "./RetencionesCuentaCobro";
+import { RetencionesCuentaCobro, type ReglaConcepto } from "./RetencionesCuentaCobro";
 import { useFiltrosIntake } from "../_intake/FiltrosIntake";
 import { ErrorAccion } from "../_intake/ErrorAccion";
 import type { Resultado } from "@/lib/resultado";
@@ -25,6 +25,7 @@ export type CuentaCobro = {
   otros_concepto: string | null; observaciones: string | null;
   retencion_ok: boolean; valor_a_pagar: number | null;
   ret_rf: string | null; ret_iva: string | null; ret_ica: string | null;
+  regla: ReglaConcepto | null;
 };
 
 const cop = new Intl.NumberFormat("es-CO", { style: "currency", currency: "COP", maximumFractionDigits: 0 });
@@ -207,6 +208,7 @@ export function CuentasCobroView({ items, operar }: { items: CuentaCobro[]; oper
           tarRf={retenDe.ret_rf} tarIva={retenDe.ret_iva} tarIca={retenDe.ret_ica}
           otrosValor={retenDe.otros_valor} otrosConcepto={retenDe.otros_concepto}
           observaciones={retenDe.observaciones} yaConfirmada={retenDe.retencion_ok}
+          concepto={retenDe.concepto} regla={retenDe.regla}
           onClose={() => setRetenDe(null)} />
       )}
     </div>

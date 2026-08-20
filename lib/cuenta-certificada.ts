@@ -1,5 +1,6 @@
 import type { PoolClient } from "pg";
 import { registrarEvento } from "@/lib/eventos";
+import { nitCanonico } from "@/lib/nit";
 
 /** Escribe en el maestro la cuenta que trae una certificación válida.
  *
@@ -34,6 +35,10 @@ export async function aplicarCuentaCertificada(
   // LA QUE MANDA es la que un humano leyó del documento y escribió. El OCR es el
   // asistente: si el revisor corrigió lo leído, su número es el que va al banco.
   const cuenta = (cert.cuenta_verificada ?? "").trim();
+  // El NIT entra por un formulario público: puede venir con el dígito de
+  // verificación pegado. Si se guarda así, la cuenta no cruza con las facturas
+  // de ese mismo proveedor y el pago se cae del archivo del banco (ver lib/nit.ts).
+  const nit = nitCanonico(cert.nit);
   if (!cuenta) throw new Error("Nadie ha verificado esta cuenta contra el documento.");
   if (cert.aplicada) return;
 
@@ -46,7 +51,7 @@ export async function aplicarCuentaCertificada(
        num_cuenta = EXCLUDED.num_cuenta, fuente = 'certificacion',
        certificacion_id = EXCLUDED.certificacion_id, certificada = TRUE,
        actualizado_en = now()`,
-    [cert.nit, cert.banco, cert.tipo_cuenta, cuenta, cert.titular_doc, cert.id]);
+    [nit, cert.banco, cert.tipo_cuenta, cuenta, cert.titular_doc, cert.id]);
   await c.query("UPDATE certificacion_bancaria SET aplicada = TRUE WHERE id = $1", [certId]);
 
   await registrarEvento(c, {
