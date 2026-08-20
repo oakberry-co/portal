@@ -99,6 +99,7 @@ export const FacturaCard = memo(function FacturaCard({
 }) {
   const [modal, setModal] = useState(false);
   const [modalCta, setModalCta] = useState(false);
+  const [det, setDet] = useState(false);
   const [pending, start] = useTransition();
   const [faltaDest, setFaltaDest] = useState(false);
 
@@ -138,6 +139,21 @@ export const FacturaCard = memo(function FacturaCard({
   }
 
   // Resumen de retenciones: lo confirmado si existe, si no la sugerencia (preview).
+  /** Una línea del desglose. Se muestra el CONFIRMADO si existe; si no, la
+   *  propuesta, marcada como tal. Una línea en cero no se pinta: "ReteIVA $0"
+   *  ocupa el mismo espacio que un dato y no dice nada. */
+  const linea = (nombre: string, confirmado: string | null, sugerido: string | null) => {
+    const val = f.retencion_ok ? Number(confirmado ?? 0) : Number(confirmado ?? sugerido ?? 0);
+    if (!(val > 0)) return null;
+    const esSug = !f.retencion_ok && confirmado == null;
+    return (
+      <tr key={nombre}>
+        <td>{nombre}{esSug && <i className="det-sug"> propuesta</i>}</td>
+        <td className="num neg">− {copN(val)}</td>
+      </tr>
+    );
+  };
+
   const retenTotal = f.retencion_ok && f.reten_total != null
     ? num(f.reten_total)
     : num(f.retefuente_sug) + num(f.reteiva_sug) + num(f.reteica_sug);
@@ -207,9 +223,39 @@ export const FacturaCard = memo(function FacturaCard({
         <button type="submit" className="c-btn" disabled={locked || pending || !puedeClasificar} title={puedeClasificar ? "Confirmar clasificación" : "Solo lectura para tu rol (contador)"}>{pending ? "…" : "Clasif."}</button>
       </form>
 
-      <div className="c-pagar">
+      {/* PASAR POR ENCIMA muestra el desglose de lo retenido. Un total pelado no
+          se puede revisar: para saber si "ret $588.600" está bien hay que ver de
+          qué se compone, y hasta hoy eso obligaba a abrir el modal factura por
+          factura. Va en hover Y en clic — en celular no hay hover (Regla 20). */}
+      <div className="c-pagar det-wrap"
+           onMouseEnter={() => setDet(true)} onMouseLeave={() => setDet(false)}>
         <div className="num accent" title="Valor a pagar = total − retenciones">{copN(valorAPagar)}</div>
-        <div className="muted mini">ret {copN(retenTotal)}{f.retencion_ok ? " ✓" : ""}</div>
+        <button type="button" className="muted mini det-btn" onClick={() => setDet((v) => !v)}
+                aria-expanded={det}>
+          ret {copN(retenTotal)}{f.retencion_ok ? " ✓" : ""}
+        </button>
+        {det && (
+          <div className="det-pop" role="dialog" aria-label="Detalle de la retención">
+            <div className="det-tit">{f.retencion_ok ? "Lo que se le retuvo" : "Lo que se le retendría"}</div>
+            <table><tbody>
+              <tr><td>Total factura</td><td className="num">{copN(total)}</td></tr>
+              {linea("ReteFuente", f.retefuente, f.retefuente_sug)}
+              {linea("ReteIVA", f.reteiva, f.reteiva_sug)}
+              {linea("ReteICA", f.reteica, f.reteica_sug)}
+              {Number(f.otros_valor) > 0 && (
+                <tr><td>{f.otros_concepto || "Otros"}</td><td className="num neg">− {copN(Number(f.otros_valor))}</td></tr>
+              )}
+              {Number(f.abono_aplicado) > 0 && (
+                <tr><td>Adelanto ya pagado</td><td className="num neg">− {copN(Number(f.abono_aplicado))}</td></tr>
+              )}
+              <tr className="det-tot"><td>Se le paga</td><td className="num">{copN(valorAPagar)}</td></tr>
+            </tbody></table>
+            {f.observaciones && <div className="det-obs">“{f.observaciones}”</div>}
+            {!f.retencion_ok && (
+              <div className="det-aviso">Todavía nadie la confirmó: estos valores son la propuesta.</div>
+            )}
+          </div>
+        )}
       </div>
 
       <button

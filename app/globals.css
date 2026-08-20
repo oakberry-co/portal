@@ -1372,3 +1372,27 @@ tr.desfasada td { background: #fff8e6; }
 /* Chip de la grilla: la factura que va desviada se ve de un golpe. */
 .c-desvio { background: var(--yellow); color: var(--ink) !important; border-color: var(--yellow) !important; }
 @media (max-width: 640px) { .cta-dest-grid { grid-template-columns: 1fr; } }
+
+/* --- Detalle de la retención (pasar por encima del valor) ------------------ */
+/* Un total pelado no se puede revisar: para saber si "ret $588.600" está bien
+   hay que ver de qué se compone. Se abre en hover y también en clic, porque en
+   celular no hay hover (Regla 20). */
+.det-wrap { position: relative; }
+.det-btn { background: none; border: none; padding: 0; cursor: pointer; font: inherit;
+  color: var(--lav); text-align: right; width: 100%; }
+.det-btn:hover { color: var(--purple); filter: none; }
+.det-pop { position: absolute; right: 0; top: 100%; z-index: 60; min-width: 236px;
+  background: var(--card); border: 1px solid var(--border-lav); border-radius: 10px;
+  box-shadow: var(--shadow-lg); padding: 10px 12px; text-align: left; }
+.det-tit { font-size: 10px; font-family: var(--mono); text-transform: uppercase;
+  letter-spacing: .05em; color: var(--lav); margin-bottom: 6px; }
+.det-pop table { width: 100%; border-collapse: collapse; }
+.det-pop td { font-size: 12px; padding: 3px 0; color: var(--ink); }
+.det-pop td.num { text-align: right; font-variant-numeric: tabular-nums; }
+.det-pop td.neg { color: var(--coral); }
+.det-sug { font-style: normal; font-size: 9.5px; color: var(--lav); }
+.det-tot td { border-top: 1px solid var(--border); padding-top: 6px; font-weight: 800; color: var(--purple-deep); }
+.det-obs { margin-top: 7px; font-size: 11px; color: var(--lav); font-style: italic; }
+.det-aviso { margin-top: 7px; font-size: 10.5px; color: var(--warn); font-weight: 700; }
+/* En pantalla angosta se ancla a la derecha del viewport para que no se salga. */
+@media (max-width: 640px) { .det-pop { right: auto; left: 0; min-width: 210px; } }
