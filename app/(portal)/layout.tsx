@@ -24,8 +24,8 @@ const MENU: Grupo[] = [
       { label: "Conciliación de pagos", href: "/contabilidad/conciliacion", cap: "ver_conciliacion" },
       { label: "Pagos", href: "/contabilidad/pagos", cap: "ver_pagos" },
       { label: "Conciliación de bancos", cap: "pagos" },
-      { label: "Cuentas de cobro", href: "/contabilidad/cuentas-de-cobro", cap: "intake" },
-      { label: "Cotizaciones", href: "/contabilidad/cotizaciones", cap: "intake" },
+      { label: "Cuentas de cobro", href: "/contabilidad/cuentas-de-cobro", cap: "ver_intake" },
+      { label: "Cotizaciones", href: "/contabilidad/cotizaciones", cap: "ver_intake" },
       { label: "Órdenes de compra", cap: "ver_conciliacion" },
       { label: "Pagos internacionales", cap: "pagos" },
     ],
@@ -34,7 +34,7 @@ const MENU: Grupo[] = [
   {
     label: "Configuraciones",
     items: [
-      { label: "Maestros", href: "/contabilidad/maestros", cap: "maestros" },
+      { label: "Maestros", href: "/contabilidad/maestros", cap: "maestro_retenciones" },
       { label: "Soportes", href: "/contabilidad/soportes", cap: "ver_conciliacion" },
       { label: "Configuración", href: "/contabilidad/configuracion", cap: "usuarios" },
     ],

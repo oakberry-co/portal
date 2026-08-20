@@ -36,7 +36,7 @@ const TABS = [
   { key: "cerrada", label: "Cerradas" },
 ] as const;
 
-export function CotizacionesView({ cots, candidatos }: { cots: Cotizacion[]; candidatos: CandidataFactura[] }) {
+export function CotizacionesView({ cots, candidatos, operar }: { cots: Cotizacion[]; candidatos: CandidataFactura[]; operar: boolean }) {
   const [tab, setTab] = useState<string>("recibida");
   const porNit = useMemo(() => {
     const m = new Map<string, CandidataFactura[]>();
@@ -98,7 +98,7 @@ export function CotizacionesView({ cots, candidatos }: { cots: Cotizacion[]; can
                 )}
 
                 <DocsIntake docs={c.documentos ?? []} />
-                <PanelCuenta cert={c.cert} cuenta={c.cuenta} bloqueo={c.estado === "recibida" ? bloqueo : null}
+                <PanelCuenta cert={c.cert} cuenta={c.cuenta} bloqueo={c.estado === "recibida" ? bloqueo : null} operar={operar}
                              docUrl={(c.documentos ?? []).find((d) => d.clase === "certificacion_bancaria")?.path} />
 
                 {/* Abonos */}
@@ -109,7 +109,7 @@ export function CotizacionesView({ cots, candidatos }: { cots: Cotizacion[]; can
                   {c.abonos.length > 0 && (
                     <div className="cot-abono-list">{c.abonos.map((a, i) => <span key={i}>{$(a.monto)} <i className="muted">{a.fecha}{a.cuenta ? ` · ${a.cuenta}` : ""}</i></span>)}</div>
                   )}
-                  {["aprobada", "facturada", "recibida"].includes(c.estado) && (
+                  {operar && ["aprobada", "facturada", "recibida"].includes(c.estado) && (
                     <form action={agregarAbono} className="cot-abono-form">
                       <input type="hidden" name="cotizacion_id" value={c.id} />
                       <input name="monto" inputMode="numeric" placeholder="$ abono" />
@@ -124,9 +124,9 @@ export function CotizacionesView({ cots, candidatos }: { cots: Cotizacion[]; can
                 {c.cufe_factura ? (
                   <div className="cot-cruce ok">
                     <span>🔗 Enlazada a factura <b>{c.fact_numero}</b> · total {$(c.fact_total)} · abonos {$(c.abono_total)} → <b>saldo a pagar {$(saldo)}</b></span>
-                    <form action={quitarEnlace} style={{ display: "inline" }}><input type="hidden" name="cotizacion_id" value={c.id} /><button className="cc-act ghost" type="submit">Quitar</button></form>
+                    {operar && <form action={quitarEnlace} style={{ display: "inline" }}><input type="hidden" name="cotizacion_id" value={c.id} /><button className="cc-act ghost" type="submit">Quitar</button></form>}
                   </div>
-                ) : (c.estado === "aprobada" || c.estado === "recibida") ? (
+                ) : operar && (c.estado === "aprobada" || c.estado === "recibida") ? (
                   cands.length ? (
                     <form action={enlazarFactura} className="cot-cruce">
                       <input type="hidden" name="cotizacion_id" value={c.id} />
@@ -146,7 +146,10 @@ export function CotizacionesView({ cots, candidatos }: { cots: Cotizacion[]; can
                 {c.nota_revision && <div className="cc-nota">📝 {c.nota_revision}</div>}
 
                 <div className="cc-acts">
-                  {c.estado === "recibida" && (
+                  {!operar && c.estado === "recibida" && (
+                    <span className="cc-solo-lectura">👁 Solo lectura — aprobar o devolver lo hace el equipo de compras.</span>
+                  )}
+                  {operar && c.estado === "recibida" && (
                     <>
                       <Accion id={c.id} accion="aprobar" disabled={!!bloqueo}
                               title={bloqueo ?? "El adelanto pasa a Pagos › Validación semana en curso"}>
@@ -160,10 +163,10 @@ export function CotizacionesView({ cots, candidatos }: { cots: Cotizacion[]; can
                       {c.pago_id
                         ? <span className="cc-enpagos">✓ adelanto pagado</span>
                         : <span className="cc-enpagos">→ en Pagos · Validación semana en curso</span>}
-                      <Accion id={c.id} accion="cerrar" ghost>Cerrar</Accion>
+                      {operar && <Accion id={c.id} accion="cerrar" ghost>Cerrar</Accion>}
                     </>
                   )}
-                  {["cerrada", "rechazada"].includes(c.estado) && <Accion id={c.id} accion="reabrir" ghost>Reabrir</Accion>}
+                  {operar && ["cerrada", "rechazada"].includes(c.estado) && <Accion id={c.id} accion="reabrir" ghost>Reabrir</Accion>}
                 </div>
               </div>
             );

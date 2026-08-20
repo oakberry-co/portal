@@ -73,7 +73,7 @@ function Rechazo({ id }: { id: number }) {
   );
 }
 
-export function CuentasCobroView({ items }: { items: CuentaCobro[] }) {
+export function CuentasCobroView({ items, operar }: { items: CuentaCobro[]; operar: boolean }) {
   const [tab, setTab] = useState<string>("recibida");
   const [retenDe, setRetenDe] = useState<CuentaCobro | null>(null);
   // Los mismos filtros de Conciliación. Las PESTAÑAS filtran por estado; esto
@@ -134,7 +134,7 @@ export function CuentasCobroView({ items }: { items: CuentaCobro[] }) {
                 </div>
 
                 <DocsIntake docs={c.documentos ?? []} />
-                <PanelCuenta cert={c.cert} cuenta={c.cuenta} bloqueo={c.estado === "recibida" ? bloqueo : null}
+                <PanelCuenta cert={c.cert} cuenta={c.cuenta} bloqueo={c.estado === "recibida" ? bloqueo : null} operar={operar}
                              docUrl={(c.documentos ?? []).find((d) => d.clase === "certificacion_bancaria")?.path} />
 
                 {/* RETENCIONES — mismo modelo que la factura. Sin esto la cuenta
@@ -165,7 +165,14 @@ export function CuentasCobroView({ items }: { items: CuentaCobro[] }) {
                 {c.revisado_por && <div className="muted mini">Revisó: {c.revisado_por.split("@")[0]}</div>}
 
                 <div className="cc-acts">
-                  {c.estado === "recibida" && (
+                  {/* Quien solo VE (el contador) entra a revisar y a poner las
+                      retenciones; aprobar es de quien opera la bandeja. */}
+                  {!operar && c.estado === "recibida" && (
+                    <span className="cc-solo-lectura">
+                      👁 Solo lectura — puedes calcular las retenciones; aprobar o devolver lo hace el equipo de compras.
+                    </span>
+                  )}
+                  {operar && c.estado === "recibida" && (
                     <>
                       <Accion id={c.id} accion="aprobar" disabled={!!bloqueo}
                               title={bloqueo ?? "Pasa a Pagos › Validación semana en curso"}>
@@ -177,10 +184,10 @@ export function CuentasCobroView({ items }: { items: CuentaCobro[] }) {
                   {c.estado === "aprobada" && (
                     <>
                       <span className="cc-enpagos">→ en Pagos · Validación semana en curso</span>
-                      <Accion id={c.id} accion="reabrir" ghost>Devolver a revisión</Accion>
+                      {operar && <Accion id={c.id} accion="reabrir" ghost>Devolver a revisión</Accion>}
                     </>
                   )}
-                  {(c.estado === "pagada" || c.estado === "rechazada") && <Accion id={c.id} accion="reabrir" ghost>Reabrir</Accion>}
+                  {operar && (c.estado === "pagada" || c.estado === "rechazada") && <Accion id={c.id} accion="reabrir" ghost>Reabrir</Accion>}
                 </div>
               </div>
             );

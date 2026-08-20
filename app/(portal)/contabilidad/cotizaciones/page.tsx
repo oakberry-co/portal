@@ -47,7 +47,10 @@ async function cargar(): Promise<{ cots: Cotizacion[]; candidatos: CandidataFact
 
 export default async function CotizacionesInboxPage() {
   const { rol } = await getCurrentUser();
-  if (!puede(rol, "intake")) redirect("/contabilidad/conciliacion");
+  if (!puede(rol, "ver_intake")) redirect("/contabilidad/conciliacion");
+  // VER no es OPERAR: el contador entra a revisar y a poner retenciones,
+  // pero aprobar —que es lo que manda la plata al banco— no es suyo.
+  const operar = puede(rol, "intake");
   let data: Awaited<ReturnType<typeof cargar>>;
   try {
     data = await cargar();
@@ -62,7 +65,7 @@ export default async function CotizacionesInboxPage() {
         <b> Pagos › Validación semana en curso</b> (bloque <i>sin factura DIAN</i>); cuando llegue la factura final,
         <b> enlázala</b> y Pagos le descuenta lo adelantado (nunca doble).
       </p>
-      <CotizacionesView cots={data.cots} candidatos={data.candidatos} />
+      <CotizacionesView cots={data.cots} candidatos={data.candidatos} operar={operar} />
     </div>
   );
 }

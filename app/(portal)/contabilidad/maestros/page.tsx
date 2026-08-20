@@ -37,7 +37,11 @@ async function cargar(): Promise<MaestrosData> {
 
 export default async function MaestrosPage() {
   const { rol } = await getCurrentUser();
-  if (!puede(rol, "maestros")) redirect("/contabilidad/conciliacion");
+  // El contador entra SOLO al maestro de retenciones: rectificar una tarifa es
+  // su trabajo; el maestro de CUENTAS BANCARIAS —de donde sale a quién se le
+  // paga— no. Por eso son dos capacidades y no una.
+  const todos = puede(rol, "maestros");
+  if (!todos && !puede(rol, "maestro_retenciones")) redirect("/contabilidad/conciliacion");
   let data: MaestrosData;
   try {
     data = await cargar();
@@ -57,7 +61,7 @@ export default async function MaestrosPage() {
         siembra de su fuente y <b>crece con lo que pones a mano aquí y con lo que haces en la grilla</b> —
         la meta es que cada vez más facturas entren ya clasificadas.
       </p>
-      <MaestrosView data={data} />
+      <MaestrosView data={data} soloRetenciones={!todos} />
     </div>
   );
 }

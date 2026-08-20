@@ -21,6 +21,11 @@ const N = (fd: FormData, k: string): number | null => {
 async function guard() {
   return exigirCap("maestros");
 }
+/** Las TARIFAS de retención las rectifica también el contador (`causador`), que
+ *  es quien sabe cuál va. `maestros` la implica, así que el admin pasa igual. */
+async function guardRetenciones() {
+  return exigirCap("maestro_retenciones");
+}
 const done = () => revalidatePath("/contabilidad/maestros");
 
 export async function agregarConcepto(fd: FormData) {
@@ -105,7 +110,7 @@ export async function agregarCuentaPuc(fd: FormData) {
 }
 
 export async function agregarRetencion(fd: FormData) {
-  const user = await guard();
+  const user = await guardRetenciones();
   const nit = S(fd, "nit_proveedor");
   if (!nit) throw new Error("Falta el NIT del proveedor.");
   const reglas: [string, number | null, string][] = [
@@ -192,8 +197,10 @@ const EDITABLE: Record<string, { tabla: string; key: string; campos: Record<stri
 };
 
 export async function actualizarCampo(fd: FormData) {
-  const user = await guard();
   const grupo = S(fd, "tabla"), campo = S(fd, "campo"), id = S(fd, "id");
+  // El permiso depende de QUÉ maestro se toca: las tarifas de retención las
+  // rectifica el contador; lo demás (cuentas bancarias incluidas) no.
+  const user = grupo === "retenciones" ? await guardRetenciones() : await guard();
 
   // Retenciones: la tabla es 1 fila por proveedor con columnas RF/ICA/IVA. Cada
   // celda es una regla (nit_proveedor, tipo). Editar/vaciar toca esa regla.

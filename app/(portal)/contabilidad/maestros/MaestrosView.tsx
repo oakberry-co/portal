@@ -59,8 +59,13 @@ function Edit({ grupo, id, campo, value, num, suffix }: {
   );
 }
 
-export function MaestrosView({ data }: { data: MaestrosData }) {
-  const [tab, setTab] = useState<TabKey>("conceptos");
+export function MaestrosView({ data, soloRetenciones = false }: {
+  data: MaestrosData;
+  /** El contador: solo el maestro de tarifas, no el de cuentas bancarias. */
+  soloRetenciones?: boolean;
+}) {
+  const tabs = soloRetenciones ? TABS.filter((t) => t.key === "retenciones") : TABS;
+  const [tab, setTab] = useState<TabKey>(soloRetenciones ? "retenciones" : "conceptos");
   const [q, setQ] = useState("");
   const filtro = q.trim().toLowerCase();
   const match = (...xs: (string | number | null)[]) =>
@@ -76,7 +81,7 @@ export function MaestrosView({ data }: { data: MaestrosData }) {
   return (
     <div className="maestros">
       <div className="mst-tabs">
-        {TABS.map((t) => (
+        {tabs.map((t) => (
           <button key={t.key} className={"mst-tab" + (tab === t.key ? " on" : "")} onClick={() => { setTab(t.key); setQ(""); }}>
             {t.label}<i>{cuenta(t.key)}</i>
           </button>

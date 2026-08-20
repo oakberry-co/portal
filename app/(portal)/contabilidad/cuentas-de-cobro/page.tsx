@@ -49,7 +49,10 @@ async function cargar(): Promise<CuentaCobro[]> {
 
 export default async function CuentasCobroInboxPage() {
   const { rol } = await getCurrentUser();
-  if (!puede(rol, "intake")) redirect("/contabilidad/conciliacion");
+  if (!puede(rol, "ver_intake")) redirect("/contabilidad/conciliacion");
+  // VER no es OPERAR: el contador entra a revisar y a poner retenciones,
+  // pero aprobar —que es lo que manda la plata al banco— no es suyo.
+  const operar = puede(rol, "intake");
   let data: CuentaCobro[];
   try {
     data = await cargar();
@@ -63,7 +66,7 @@ export default async function CuentasCobroInboxPage() {
         Envíos del formulario público <b>manelfoods.co/cuentas-de-cobro</b>. Revisa los documentos y aprueba:
         al aprobar pasa a <b>Pagos › Validación semana en curso</b> (bloque <i>sin factura DIAN</i>), a 30 días de su llegada.
       </p>
-      <CuentasCobroView items={data} />
+      <CuentasCobroView items={data} operar={operar} />
     </div>
   );
 }

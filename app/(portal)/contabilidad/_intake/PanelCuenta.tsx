@@ -170,8 +170,10 @@ function BotonCert({ certId, accion, ghost, children }: {
 }
 
 /** La cuenta a la que se pagaría + por qué no se puede aprobar todavía. */
-export function PanelCuenta({ cert, cuenta, bloqueo, docUrl }: {
+export function PanelCuenta({ cert, cuenta, bloqueo, docUrl, operar = true }: {
   cert: CertEstado | null; cuenta: CuentaMaestro; bloqueo: string | null; docUrl?: string;
+  /** false = solo lectura (el contador): ve el estado, no decide sobre la cuenta. */
+  operar?: boolean;
 }) {
   // ORDEN: primero se VERIFICA (un humano lee el papel), después se decide si
   // la cuenta cambió. Al revés quedaba un callejón sin salida — confirmar el
@@ -229,11 +231,11 @@ export function PanelCuenta({ cert, cuenta, bloqueo, docUrl }: {
           <div>🔒 <b>El certificado viene con clave</b> y no abrió con el documento del proveedor.
             Ya se le pidió por correo que lo mande sin candado. Si te dio la clave por otro lado,
             escríbela y el lector lo reintenta en su próxima corrida.</div>
-          <form action={darClaveCertificacion} className="cc-clave">
+          {operar && <form action={darClaveCertificacion} className="cc-clave">
             <input type="hidden" name="cert_id" value={cert.id} />
             <input name="clave" placeholder="Clave del documento" autoComplete="off" maxLength={80} />
             <button type="submit" className="cc-act">Reintentar con esta clave</button>
-          </form>
+          </form>}
           <div className="cc-clave-nota">
             La clave se usa una vez y se borra; no queda guardada ni en la bitácora.
             Si es una contraseña que el proveedor usa en otras partes, mejor pídele el archivo sin candado.
@@ -242,7 +244,9 @@ export function PanelCuenta({ cert, cuenta, bloqueo, docUrl }: {
       )}
 
       {/* PRIMERO el paso humano: sin leer el papel no se decide nada más. */}
-      {pedirVerificacion && cert && <VerificarCuenta cert={cert} docUrl={docUrl} />}
+      {pedirVerificacion && cert && (operar
+        ? <VerificarCuenta cert={cert} docUrl={docUrl} />
+        : <div className="cc-verif esperando">🔍 Esperando que compras verifique la cuenta contra el documento.</div>)}
 
       {/* CAMBIO DE CUENTA: el caso peligroso. La cuenta anterior sigue intacta. */}
       {cambio && (
@@ -261,7 +265,7 @@ export function PanelCuenta({ cert, cuenta, bloqueo, docUrl }: {
               Confírmalo con el proveedor por un canal que ya conozcas antes de aceptar.
             </div>
           )}
-          <div className="cc-cambio-acts">
+          {operar && <div className="cc-cambio-acts">
             <BotonCert certId={cert!.id} accion={confirmarCambioCuenta}>
               {soloPrefijo ? "✓ Usar la del certificado" : "✓ Sí, cambió: usar la nueva"}
             </BotonCert>
@@ -278,7 +282,7 @@ export function PanelCuenta({ cert, cuenta, bloqueo, docUrl }: {
                 ✗ No la reconozco
               </BotonCert>
             )}
-          </div>
+          </div>}
         </div>
       )}
 
