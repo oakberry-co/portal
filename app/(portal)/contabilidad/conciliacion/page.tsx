@@ -39,6 +39,9 @@ async function cargar(): Promise<{ filas: FacturaRow[]; conceptos: string[]; des
             COALESCE(e.tipo_pago, mp.tipo_pago_default) AS tipo_pago,
             p.retefuente_sug, p.reteiva_sug, p.reteica_sug,
             mr.ret_rf::text AS ret_rf, mr.ret_ica::text AS ret_ica, mr.ret_iva::text AS ret_iva,
+            rc.retefuente::text AS rc_rf, rc.reteica::text AS rc_ica,
+            rc.aplica AS rc_aplica, rc.n_casos AS rc_n,
+            rc.concordancia::text AS rc_conc, rc.fuente AS rc_fuente,
             vs.soporte_url, vs.n_soportes, vs.destino_drive
        FROM facturas f
        JOIN factura_estado e USING (cufe)
@@ -51,6 +54,10 @@ async function cargar(): Promise<{ filas: FacturaRow[]; conceptos: string[]; des
                 max(CASE WHEN tipo='ReteIVA'    THEN tarifa END) AS ret_iva
          FROM maestro_retenciones GROUP BY nit_proveedor
        ) mr ON mr.nit_proveedor = f.nit_proveedor
+       -- Lo que el equipo YA viene practicando para ESTE concepto
+       -- (scripts/aprender_retenciones.py). No se aplica solo: precarga el modal
+       -- diciendo en cuántos casos se basa, y decide un humano.
+       LEFT JOIN regla_retencion_concepto rc ON rc.concepto = e.concepto
        LEFT JOIN v_factura_soportes vs USING (cufe)
        -- La cotización cuyo adelanto ya se aplicó a esta factura (el cruce).
        LEFT JOIN cotizaciones cot ON cot.cufe_factura = f.cufe

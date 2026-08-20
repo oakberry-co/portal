@@ -7,11 +7,13 @@ import { exigirCap } from "@/lib/auth";
 import { syncAbono } from "@/lib/abonos";
 import { subirComprobante } from "@/lib/intake";
 import { encolarCorreo } from "@/lib/correos";
+import { mismoNit, soloDigitos } from "@/lib/nit";
+import { intentar, type Resultado } from "@/lib/resultado";
 import type { PoolClient } from "pg";
 
 // Tablero de pagos (3 columnas):
 //   retenciones_ok  → PENDIENTES  (se asigna la cuenta propia por factura)
-//   aprobada_pago   → VALIDACIÓN  (por cuenta; se baja el CSV del banco)
+//   aprobada_pago   → VALIDACIÓN  (por cuenta; se baja el archivo del banco en Excel)
 //   pagada          → CONFIRMADOS (el banco ya ejecutó)
 // Cada movimiento deja su evento en la bitácora (append-only encadenada).
 
@@ -201,7 +203,7 @@ function tipoIntake(v: FormDataEntryValue | null): TipoIntake {
 const TABLA: Record<TipoIntake, string> = { cuenta_cobro: "cuentas_cobro", cotizacion: "cotizaciones" };
 
 /** Asigna la cuenta propia desde la que se pagará una solicitud del intake
- *  (equivale a `asignarCuenta` de las facturas: es lo que la mete en el CSV de
+ *  (equivale a `asignarCuenta` de las facturas: es lo que la mete en el archivo de
  *  esa cuenta). */
 export async function asignarCuentaIntake(fd: FormData) {
   const user = await guardPagador();
@@ -328,7 +330,7 @@ export async function confirmarPagoIntake(fd: FormData) {
 // ---------- Configuración de Pagos (cuentas propias + día de pago) ----------
 
 /** Agrega/reactiva una cuenta propia de pago. `formato` define la plantilla del
- *  CSV del banco (rappi | davivienda | pse | generico). */
+ *  archivo del banco (rappi | davivienda | pse | generico). Todos salen en .xlsx. */
 export async function agregarCuentaPago(fd: FormData) {
   const user = await guardPagador();
   const nombre = String(fd.get("nombre") ?? "").trim();
@@ -439,4 +441,157 @@ export async function quitarAdelanto(fd: FormData) {
   });
   done();
   revalidatePath("/contabilidad/cotizaciones");
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ACTUALIZAR CUENTAS BANCARIAS (el botón del tablero)
+//
+// El caso que lo pidió: se carga la cuenta de un proveedor nuevo en Maestros y
+// el tablero sigue diciendo "⚠ sin cuenta · no entra al archivo del banco".
+// Casi siempre no es que la página esté vieja — es que la cuenta quedó cargada
+// con el NIT y su DÍGITO DE VERIFICACIÓN pegado (MERCATURA SAS: la DIAN factura
+// con 901392309 y el maestro quedó en 9013923091). Para un humano es el mismo
+// proveedor; para el `JOIN ... ON cb.nit = f.nit_proveedor`, no. Es el mismo bug
+// que detuvo $37M con MODAL TRACK, entrando por la única puerta que quedaba
+// abierta a propósito: `nitCanonico` NO quita el último dígito cuando el NIT
+// viene escrito de corrido, porque una cédula de 10 dígitos tiene ~9% de dar un
+// DV válido por casualidad y truncarla la rompería.
+//
+// Por eso el botón hace DOS cosas y ninguna adivina (Regla 3, Regla 18):
+//   1. vuelve a leer el maestro (revalida la página);
+//   2. de los proveedores que siguen sin cuenta, dice POR QUÉ: si hay una cuenta
+//      cargada bajo el mismo NIT con DV verificado, la propone para vincular —
+//      y la vinculación la confirma una persona, con su evento en la bitácora.
+
+/** Un proveedor del tablero cuya cuenta existe, pero cargada bajo otro NIT. */
+export type CuentaHuerfana = {
+  nit: string;          // el NIT con el que llegan sus facturas (el canónico)
+  nombre: string;
+  nitMaestro: string;   // el NIT con el que quedó cargada la cuenta
+  banco: string | null;
+  ultimos4: string;
+};
+export type RevisionCuentas = {
+  conCuenta: number;
+  candidatos: CuentaHuerfana[];
+  faltantes: { nit: string; nombre: string }[];
+};
+
+/** Los proveedores que hoy están en el tablero (facturas + intake), que son los
+ *  únicos a los que se les va a pagar y por tanto los únicos que importan. */
+const SQL_PROVEEDORES_TABLERO = `
+  WITH prov AS (
+    SELECT f.nit_proveedor AS nit, f.nombre_proveedor AS nombre
+      FROM factura_estado e JOIN facturas f USING (cufe)
+      LEFT JOIN maestro_proveedores mp ON mp.nit = f.nit_proveedor
+     WHERE e.estado IN ('retenciones_ok','aprobada_pago')
+       AND coalesce(e.pago_estado,'pendiente') <> 'pagado'
+       AND coalesce(e.tipo_pago, mp.tipo_pago_default, 'credito') <> 'debito'
+    UNION
+    SELECT num_doc, razon_social FROM cuentas_cobro
+     WHERE estado = 'aprobada' AND pago_id IS NULL
+    UNION
+    SELECT nit, razon_social FROM cotizaciones
+     WHERE estado IN ('aprobada','facturada') AND pago_id IS NULL AND requiere_adelanto
+  )
+  SELECT p.nit, max(p.nombre) AS nombre,
+         bool_or(cb.num_cuenta IS NOT NULL) AS tiene
+    FROM prov p
+    LEFT JOIN cuentas_bancarias_proveedor cb ON cb.nit = p.nit
+   WHERE p.nit IS NOT NULL AND p.nit <> ''
+   GROUP BY p.nit`;
+
+/** Relee el maestro de cuentas bancarias y explica los que siguen sin cuenta. */
+export async function revisarCuentasBancarias(): Promise<RevisionCuentas> {
+  await guardPagador();
+  const pool = getPool();
+  const { rows } = await pool.query<{ nit: string; nombre: string | null; tiene: boolean }>(SQL_PROVEEDORES_TABLERO);
+
+  const sin = rows.filter((r) => !r.tiene);
+  const candidatos: CuentaHuerfana[] = [];
+  const faltantes: { nit: string; nombre: string }[] = [];
+
+  if (sin.length) {
+    // Se traen SOLO las filas del maestro que comparten prefijo con alguno de
+    // los NIT sin cuenta; el veredicto lo da `mismoNit`, que exige que el
+    // dígito de más sea el DV correcto. No es un parecido: es una igualdad.
+    const nits = sin.map((r) => r.nit);
+    const { rows: cbs } = await pool.query<{ nit: string; banco: string | null; num_cuenta: string | null }>(
+      `SELECT nit, banco, num_cuenta FROM cuentas_bancarias_proveedor cb
+        WHERE num_cuenta IS NOT NULL
+          AND EXISTS (SELECT 1 FROM unnest($1::text[]) n
+                       WHERE cb.nit LIKE n || '%' OR n LIKE cb.nit || '%')`, [nits]);
+    for (const r of sin) {
+      const cand = cbs.find((cb) => cb.nit !== r.nit && mismoNit(cb.nit, r.nit));
+      if (cand) {
+        candidatos.push({
+          nit: r.nit, nombre: r.nombre ?? r.nit, nitMaestro: cand.nit, banco: cand.banco,
+          ultimos4: (cand.num_cuenta ?? "").slice(-4),
+        });
+      } else {
+        faltantes.push({ nit: r.nit, nombre: r.nombre ?? r.nit });
+      }
+    }
+  }
+  done();   // relee la página: si la cuenta se cargó bien, el ⚠ desaparece solo
+  return { conCuenta: rows.length - sin.length, candidatos, faltantes };
+}
+
+/** Corrige el NIT con el que quedó cargada una cuenta bancaria, para que cruce
+ *  con las facturas del proveedor. Lo dispara una PERSONA desde el tablero: el
+ *  sistema propone, nunca reescribe un NIT por su cuenta. */
+export async function vincularCuentaBancaria(fd: FormData): Promise<Resultado> {
+  return intentar(async () => {
+    const user = await guardPagador();
+    const nitMaestro = soloDigitos(String(fd.get("nit_maestro") ?? ""));
+    const nitReal = soloDigitos(String(fd.get("nit") ?? ""));
+    if (!nitMaestro || !nitReal) throw new Error("Faltan los NIT que se van a vincular.");
+    // El candado: solo se acepta el par exacto NIT ↔ NIT+DV verificado. Sin
+    // esto, esta acción sería una forma de mover la cuenta de un proveedor a
+    // otro desde la pantalla de pagos.
+    if (!mismoNit(nitMaestro, nitReal)) {
+      throw new Error(`${nitMaestro} y ${nitReal} no son el mismo NIT (el dígito de verificación no cuadra). `
+        + "Corrige la cuenta en Maestros.");
+    }
+    if (nitMaestro === nitReal) throw new Error("Ya está cargada con ese NIT.");
+    if (nitReal.length > nitMaestro.length) {
+      throw new Error("La clave de la casa es el NIT SIN dígito de verificación; no se le puede agregar.");
+    }
+
+    await withTx(async (c: PoolClient) => {
+      const orig = await c.query<{ nit: string; banco: string | null; num_cuenta: string | null; num_doc: string | null }>(
+        "SELECT nit, banco, num_cuenta, num_doc FROM cuentas_bancarias_proveedor WHERE nit = $1 FOR UPDATE", [nitMaestro]);
+      if (!orig.rowCount) throw new Error(`Ya no hay una cuenta cargada con el NIT ${nitMaestro}.`);
+
+      // NUNCA pisar una cuenta que ya existe: si el NIT bueno ya tiene la suya,
+      // son dos cuentas distintas para el mismo proveedor y eso lo decide un
+      // humano mirando las dos, no este botón (Regla 13).
+      const ya = await c.query<{ banco: string | null; num_cuenta: string | null }>(
+        "SELECT banco, num_cuenta FROM cuentas_bancarias_proveedor WHERE nit = $1", [nitReal]);
+      if (ya.rowCount) {
+        const y = ya.rows[0];
+        throw new Error(`El NIT ${nitReal} YA tiene cuenta cargada (${y.banco ?? "sin banco"} ••••${(y.num_cuenta ?? "").slice(-4)}). `
+          + `La otra es ${orig.rows[0].banco ?? "sin banco"} ••••${(orig.rows[0].num_cuenta ?? "").slice(-4)}. `
+          + "Ábrelas en Maestros y deja una sola: el sistema no elige a cuál cuenta se paga.");
+      }
+
+      // El documento del titular arrastra el mismo error cuando es el NIT de la
+      // empresa: se corrige solo si es ese mismo NIT, nunca si es una cédula.
+      const corrigeDoc = mismoNit(orig.rows[0].num_doc, nitReal) && orig.rows[0].num_doc !== nitReal;
+      await c.query(
+        `UPDATE cuentas_bancarias_proveedor
+            SET nit = $2, num_doc = CASE WHEN $3 THEN $2 ELSE num_doc END, actualizado_en = now()
+          WHERE nit = $1`, [nitMaestro, nitReal, corrigeDoc]);
+
+      await registrarEvento(c, {
+        cufe: null, tipo: "corrige_nit_cuenta_bancaria", campo: "nit",
+        valorAnterior: { nit: nitMaestro, num_doc: orig.rows[0].num_doc },
+        valorNuevo: { nit: nitReal, num_doc: corrigeDoc ? nitReal : orig.rows[0].num_doc,
+                      banco: orig.rows[0].banco, motivo: "tenía pegado el dígito de verificación" },
+        actor: user.email, actorRol: user.rol, origen: "web",
+      });
+    });
+    done();
+    revalidatePath("/contabilidad/maestros");
+  });
 }

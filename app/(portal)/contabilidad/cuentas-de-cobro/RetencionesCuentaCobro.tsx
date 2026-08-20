@@ -17,6 +17,15 @@ const $ = (n: number) => cop.format(Math.round(n || 0));
 
 /** La tarifa que el equipo ya viene practicando para un concepto. No la inventa
  *  el sistema: sale de contar las retenciones que ya confirmó un humano. */
+/** La tarifa como la escribe una persona. Viene de un NUMERIC(6,3) y llega
+ *  "2.500" — que en Colombia se lee como DOS MIL QUINIENTOS por ciento. Se le
+ *  quitan los ceros de relleno y se usa la coma decimal: "2,5%". */
+export function pct(t: string | null | undefined): string {
+  const n = Number(t);
+  if (!Number.isFinite(n)) return String(t ?? "");
+  return n.toLocaleString("es-CO", { maximumFractionDigits: 3 });
+}
+
 export type ReglaConcepto = {
   retefuente: string | null; reteica: string | null;
   aplica: boolean; n_casos: number; concordancia: string | null; fuente: string;
@@ -83,12 +92,12 @@ export function RetencionesCuentaCobro({
             {regla.fuente === "humano" ? (
               <>📌 <b>Regla fijada por el contador</b> para <b>{concepto}</b>
                 {regla.aplica
-                  ? <>: ReteFuente {regla.retefuente}%{regla.reteica ? ` · ReteICA ${regla.reteica}%` : ""}.</>
+                  ? <>: ReteFuente {pct(regla.retefuente)}%{regla.reteica ? ` · ReteICA ${pct(regla.reteica)}%` : ""}.</>
                   : <>: este concepto <b>no retiene</b>.</>}</>
             ) : regla.aplica ? (
-              <>💡 En <b>{concepto}</b> vienes reteniendo <b>{regla.retefuente}%</b>
-                {regla.reteica ? <> y <b>{regla.reteica}%</b> de ICA</> : null}
-                {" — "}{regla.n_casos} {regla.n_casos === 1 ? "vez" : "veces"}, coincidiendo el {regla.concordancia}%.
+              <>💡 En <b>{concepto}</b> vienes reteniendo <b>{pct(regla.retefuente)}%</b>
+                {regla.reteica ? <> y <b>{pct(regla.reteica)}%</b> de ICA</> : null}
+                {" — "}{regla.n_casos} {regla.n_casos === 1 ? "vez" : "veces"}, coincidiendo el {pct(regla.concordancia)}%.
                 {regla.n_casos < 3 && <> <b>Son pocos casos: confírmalo.</b></>}</>
             ) : (
               <>💡 En <b>{concepto}</b> <b>no has retenido</b> ninguna de las {regla.n_casos} veces

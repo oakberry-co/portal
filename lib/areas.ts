@@ -20,7 +20,7 @@ export type Area = (typeof AREAS)[number];
  *  que la bandeja pueda decir "falta el RUT" en vez de listar archivos sueltos.
  *
  *  Los 4 son OBLIGATORIOS para poder aprobar y pasar a Pagos. La certificación
- *  bancaria es la crítica: de ella sale la cuenta que va al CSV del banco, así
+ *  bancaria es la crítica: de ella sale la cuenta que va al archivo del banco, así
  *  que tiene que ser el documento que emite la entidad — no un Word ni un papel
  *  escrito a mano (el lector los rechaza y le pide al proveedor el real).
  *

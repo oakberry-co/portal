@@ -2,16 +2,23 @@ import { NextRequest, NextResponse } from "next/server";
 import { getPool } from "@/lib/db";
 import { getCurrentUserOrNull } from "@/lib/auth";
 import { puede } from "@/lib/permisos";
-import { codigoBanco, codigoBancoDavivienda, CODIGOS_DAVIVIENDA, TIPO_DOC_FULL, TIPO_CUENTA_FULL, csvRow } from "@/lib/bancos";
+import { codigoBanco, codigoBancoDavivienda, CODIGOS_DAVIVIENDA, TIPO_DOC_FULL, TIPO_CUENTA_FULL } from "@/lib/bancos";
 import { codigoTipoId, codigoProducto, textoBanco, revisarFila, type Aviso } from "@/lib/davivienda";
 import ExcelJS from "exceljs";
 
 export const dynamic = "force-dynamic";
 
-// Archivo del banco (CSV) para una cuenta propia (Rappi/Davivienda/PSE): UNA
-// línea por proveedor, con el total a pagar. El formato lo define
-// cuentas_pago.formato. Los datos bancarios salen del maestro
-// cuentas_bancarias_proveedor (banco → código ACH aquí).
+// Archivo del banco para una cuenta propia (Rappi/Davivienda/PSE): UNA línea por
+// proveedor, con el total a pagar. El formato lo define cuentas_pago.formato. Los
+// datos bancarios salen del maestro cuentas_bancarias_proveedor (banco → código
+// ACH aquí).
+//
+// TODOS LOS FORMATOS SALEN EN .XLSX. Antes Rappi y PSE bajaban en CSV y era el
+// mismo agujero que ya nos costó caro en Davivienda: un CSV no lleva formato de
+// celda, así que Excel abre "03300013737" y lo guarda como 3300013737 — otra
+// cuenta, sin un solo error en pantalla. HOY hay dos cuentas del maestro que
+// empiezan por cero. En Excel la celda del número de cuenta va en formato Texto
+// y el cero sobrevive.
 //
 // El total suma DOS orígenes, porque el banco hace una sola transferencia por
 // proveedor: las facturas en Validación y lo aprobado en el intake (cuentas de
@@ -75,7 +82,7 @@ export async function GET(req: NextRequest) {
     [cuenta]);
 
   // CANDADO DEL ARCHIVO DEL BANCO: un proveedor SIN número de cuenta no puede
-  // salir en el CSV. Antes salía igual con el campo vacío (`num_cuenta ?? ""`):
+  // salir en el archivo. Antes salía igual con el campo vacío (`num_cuenta ?? ""`):
   // una línea rota que el banco rechaza o —peor— que alguien "arregla" a mano
   // escribiendo una cuenta al vuelo, que es justo el agujero que estamos
   // cerrando. Para un proveedor del intake la ÚNICA forma de tener cuenta es
@@ -89,22 +96,40 @@ export async function GET(req: NextRequest) {
   const numDoc = (r: Fila) => limpiaDoc(r.num_doc ?? r.nit ?? "");
   const tipoCta = (r: Fila) => TIPO_CUENTA_FULL[r.tipo_cuenta ?? ""] ?? (r.tipo_cuenta ?? "");
 
-  const lines: string[] = [];
+  const wb = new ExcelJS.Workbook();
+  wb.creator = "Portal Oakberry";
+  const hoja = wb.addWorksheet("Pagos");   // Davivienda regla 8: una sola hoja
+  let revisar = 0;
+
+  /** El número de cuenta SIEMPRE en celda de formato Texto, en cualquier
+   *  formato: es la única forma de que un cero a la izquierda sobreviva a que
+   *  alguien abra y vuelva a guardar el archivo. */
+  const cuentaComoTexto = (fila: ExcelJS.Row, col: number, valor: string | null) => {
+    const celda = fila.getCell(col);
+    celda.numFmt = "@";
+    celda.value = String(valor ?? "");
+  };
+
   if (formato === "rappi") {
-    lines.push(csvRow(["NOMBRE", "APELLIDOS", "TIPO DE DOCUMENTO", "NÚMERO DE DOCUMENTO", "BANCO", "CÓDIGO DE BANCO", "TIPO DE CUENTA", "NÚMERO DE CUENTA", "MONTO"]));
-    for (const r of pagables) lines.push(csvRow([
-      nombre(r), apellido(r), TIPO_DOC_FULL[doc(r)] ?? doc(r), numDoc(r),
-      r.banco ?? "", codigoBanco(r.banco), tipoCta(r), r.num_cuenta ?? "", Math.round(r.monto),
-    ]));
+    hoja.addRow(["NOMBRE", "APELLIDOS", "TIPO DE DOCUMENTO", "NÚMERO DE DOCUMENTO", "BANCO",
+                 "CÓDIGO DE BANCO", "TIPO DE CUENTA", "NÚMERO DE CUENTA", "MONTO"]);
+    for (const r of pagables) {
+      const fila = hoja.addRow([
+        nombre(r), apellido(r), TIPO_DOC_FULL[doc(r)] ?? doc(r), numDoc(r),
+        r.banco ?? "", codigoBanco(r.banco), tipoCta(r), r.num_cuenta ?? "", Math.round(r.monto),
+      ]);
+      cuentaComoTexto(fila, 8, r.num_cuenta);
+      fila.getCell(4).numFmt = "@";   // el documento también: hay NIT que empiezan por 0
+      fila.getCell(4).value = numDoc(r);
+      fila.getCell(9).numFmt = "#,##0";
+    }
   } else if (formato === "davivienda") {
-    // DAVIVIENDA VA EN .XLSX, NO EN CSV, y no por gusto: el banco exige que el
-    // número de cuenta viaje como TEXTO (regla 5) y un CSV no puede llevar
-    // formato de celda. Excel abre "051004208" y lo guarda como 51004208 — otra
-    // cuenta. Dos de las cuentas del maestro empiezan por cero HOY.
+    // DAVIVIENDA tiene formato PROPIO exigido por el banco ("Formato Excel
+    // Estándar"): códigos numéricos de identificación, tipo de producto en
+    // CC/CA/DP/TP/DE, textos sin tildes ni signos y el valor sin separador de
+    // miles. No se toca por gusto: una fila fuera de formato la rechaza el banco.
     const validos = new Set(CODIGOS_DAVIVIENDA);
     const avisos: Aviso[] = [];
-    const wb = new ExcelJS.Workbook();
-    const hoja = wb.addWorksheet("Pagos");   // regla 8: una sola hoja
     hoja.addRow(["Tipo de Identificación", "Número de Identificación", "Nombre", "Apellido",
                  "Código del Banco", "Tipo de Producto o Servicio", "Número del Producto o Servicio",
                  "Valor del pago o de la recarga", "Referencia (Opcional)",
@@ -127,57 +152,52 @@ export async function GET(req: NextRequest) {
       ]);
       // Regla 5: la celda del número de producto queda en formato Texto y con
       // el valor exacto. Sin esto los ceros a la izquierda se pierden solos.
-      const celda = fila.getCell(7);
-      celda.numFmt = "@";
-      celda.value = String(r.num_cuenta ?? "");
+      cuentaComoTexto(fila, 7, r.num_cuenta);
       fila.getCell(8).numFmt = "0.00";        // 9 · 16 enteros + 2 decimales, sin miles
     });
-
-    const buf = await wb.xlsx.writeBuffer();
-    const revisar = avisos.length;
+    revisar = avisos.length;
     if (revisar) {
       console.warn("[pagos/export] Davivienda — filas por revisar a mano:\n"
         + avisos.map((a) => `  fila ${a.fila} · ${a.quien} · regla ${a.regla}: ${a.detalle}`).join("\n"));
     }
-    return new NextResponse(buf as ArrayBuffer, { headers: {
-      "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      "Content-Disposition": `attachment; filename="pagos_${slugDe(cuenta)}_${hoyISO()}`
-        + (sinCuenta.length ? `_FALTAN-${sinCuenta.length}` : "")
-        + (revisar ? `_REVISAR-${revisar}` : "") + `.xlsx"`,
-      "X-Proveedores-Incluidos": String(pagables.length),
-      "X-Proveedores-Sin-Cuenta": String(sinCuenta.length),
-      "X-Filas-Por-Revisar": String(revisar),
-      "X-Solicitudes-Sin-Factura-Dian": String(rows.reduce((n, r) => n + (r.n_intake || 0), 0)),
-    }});
   } else {
-    // PSE / genérico: CSV legible para que quien pague vea línea por línea.
-    lines.push(csvRow(["Proveedor", "NIT", "Banco", "Tipo de cuenta", "Número de cuenta", "Titular", "Documento", "Valor a pagar"]));
-    for (const r of pagables) lines.push(csvRow([
-      r.nombre ?? "", r.nit, r.banco ?? "", tipoCta(r), r.num_cuenta ?? "",
-      (nombre(r) + " " + apellido(r)).trim(), `${doc(r)} ${numDoc(r)}`.trim(), Math.round(r.monto),
-    ]));
+    // PSE / genérico: hoja legible para que quien pague vea línea por línea.
+    hoja.addRow(["Proveedor", "NIT", "Banco", "Tipo de cuenta", "Número de cuenta",
+                 "Titular", "Documento", "Valor a pagar"]);
+    for (const r of pagables) {
+      const fila = hoja.addRow([
+        r.nombre ?? "", r.nit, r.banco ?? "", tipoCta(r), r.num_cuenta ?? "",
+        (nombre(r) + " " + apellido(r)).trim(), `${doc(r)} ${numDoc(r)}`.trim(), Math.round(r.monto),
+      ]);
+      cuentaComoTexto(fila, 5, r.num_cuenta);
+      fila.getCell(2).numFmt = "@";
+      fila.getCell(2).value = String(r.nit ?? "");
+      fila.getCell(8).numFmt = "#,##0";
+    }
   }
 
-  const csv = "﻿" + lines.join("\r\n") + "\r\n"; // BOM (Excel) + CRLF
-  const fecha = new Date().toISOString().slice(0, 10);
-  const slug = cuenta.toLowerCase().normalize("NFD").replace(/[^a-z0-9]/g, "");
+  hoja.getRow(1).font = { bold: true };
+  hoja.columns.forEach((c) => { c.width = Math.max(12, Math.min(38, (String(c.values?.[1] ?? "").length + 4))); });
+
+  const buf = await wb.xlsx.writeBuffer();
 
   // Lo excluido NUNCA se calla: un archivo con menos líneas de las esperadas se
   // lee como "ya está todo pagado". Va en el nombre del archivo (que el humano
   // SÍ ve) y en un header para quien lo consuma por programa.
-  const cabeceras: Record<string, string> = {
-    "Content-Type": "text/csv; charset=utf-8",
-    "Content-Disposition": `attachment; filename="pagos_${slug}_${fecha}`
-      + (sinCuenta.length ? `_FALTAN-${sinCuenta.length}` : "") + `.csv"`,
-    "X-Proveedores-Incluidos": String(pagables.length),
-    "X-Proveedores-Sin-Cuenta": String(sinCuenta.length),
-    "X-Solicitudes-Sin-Factura-Dian": String(rows.reduce((n, r) => n + (r.n_intake || 0), 0)),
-  };
   if (sinCuenta.length) {
     console.warn("[pagos/export] fuera del archivo por no tener cuenta bancaria: "
       + sinCuenta.map((r) => `${r.nombre ?? r.nit} (${r.nit})`).join(", "));
   }
-  return new NextResponse(csv, { headers: cabeceras });
+  return new NextResponse(buf as ArrayBuffer, { headers: {
+    "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "Content-Disposition": `attachment; filename="pagos_${slugDe(cuenta)}_${hoyISO()}`
+      + (sinCuenta.length ? `_FALTAN-${sinCuenta.length}` : "")
+      + (revisar ? `_REVISAR-${revisar}` : "") + `.xlsx"`,
+    "X-Proveedores-Incluidos": String(pagables.length),
+    "X-Proveedores-Sin-Cuenta": String(sinCuenta.length),
+    "X-Filas-Por-Revisar": String(revisar),
+    "X-Solicitudes-Sin-Factura-Dian": String(rows.reduce((n, r) => n + (r.n_intake || 0), 0)),
+  }});
 }
 
 const hoyISO = () => new Date().toISOString().slice(0, 10);

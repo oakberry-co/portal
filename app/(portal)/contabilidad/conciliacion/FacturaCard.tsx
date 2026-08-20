@@ -52,6 +52,9 @@ export type FacturaRow = {
   reteica_sug: string | null;
   ret_rf: string | null;
   ret_ica: string | null;
+  // Lo que el equipo ya viene practicando para el CONCEPTO de esta factura.
+  rc_rf: string | null; rc_ica: string | null; rc_aplica: boolean | null;
+  rc_n: number | null; rc_conc: string | null; rc_fuente: string | null;
   ret_iva: string | null;
 };
 
@@ -273,6 +276,11 @@ export const FacturaCard = memo(function FacturaCard({
           tarRf={f.ret_rf}
           tarIva={f.ret_iva}
           tarIca={f.ret_ica}
+          regla={f.rc_rf != null || f.rc_aplica === false ? {
+            retefuente: f.rc_rf, reteica: f.rc_ica, aplica: f.rc_aplica ?? true,
+            n_casos: f.rc_n ?? 0, concordancia: f.rc_conc, fuente: f.rc_fuente ?? "aprendida",
+          } : null}
+          concepto={f.concepto}
           otros_valor={f.otros_valor}
           otros_concepto={f.otros_concepto}
           observaciones={f.observaciones}

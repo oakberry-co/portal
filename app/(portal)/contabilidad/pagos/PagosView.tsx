@@ -2,7 +2,8 @@
 
 import { Fragment, useState, useTransition } from "react";
 import { asignarCuenta, quitarCuenta, confirmarPago, agregarCuentaPago, toggleCuentaPago, guardarDiaPago,
-         asignarCuentaIntake, confirmarPagoIntake, descontarAdelanto, quitarAdelanto } from "./actions";
+         asignarCuentaIntake, confirmarPagoIntake, descontarAdelanto, quitarAdelanto,
+         revisarCuentasBancarias, vincularCuentaBancaria, type RevisionCuentas } from "./actions";
 
 export type FilaPago = {
   cufe: string; nombre_proveedor: string | null; nit_proveedor: string; numero: string;
@@ -99,6 +100,8 @@ export function PagosView({ pendientes, validacion, intake, adelantos, historial
   const [modal, setModal] = useState<{ grupo: Grupo } | null>(null);
   const [modalIntake, setModalIntake] = useState<FilaIntake | null>(null);
   const [pending, start] = useTransition();
+  const [revision, setRevision] = useState<RevisionCuentas | null>(null);
+  const [errRev, setErrRev] = useState<string | null>(null);
   const [vista, setVista] = useState<"tablero" | "historial" | "config">(puedePagos ? "tablero" : "historial");
 
   const toggle = <T,>(set: Set<T>, k: T) => { const n = new Set(set); n.has(k) ? n.delete(k) : n.add(k); return n; };
@@ -114,6 +117,27 @@ export function PagosView({ pendientes, validacion, intake, adelantos, historial
   // Adelantos sin descontar, por proveedor: es lo que se le avisa a quien paga.
   const adelantosDe = new Map<string, Adelanto[]>();
   for (const a of adelantos) (adelantosDe.get(a.nit) ?? adelantosDe.set(a.nit, []).get(a.nit)!).push(a);
+  // Relee el maestro de cuentas bancarias. Ojo: NO es solo refrescar la
+  // pantalla — de los que siguen sin cuenta dice por qué, que es lo que hacía
+  // falta cuando la cuenta estaba cargada bajo el NIT con dígito de verificación.
+  function revisarCuentas() {
+    setErrRev(null);
+    start(async () => {
+      try { setRevision(await revisarCuentasBancarias()); }
+      catch (e) { setErrRev((e as Error).message); }
+    });
+  }
+  function vincular(c: { nit: string; nitMaestro: string }) {
+    setErrRev(null);
+    start(async () => {
+      const fd = new FormData();
+      fd.set("nit", c.nit); fd.set("nit_maestro", c.nitMaestro);
+      const r = await vincularCuentaBancaria(fd);
+      if (!r.ok) { setErrRev(r.error ?? "No se pudo vincular."); return; }
+      try { setRevision(await revisarCuentasBancarias()); } catch { setRevision(null); }
+    });
+  }
+
   function descontar(cufe: string, cotId: number) {
     start(async () => {
       try {
@@ -252,6 +276,42 @@ export function PagosView({ pendientes, validacion, intake, adelantos, historial
         <div className="pg-kpi paid"><i>Pagado este mes</i><b>{$(pagadoMes)}</b><span>{historial.filter((p) => p.fecha_pago.slice(0, 7) === mesActual).length} pago(s)</span></div>
       </div>
 
+      {/* Después de cargar la cuenta de un proveedor nuevo en Maestros, este
+          botón vuelve a leer el maestro y explica los que sigan sin cuenta. */}
+      <div className="pg-revisar">
+        <button type="button" className="pg-mini" disabled={pending} onClick={revisarCuentas}>
+          🔄 Actualizar cuentas bancarias
+        </button>
+        <span className="hint">Cargaste una cuenta en Maestros y el proveedor sigue apareciendo «sin cuenta»: dale aquí.</span>
+      </div>
+      {errRev && <div className="pg-rev-box err">⚠ {errRev}</div>}
+      {revision && (
+        <div className="pg-rev-box">
+          <b>{revision.conCuenta}</b> proveedor(es) del tablero con cuenta lista para el archivo del banco.
+          {!revision.candidatos.length && !revision.faltantes.length && " Ninguno quedó por fuera. ✅"}
+          {revision.candidatos.map((c) => (
+            <div key={c.nitMaestro} className="pg-rev-item cand">
+              <div>
+                <b>{c.nombre}</b> — su cuenta ({c.banco ?? "sin banco"} ••••{c.ultimos4}) está cargada con el
+                NIT <span className="mono">{c.nitMaestro}</span>, pero sus facturas llegan con
+                el <span className="mono">{c.nit}</span>. Es el mismo NIT con el dígito de verificación pegado,
+                y por eso no cruza.
+              </div>
+              <button type="button" className="pg-btn" disabled={pending} onClick={() => vincular(c)}>
+                Vincular al {c.nit}
+              </button>
+            </div>
+          ))}
+          {revision.faltantes.map((f) => (
+            <div key={f.nit} className="pg-rev-item falta">
+              <b>{f.nombre}</b> <span className="mono">{f.nit}</span> — no hay ninguna cuenta cargada.
+              Cárgala en <a href="/contabilidad/maestros">Maestros › Cuentas bancarias</a> o pídele al proveedor
+              su certificación bancaria por <span className="mono">manelfoods.co/cuentas-de-cobro</span>.
+            </div>
+          ))}
+        </div>
+      )}
+
       <div className={"pg-board" + (pending ? " busy" : "")}>
         {/* ---------- Columna 1: PAGOS PENDIENTES (semanas pasadas) ---------- */}
         <section className="pg-col">
@@ -283,7 +343,7 @@ export function PagosView({ pendientes, validacion, intake, adelantos, historial
                   <span className="pg-cta-nom">{c.cuenta === "—" ? "🕓 Sin cuenta asignada" : "💳 " + c.cuenta}</span>
                   <span className="pg-cta-tot">{$(c.total)}</span>
                   {c.cuenta !== "—" && (
-                    <a className="pg-csv" href={`/contabilidad/pagos/export?cuenta=${encodeURIComponent(c.cuenta)}`} title="Descargar archivo del banco (.csv)">⬇ CSV</a>
+                    <a className="pg-csv" href={`/contabilidad/pagos/export?cuenta=${encodeURIComponent(c.cuenta)}`} title="Descargar el archivo del banco en Excel (.xlsx). El número de cuenta va en celda de texto: los ceros a la izquierda no se pierden.">⬇ Excel</a>
                   )}
                 </div>
                 {c.provs.map((g) => {
@@ -292,7 +352,7 @@ export function PagosView({ pendientes, validacion, intake, adelantos, historial
                     <div key={key} className="pg-prov val">
                       <div className="pg-prov-head" onClick={() => setAbierto(toggle(abierto, key))}>
                         <span className="pg-caret">{abierto.has(key) ? "▾" : "▸"}</span>
-                        <span className="pg-prov-nom">{g.nombre}{!g.tiene_banco && <span className="pg-nobank" title="Sin cuenta bancaria: NO entra al archivo del banco. Pídele al proveedor su certificación bancaria por el portal público.">⚠ sin cuenta · no entra al CSV</span>}</span>
+                        <span className="pg-prov-nom">{g.nombre}{!g.tiene_banco && <span className="pg-nobank" title="Sin cuenta bancaria: NO entra al archivo del banco. Pídele al proveedor su certificación bancaria por el portal público.">⚠ sin cuenta · no entra al archivo del banco</span>}</span>
                         <span className="pg-prov-tot">{$(g.total)}</span>
                       </div>
                       {abierto.has(key) && (
@@ -415,7 +475,7 @@ function ItemIntake({ it, ctas, cuenta0, pending, start, onPagar }: {
       </div>
       {!it.tiene_banco && (
         <div className="pg-nobank blk" title="Sin cuenta bancaria en el maestro: no puede salir en el archivo del banco.">
-          ⚠ sin cuenta bancaria · no entra al CSV
+          ⚠ sin cuenta bancaria · no entra al archivo del banco
         </div>
       )}
       <div className="pg-assign">

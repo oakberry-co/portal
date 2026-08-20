@@ -1,4 +1,4 @@
-// Códigos ACH Colombia + mapeos para armar el archivo del banco (CSV).
+// Códigos ACH Colombia + mapeos para armar el archivo del banco (.xlsx).
 // La tabla de códigos viene de la plantilla de pagos de Rappi (columna oculta
 // "CÓDIGO DE BANCO"). El maestro de cuentas del proveedor guarda el NOMBRE del
 // banco; aquí resolvemos su código. Si el banco no matchea, el código va vacío
@@ -192,15 +192,6 @@ export const TIPO_CUENTA_FULL: Record<string, string> = {
   corriente: "CUENTA CORRIENTE",
   deposito: "DEPOSITO ELECTRONICO",
 };
-
-/** Escapa un valor para CSV (comillas si trae coma, comilla o salto de línea). */
-export function csvCell(v: unknown): string {
-  const s = v == null ? "" : String(v);
-  return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
-}
-export function csvRow(cells: unknown[]): string {
-  return cells.map(csvCell).join(",");
-}
 
 /** Códigos vigentes de la tabla de Davivienda ("Código canales"). Sirve para
  *  VALIDAR, no para corregir: un código que no está acá se le señala a un

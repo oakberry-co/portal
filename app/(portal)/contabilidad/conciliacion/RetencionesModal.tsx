@@ -7,6 +7,7 @@
 import { useState } from "react";
 import { confirmarRetenciones } from "./actions";
 import { type FilaPatch } from "./FacturaCard";
+import { pct, type ReglaConcepto } from "../cuentas-de-cobro/RetencionesCuentaCobro";
 
 const cop = new Intl.NumberFormat("es-CO", { style: "currency", currency: "COP", maximumFractionDigits: 0 });
 const copN = (n: number) => cop.format(Math.round(n || 0));
@@ -18,6 +19,7 @@ export function RetencionesModal({
   cufe, proveedor, subtotal, iva, total,
   retefuente, reteiva, reteica, retefuente_sug, reteiva_sug, reteica_sug,
   tarRf, tarIva, tarIca, otros_valor, otros_concepto, observaciones, yaConfirmada, onSaved, onClose,
+  regla, concepto,
 }: {
   cufe: string; proveedor: string; subtotal: number; iva: number; total: number;
   retefuente: string | null; reteiva: string | null; reteica: string | null;
@@ -27,11 +29,21 @@ export function RetencionesModal({
   yaConfirmada: boolean;
   onSaved: (cufe: string, patch: FilaPatch) => void;
   onClose: () => void;
+  /** Lo que el equipo YA practicó para este concepto. Sugiere; no decide. */
+  regla: ReglaConcepto | null;
+  concepto: string | null;
 }) {
-  // Pre-llenado: monto confirmado → monto sugerido → TARIFA del maestro del proveedor.
-  const [rf, setRf] = useState(pctIni(retefuente ?? retefuente_sug, subtotal) || (tarRf ?? ""));
+  // Pre-llenado, del más específico al más general:
+  //   1. el monto ya confirmado en esta factura
+  //   2. el monto que sugirió el pipeline
+  //   3. la TARIFA pactada con ESTE proveedor (maestro de retenciones)
+  //   4. lo que el equipo viene practicando para ESTE concepto
+  // Un concepto que aprendimos que NO retiene entra en "0", no vacío: "aquí no
+  // se retiene" también es una decisión y hay que poder verla tomada.
+  const delConcepto = (t: string | null) => (regla ? (regla.aplica ? (t ?? "") : "0") : "");
+  const [rf, setRf] = useState(pctIni(retefuente ?? retefuente_sug, subtotal) || (tarRf ?? "") || delConcepto(regla?.retefuente ?? null));
   const [ri, setRi] = useState(pctIni(reteiva ?? reteiva_sug, iva) || (tarIva ?? ""));
-  const [ric, setRic] = useState(pctIni(reteica ?? reteica_sug, subtotal) || (tarIca ?? ""));
+  const [ric, setRic] = useState(pctIni(reteica ?? reteica_sug, subtotal) || (tarIca ?? "") || delConcepto(regla?.reteica ?? null));
   const [otros, setOtros] = useState(otros_valor && Number(otros_valor) > 0 ? String(Math.round(Number(otros_valor))) : "");
   const [otrosConcepto, setOtrosConcepto] = useState(otros_concepto ?? "");
 
@@ -58,6 +70,27 @@ export function RetencionesModal({
           </div>
           <button type="button" className="modal-x" onClick={onClose} aria-label="Cerrar">×</button>
         </div>
+
+        {/* De dónde salió lo que está precargado. Sin esto el revisor ve unos
+            números puestos por arte de magia y no sabe si creerles. */}
+        {regla && !yaConfirmada && (
+          <div className={"ret-sugerencia" + (regla.n_casos < 3 ? " flojo" : "")}>
+            {regla.fuente === "humano" ? (
+              <>📌 <b>Regla fijada por el contador</b> para <b>{concepto}</b>
+                {regla.aplica
+                  ? <>: ReteFuente {pct(regla.retefuente)}%{regla.reteica ? ` · ReteICA ${pct(regla.reteica)}%` : ""}.</>
+                  : <>: este concepto <b>no retiene</b>.</>}</>
+            ) : regla.aplica ? (
+              <>💡 En <b>{concepto}</b> vienes reteniendo <b>{pct(regla.retefuente)}%</b>
+                {regla.reteica ? <> y <b>{pct(regla.reteica)}%</b> de ICA</> : null}
+                {" — "}{regla.n_casos} {regla.n_casos === 1 ? "vez" : "veces"}, coincidiendo el {pct(regla.concordancia)}%.
+                {regla.n_casos < 3 && <> <b>Son pocos casos: confírmalo.</b></>}</>
+            ) : (
+              <>💡 En <b>{concepto}</b> <b>no has retenido</b> ninguna de las {regla.n_casos} veces
+                anteriores. Va en cero — cámbialo si esta vez sí toca.</>
+            )}
+          </div>
+        )}
 
         <form action={confirmar}>
           <input type="hidden" name="cufe" value={cufe} />

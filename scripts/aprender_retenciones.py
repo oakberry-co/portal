@@ -42,6 +42,12 @@ from sync_bq_to_pg import cargar_database_url  # noqa: E402
 # Con menos de esto la regla se guarda igual, pero el modal la muestra con su n
 # para que el revisor decida cuánto creerle.
 MIN_CASOS = 3
+# CUÁNDO UN CONCEPTO ESTÁ LISTO PARA APLICARSE SOLO. No es una corazonada: es
+# "el equipo ya tomó esta misma decisión N veces seguidas sin dudar". Con menos
+# casos o menos acuerdo, la regla SUGIERE y un humano confirma — que es como
+# funciona hoy. Subir estos números es hacerlo más conservador, no menos.
+LISTO_CASOS = 10
+LISTO_CONCORDANCIA = 95.0
 # Dos tarifas se consideran la misma si difieren menos de esto (redondeos del
 # humano: 2,49% y 2,5% son la misma decisión).
 TOLERANCIA = 0.15
@@ -144,6 +150,40 @@ def main() -> int:
         print(f"\n✅ {escritas} reglas guardadas (las de fuente 'humano' quedaron intactas).")
     else:
         print("\n(ensayo — corre con --aplicar para guardarlas)")
+
+    # ── EL VEREDICTO: ¿qué conceptos ya se podrían aplicar solos? ─────────────
+    # Esta es la pregunta de Daniel ("al cabo de un tiempo, ¿se hacen
+    # automáticas?"). La respuesta no es una fecha: es un umbral. Un concepto
+    # está listo cuando el equipo tomó la MISMA decisión muchas veces y casi
+    # siempre igual. Hasta entonces sugiere y confirma un humano.
+    cur.execute("""SELECT concepto, retefuente, reteica, aplica, n_casos, concordancia, fuente
+                     FROM regla_retencion_concepto ORDER BY n_casos DESC""")
+    listos, observacion = [], []
+    for concepto, rf, ica, aplica, n, conc, fuente in cur.fetchall():
+        c = float(conc or 0)
+        fila = (concepto, rf, ica, aplica, n, c, fuente)
+        (listos if n >= LISTO_CASOS and c >= LISTO_CONCORDANCIA else observacion).append(fila)
+
+    print("\n" + "═" * 78)
+    print(f"¿QUÉ SE PODRÍA APLICAR SOLO?  (listo = {LISTO_CASOS}+ casos y "
+          f"{LISTO_CONCORDANCIA:.0f}%+ de acuerdo)")
+    print("═" * 78)
+    if listos:
+        print(f"\n✅ LISTOS ({len(listos)}) — el equipo ya decidió lo mismo tantas veces "
+              "que aplicarlo solo no cambiaría nada:")
+        for concepto, rf, ica, aplica, n, c, _ in listos:
+            que = "NO retiene" if not aplica else f"RF {rf}%" + (f" · ICA {ica}%" if ica else "")
+            print(f"   {concepto[:32]:32} {que:26} {n:>3} casos · {c:.0f}% de acuerdo")
+    else:
+        print("\n   Ninguno todavía.")
+    if observacion:
+        print(f"\n⏳ EN OBSERVACIÓN ({len(observacion)}) — siguen sugiriendo, confirma un humano:")
+        for concepto, rf, ica, aplica, n, c, _ in observacion[:12]:
+            falta = ("faltan casos" if n < LISTO_CASOS else "el equipo no siempre decide igual")
+            print(f"   {concepto[:32]:32} {n:>3} casos · {c:.0f}% de acuerdo   ({falta})")
+    print("\nMientras un concepto no esté LISTO, la regla solo PRECARGA el modal y "
+          "\ndice de dónde salió. Nada se aplica solo hoy — eso lo decides tú.")
+
     conn.close()
     return 0
 
