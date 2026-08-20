@@ -74,14 +74,20 @@ export type DocGuardado = { clase?: string; estado?: string; path?: string };
  *  pueden evaluar por clase: se dan por completos si trajeron al menos tantos
  *  archivos como clases se piden hoy. No se le exige a un proveedor una casilla
  *  que no existía cuando llenó el formulario. */
-export function docsFaltantes(docs: DocGuardado[] | null | undefined): string[] {
+export function docsFaltantes(docs: DocGuardado[] | null | undefined,
+                              soloSoporte = false): string[] {
   const lista = docs ?? [];
+  // PROVEEDOR RECURRENTE: su cuenta ya está certificada en el maestro de una vez
+  // anterior. Volver a pedirle el RUT, la cédula y la certificación es pedirle
+  // que repita cuatro adjuntos desde el celular para cobrar lo mismo de siempre.
+  // Lo único propio de ESTE cobro es el soporte.
+  const clases = soloSoporte ? CLASES_DOC.filter((c) => c.clase === "soporte") : CLASES_DOC;
   const tipados = lista.filter((d) => d.clase && d.clase !== "otro");
   if (!tipados.length) {
     const subidos = lista.filter((d) => d.estado !== "pendiente" && (d.path ?? "") !== "");
-    return subidos.length >= CLASES_DOC.length ? [] : CLASES_DOC.map((c) => c.label);
+    return subidos.length >= clases.length ? [] : clases.map((c) => c.label);
   }
-  return CLASES_DOC
+  return clases
     .filter((c) => !tipados.some((d) => d.clase === c.clase && d.estado !== "pendiente" && (d.path ?? "") !== ""))
     .map((c) => c.label);
 }

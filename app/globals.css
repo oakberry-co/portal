@@ -1078,6 +1078,31 @@ button.ghost { background: #fff; color: var(--purple); }
 .cc-adelanto { display: inline-block; margin: 4px 0 2px; padding: 5px 11px; border-radius: 8px;
   background: #fff8e6; border: 1px solid rgba(212,160,23,.35); color: #8a6100;
   font-size: 12.5px; font-weight: 600; }
+/* PASO 0 del portal público: ¿ya nos habías cobrado? Botones grandes, pensados
+   para el pulgar — de acá arranca todo y la mayoría llega desde el celular. */
+.pub-elige { display: flex; flex-direction: column; gap: 12px; }
+.pub-elige-tit { font-size: 16px; font-weight: 700; color: var(--ink); margin: 4px 0 0; }
+.pub-opt { display: block; width: 100%; text-align: left; cursor: pointer;
+           background: var(--purple); color: #fff; border: 1px solid var(--purple);
+           border-radius: 14px; padding: 16px 18px; font: inherit; }
+.pub-opt b { display: block; font-size: 16px; margin-bottom: 3px; }
+.pub-opt i { display: block; font-style: normal; font-size: 13px; line-height: 1.45; opacity: .88; }
+.pub-opt.ghost { background: #fff; color: var(--ink); border-color: var(--border-lav); }
+.pub-opt.ghost i { opacity: .7; }
+.pub-opt:active { transform: translateY(1px); }
+.pub-doc-busca { width: 100%; font-size: 17px; padding: 14px 16px; border: 1px solid var(--border-lav);
+                 border-radius: 12px; background: #fff; color: var(--ink); }
+.pub-link { background: none; border: 0; color: var(--purple); font: inherit; font-size: 13.5px;
+            text-decoration: underline; cursor: pointer; padding: 6px 0; text-align: left; }
+.pub-link.inline { display: inline; padding: 0; }
+/* "Te reconocimos": lo primero que ve el proveedor recurrente. Confirma QUIÉN es
+   y A DÓNDE le va a llegar la plata, que es lo único que necesita comprobar. */
+.pub-reconocido { background: #eef8f0; border: 1px solid #bfe0c7; border-left: 3px solid #3f9d5a;
+                  border-radius: 12px; padding: 12px 14px; font-size: 13.5px; line-height: 1.55;
+                  color: #1f5c33; margin-bottom: 4px; }
+.pub-reconocido b { color: #14471f; }
+.pub-reconocido span { display: inline-block; margin-top: 4px; opacity: .9; }
+
 /* Casilla de documento RECHAZADA + el porqué. El rojo va en la casilla y el
    texto abajo: en celular el proveedor ve primero que algo falló, y al bajar
    encuentra qué hacer. */
@@ -1091,7 +1116,7 @@ button.ghost { background: #fff; color: var(--purple); }
 .cc-solo-lectura { font-size: 12.5px; color: var(--lav); background: var(--cream-2);
                    border-radius: 8px; padding: 8px 11px; }
 .cc-verif.esperando { font-size: 12.5px; color: var(--lav); background: var(--cream-2);
-                      border: 1px dashed var(--line); border-radius: 10px; padding: 9px 12px; }
+                      border: 1px dashed var(--border); border-radius: 10px; padding: 9px 12px; }
 /* El motivo por el que una acción de la bandeja NO se pudo hacer. Ocupa toda la
    fila para que no se pierda entre los botones. */
 .cc-error { flex-basis: 100%; font-size: 12.5px; margin: 8px 0 0;

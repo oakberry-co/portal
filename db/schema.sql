@@ -760,3 +760,17 @@ CREATE UNIQUE INDEX IF NOT EXISTS ux_correo_hecho
   ON correo_saliente (tipo, origen_tipo, origen_id);
 
 COMMIT;
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- §16  PROVEEDOR RECURRENTE (2026-08-20)
+--
+-- A quien ya nos había cobrado se le pedían otra vez los cuatro documentos para
+-- cobrar lo mismo del mes pasado. Desde el celular eso son cuatro adjuntos.
+-- Marcado como recurrente, el envío trae SOLO el soporte y la cuenta de pago
+-- sale del maestro (la que se certificó en su momento y confirmó un humano).
+-- Por este camino el proveedor NO puede cambiar de cuenta: para eso entra como
+-- nuevo, con certificación, y pasa por el candado de cambio de cuenta.
+-- ─────────────────────────────────────────────────────────────────────────────
+ALTER TABLE cuentas_cobro ADD COLUMN IF NOT EXISTS recurrente BOOLEAN NOT NULL DEFAULT FALSE;
+COMMENT ON COLUMN cuentas_cobro.recurrente IS
+  'El proveedor ya tenía cuenta certificada: no volvió a subir los 3 documentos de identidad, solo el soporte. La cuenta de pago sale del maestro, NO de este envío.';

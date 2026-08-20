@@ -17,6 +17,7 @@ export type CuentaCobro = {
   documentos: DocIntake[];
   estado: string; nota_revision: string | null; revisado_por: string | null; creado_en: string;
   fecha_pago_prog: string | null; cuenta_pago: string | null; pago_id: number | null;
+  recurrente: boolean;
   cert: CertEstado | null; cuenta: CuentaMaestro; correos: CorreoEnviado[];
   // Retenciones: el mismo modelo de la factura (montos + valor_a_pagar).
   iva_incluido: number | null; retefuente: number | null; reteiva: number | null;
@@ -105,7 +106,7 @@ export function CuentasCobroView({ items, operar }: { items: CuentaCobro[]; oper
             // El MISMO cálculo que el servidor exige al aprobar (lib/certificaciones):
             // si la tarjeta dijera una cosa y el guard otra, el equipo aprendería a
             // pelearse con un botón que no explica nada.
-            const bloqueo = bloqueoAprobacion(docsFaltantes(c.documentos), c.cert, c.cuenta)
+            const bloqueo = bloqueoAprobacion(docsFaltantes(c.documentos, c.recurrente), c.cert, c.cuenta, c.recurrente)
               ?? (c.retencion_ok ? null
                   : "Falta confirmar las retenciones — aunque sean cero, para que se pague el valor correcto.");
             const reten = c.reten_total ?? 0;
@@ -115,7 +116,10 @@ export function CuentasCobroView({ items, operar }: { items: CuentaCobro[]; oper
                 <div className="cc-head">
                   <div>
                     <div className="cc-nom">{c.razon_social}</div>
-                    <div className="muted mini">{c.tipo_doc} {c.num_doc}{c.area ? ` · ${c.area}` : ""} · {fecha(c.creado_en)}</div>
+                    <div className="muted mini">
+                      {c.tipo_doc} {c.num_doc}{c.area ? ` · ${c.area}` : ""} · {fecha(c.creado_en)}
+                      {c.recurrente && <span className="cc-badge ok" title="Ya tenía cuenta certificada: no volvió a subir cédula, RUT ni certificación. Se le paga a la cuenta del maestro.">🔁 recurrente</span>}
+                    </div>
                   </div>
                   <div className="cc-valor">
                     {$(c.retencion_ok ? (c.valor_a_pagar ?? c.valor) : c.valor)}
@@ -133,7 +137,7 @@ export function CuentasCobroView({ items, operar }: { items: CuentaCobro[]; oper
                   {c.estado !== "recibida" && <div><i>Se paga</i>{dia(c.fecha_pago_prog)}{c.cuenta_pago ? ` · ${c.cuenta_pago}` : ""}</div>}
                 </div>
 
-                <DocsIntake docs={c.documentos ?? []} />
+                <DocsIntake docs={c.documentos ?? []} soloSoporte={c.recurrente} />
                 <PanelCuenta cert={c.cert} cuenta={c.cuenta} bloqueo={c.estado === "recibida" ? bloqueo : null} operar={operar}
                              docUrl={(c.documentos ?? []).find((d) => d.clase === "certificacion_bancaria")?.path} />
 

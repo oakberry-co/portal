@@ -89,6 +89,7 @@ export function cola(num: string | null | undefined): string {
  *  el resultado de la acción que está a punto de hacer. */
 export function bloqueoAprobacion(
   docsFaltan: string[], cert: CertEstado | null, cuenta: CuentaMaestro,
+  recurrente = false,
 ): string | null {
   // SENTINELA. Si la consulta que trae `cert` no seleccionó `cuenta_verificada`,
   // el campo llega `undefined` y este candado lo lee como "nadie la verificó":
@@ -102,6 +103,21 @@ export function bloqueoAprobacion(
   }
   if (docsFaltan.length) {
     return `Faltan documentos: ${docsFaltan.join(", ")}. Pídeselos al proveedor antes de aprobar.`;
+  }
+  // PROVEEDOR RECURRENTE: no mandó certificación porque su cuenta ya vive en el
+  // maestro, certificada en un envío anterior y confirmada por un humano. Lo que
+  // se exige acá es que ESA cuenta siga estando: si alguien la borró, aprobar
+  // dejaría una cuenta de cobro lista para pagar y sin a dónde.
+  //
+  // No se abre un hueco: por este camino el proveedor NO puede cambiar la
+  // cuenta. Si quiere cambiarla tiene que entrar como nuevo, con certificación
+  // fresca, y esa sí pasa por el candado de cambio de cuenta.
+  if (recurrente && !cert) {
+    if (!(cuenta?.num_cuenta ?? "").trim()) {
+      return "Entró como proveedor recurrente, pero este NIT ya no tiene cuenta en el maestro. "
+           + "Pídele la certificación bancaria (que entre como proveedor nuevo) antes de aprobar.";
+    }
+    return null;
   }
   if (!cert) {
     return "No hay certificación bancaria registrada para este envío: sin ella no sabemos a qué cuenta pagar. "

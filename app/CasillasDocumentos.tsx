@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import { CLASES_DOC } from "@/lib/areas";
+import type { Formatos } from "@/lib/documentos";
 import { motivoRechazo, tieneClave } from "@/lib/documentos";
 
 // Las 4 casillas de documentos de los portales públicos: certificación bancaria,
@@ -18,7 +19,15 @@ import { motivoRechazo, tieneClave } from "@/lib/documentos";
 // cerraba la página creyendo que había terminado y se enteraba por correo horas
 // más tarde. Rechazar en el instante le ahorra ese viaje entero — y el servidor
 // vuelve a revisarlo, porque el `accept` de un <input> se salta arrastrando.
-export function CasillasDocumentos({ documento }: { documento?: string }) {
+type Clase = { name: string; clase: string; label: string; ayuda: string; formatos: Formatos };
+
+export function CasillasDocumentos({ documento, clases }: {
+  documento?: string;
+  /** Cuáles casillas mostrar. El proveedor recurrente solo sube el soporte: sus
+   *  documentos de identidad ya están y su cuenta ya está certificada. */
+  clases?: readonly Clase[];
+}) {
+  const CASILLAS: readonly Clase[] = clases ?? CLASES_DOC;
   const [elegidos, setElegidos] = useState<Record<string, string>>({});
   const [errores, setErrores] = useState<Record<string, string>>({});
   const refs = useRef<Record<string, HTMLInputElement | null>>({});
@@ -28,7 +37,7 @@ export function CasillasDocumentos({ documento }: { documento?: string }) {
 
   return (
     <div className="pub-docs">
-      {CLASES_DOC.map((c) => {
+      {CASILLAS.map((c) => {
         const nombre = elegidos[c.name];
         const error = errores[c.name];
         return (
@@ -74,7 +83,7 @@ export function CasillasDocumentos({ documento }: { documento?: string }) {
 
       {/* Los avisos van DEBAJO de la cuadrícula: adentro romperían la altura
           pareja de las casillas y en celular empujarían el botón de enviar. */}
-      {CLASES_DOC.filter((c) => errores[c.name]).map((c) => (
+      {CASILLAS.filter((c) => errores[c.name]).map((c) => (
         <div key={"e" + c.name} className="pub-rechazo" role="alert">
           ⚠️ <b>{errores[c.name]}</b>
           {errores[c.name]?.includes("contraseña") && (

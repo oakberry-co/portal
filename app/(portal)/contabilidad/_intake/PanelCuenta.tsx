@@ -19,8 +19,14 @@ export type DocIntake = DocGuardado & { nombre?: string; path?: string; tipo?: s
 /** Los 4 documentos pedidos, cada uno presente (link) o ausente (rojo), más los
  *  sueltos. Se pinta la LISTA COMPLETA y no solo lo que llegó: un documento que
  *  falta tiene que verse, no deducirse por ausencia. */
-export function DocsIntake({ docs }: { docs: DocIntake[] }) {
+export function DocsIntake({ docs, soloSoporte = false }: {
+  docs: DocIntake[];
+  /** Proveedor recurrente: solo trae el soporte. Pintar en rojo los otros tres
+   *  como "falta" sería mentirle al revisor — no los tenía que mandar. */
+  soloSoporte?: boolean;
+}) {
   const lista = docs ?? [];
+  const PEDIDOS = soloSoporte ? CLASES_DOC.filter((c) => c.clase === "soporte") : CLASES_DOC;
   const tipados = lista.filter((d) => d.clase && d.clase !== "otro");
   const extras = lista.filter((d) => !d.clase || d.clase === "otro");
   const viejo = tipados.length === 0;   // envío anterior a los documentos tipados
@@ -29,7 +35,7 @@ export function DocsIntake({ docs }: { docs: DocIntake[] }) {
     <div className="cc-docs">
       {viejo
         ? lista.map((d, i) => <ChipDoc key={i} doc={d} etiqueta={etiquetaClase(d.clase)} />)
-        : CLASES_DOC.map((c) => {
+        : PEDIDOS.map((c) => {
             const d = tipados.find((x) => x.clase === c.clase);
             if (!d) return <span key={c.clase} className="cc-doc falta" title={`El proveedor no adjuntó: ${c.label}`}>✗ {c.label} — falta</span>;
             return <ChipDoc key={c.clase} doc={d} etiqueta={c.label} />;

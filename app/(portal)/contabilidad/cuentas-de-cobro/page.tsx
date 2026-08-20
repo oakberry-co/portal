@@ -17,7 +17,7 @@ async function cargar(): Promise<CuentaCobro[]> {
             cc.telefono, cc.area, cc.concepto, cc.descripcion, cc.valor::float AS valor,
             cc.documentos, cc.estado, cc.nota_revision, cc.revisado_por,
             cc.creado_en::text AS creado_en, cc.fecha_pago_prog::text AS fecha_pago_prog,
-            cc.cuenta_pago, cc.pago_id,
+            cc.cuenta_pago, cc.pago_id, cc.recurrente,
             cc.iva_incluido::float AS iva_incluido, cc.retefuente::float AS retefuente,
             cc.reteiva::float AS reteiva, cc.reteica::float AS reteica,
             cc.reten_total::float AS reten_total, cc.otros_valor::float AS otros_valor,

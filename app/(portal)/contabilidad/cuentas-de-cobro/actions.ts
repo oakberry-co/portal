@@ -29,9 +29,10 @@ const ESTADOS: Record<string, string> = {
  *  del lector. Lo que decide es este SELECT, no lo que el navegador creía. */
 async function exigirAprobable(c: PoolClient, id: number): Promise<Aprobable> {
   const { rows } = await c.query<Aprobable & {
-    documentos: DocGuardado[]; cert: CertEstado | null; cuenta: CuentaMaestro;
+    documentos: DocGuardado[]; cert: CertEstado | null; cuenta: CuentaMaestro; recurrente: boolean;
   }>(
     `SELECT cc.documentos, cc.razon_social, cc.correo, cc.valor::float AS valor,
+            cc.recurrente,
             cc.retencion_ok, coalesce(cc.valor_a_pagar, cc.valor)::float AS valor_a_pagar,
             to_jsonb(cert) AS cert,
             to_jsonb(cb)   AS cuenta
@@ -43,7 +44,7 @@ async function exigirAprobable(c: PoolClient, id: number): Promise<Aprobable> {
       WHERE cc.id = $1`, [id]);
   const r = rows[0];
   if (!r) throw new Error("Cuenta de cobro no encontrada.");
-  const bloqueo = bloqueoAprobacion(docsFaltantes(r.documentos), r.cert, r.cuenta);
+  const bloqueo = bloqueoAprobacion(docsFaltantes(r.documentos, r.recurrente), r.cert, r.cuenta, r.recurrente);
   if (bloqueo) throw new Error(bloqueo);
   // Igual que una factura no entra a Pagos hasta 'retenciones_ok': aprobar sin
   // definir la retención es aprobar un pago BRUTO, y eso se paga de más.
@@ -51,13 +52,13 @@ async function exigirAprobable(c: PoolClient, id: number): Promise<Aprobable> {
     throw new Error("Falta confirmar las retenciones. Ábrelas y confírmalas —aunque sean cero— "
                   + "para que se pague el valor correcto.");
   }
-  return { ...r, certId: r.cert!.id };
+  return { ...r, certId: r.cert?.id ?? null };
 }
 
 /** Lo que hace falta para aprobar Y para escribirle al proveedor. */
 type Aprobable = {
   razon_social: string; correo: string | null; valor: number | null;
-  retencion_ok: boolean; valor_a_pagar: number | null; certId: number;
+  retencion_ok: boolean; valor_a_pagar: number | null; certId: number | null;
 };
 
 /** Revisa una cuenta de cobro: aprobar / rechazar / devolver a revisión.
@@ -81,7 +82,9 @@ export async function revisarCuentaCobro(_prev: Resultado | null, fd: FormData):
       // sale el archivo del banco. Va en la MISMA transacción que el cambio de
       // estado — aprobado sin cuenta sería un pago que nunca puede salir.
       const ap = await exigirAprobable(c, id);
-      await aplicarCuentaCertificada(c, ap.certId, user);
+      // El recurrente no trae certificación nueva: su cuenta ya está en el
+      // maestro desde un envío anterior. No hay nada que aplicar.
+      if (ap.certId != null) await aplicarCuentaCertificada(c, ap.certId, user);
       // El correo que le pide la factura. Va en esta misma transacción: si algo
       // falla no queda ni la aprobación ni el correo (y si SES está caído, el
       // correo se reintenta sin perder la aprobación).
