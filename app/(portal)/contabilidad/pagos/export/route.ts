@@ -2,7 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { getPool } from "@/lib/db";
 import { getCurrentUserOrNull } from "@/lib/auth";
 import { puede } from "@/lib/permisos";
-import { codigoBanco, codigoBancoDavivienda, TIPO_DOC_FULL, TIPO_CUENTA_FULL, csvRow } from "@/lib/bancos";
+import { codigoBanco, codigoBancoDavivienda, CODIGOS_DAVIVIENDA, TIPO_DOC_FULL, TIPO_CUENTA_FULL, csvRow } from "@/lib/bancos";
+import { codigoTipoId, codigoProducto, textoBanco, revisarFila, type Aviso } from "@/lib/davivienda";
+import ExcelJS from "exceljs";
 
 export const dynamic = "force-dynamic";
 
@@ -95,11 +97,58 @@ export async function GET(req: NextRequest) {
       r.banco ?? "", codigoBanco(r.banco), tipoCta(r), r.num_cuenta ?? "", Math.round(r.monto),
     ]));
   } else if (formato === "davivienda") {
-    lines.push(csvRow(["Tipo de Identificación", "Número de Identificación", "Nombre", "Apellido", "Código del Banco", "Tipo de Producto o Servicio", "Número del Producto o Servicio", "Valor del pago o de la recarga", "Referencia (Opcional)", "Correo Electronico (Opcional)", "Descripción o Detalle (Opcional)"]));
-    for (const r of pagables) lines.push(csvRow([
-      doc(r), numDoc(r), nombre(r), apellido(r), codigoBancoDavivienda(r.banco),
-      tipoCta(r), r.num_cuenta ?? "", Math.round(r.monto), r.referencia ?? "", r.correo ?? "", "",
-    ]));
+    // DAVIVIENDA VA EN .XLSX, NO EN CSV, y no por gusto: el banco exige que el
+    // número de cuenta viaje como TEXTO (regla 5) y un CSV no puede llevar
+    // formato de celda. Excel abre "051004208" y lo guarda como 51004208 — otra
+    // cuenta. Dos de las cuentas del maestro empiezan por cero HOY.
+    const validos = new Set(CODIGOS_DAVIVIENDA);
+    const avisos: Aviso[] = [];
+    const wb = new ExcelJS.Workbook();
+    const hoja = wb.addWorksheet("Pagos");   // regla 8: una sola hoja
+    hoja.addRow(["Tipo de Identificación", "Número de Identificación", "Nombre", "Apellido",
+                 "Código del Banco", "Tipo de Producto o Servicio", "Número del Producto o Servicio",
+                 "Valor del pago o de la recarga", "Referencia (Opcional)",
+                 "Correo Electronico (Opcional)", "Descripción o Detalle (Opcional)"]);
+    pagables.forEach((r, i) => {
+      const cod = codigoBancoDavivienda(r.banco);
+      avisos.push(...revisarFila(i + 2, r, cod, validos));   // +2: fila real del Excel
+      const fila = hoja.addRow([
+        codigoTipoId(doc(r)),                 // 1 · código numérico, no "NIT"
+        numDoc(r),                            // 10 · no se toca
+        textoBanco(nombre(r)),                // 6 y 7 · sin tildes, ñ ni signos
+        textoBanco(apellido(r)),
+        cod,                                  // 4 · no se modifica, se valida
+        codigoProducto(r.tipo_cuenta),        // 3 · CC/CA/DP/TP/DE
+        r.num_cuenta ?? "",                   // 5 · TEXTO (abajo)
+        Math.round(r.monto),                  // 9 · número, sin separador de miles
+        textoBanco(r.referencia),             // 7
+        r.correo ?? "",                       // 10 · no se toca
+        "",
+      ]);
+      // Regla 5: la celda del número de producto queda en formato Texto y con
+      // el valor exacto. Sin esto los ceros a la izquierda se pierden solos.
+      const celda = fila.getCell(7);
+      celda.numFmt = "@";
+      celda.value = String(r.num_cuenta ?? "");
+      fila.getCell(8).numFmt = "0.00";        // 9 · 16 enteros + 2 decimales, sin miles
+    });
+
+    const buf = await wb.xlsx.writeBuffer();
+    const revisar = avisos.length;
+    if (revisar) {
+      console.warn("[pagos/export] Davivienda — filas por revisar a mano:\n"
+        + avisos.map((a) => `  fila ${a.fila} · ${a.quien} · regla ${a.regla}: ${a.detalle}`).join("\n"));
+    }
+    return new NextResponse(buf as ArrayBuffer, { headers: {
+      "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "Content-Disposition": `attachment; filename="pagos_${slugDe(cuenta)}_${hoyISO()}`
+        + (sinCuenta.length ? `_FALTAN-${sinCuenta.length}` : "")
+        + (revisar ? `_REVISAR-${revisar}` : "") + `.xlsx"`,
+      "X-Proveedores-Incluidos": String(pagables.length),
+      "X-Proveedores-Sin-Cuenta": String(sinCuenta.length),
+      "X-Filas-Por-Revisar": String(revisar),
+      "X-Solicitudes-Sin-Factura-Dian": String(rows.reduce((n, r) => n + (r.n_intake || 0), 0)),
+    }});
   } else {
     // PSE / genérico: CSV legible para que quien pague vea línea por línea.
     lines.push(csvRow(["Proveedor", "NIT", "Banco", "Tipo de cuenta", "Número de cuenta", "Titular", "Documento", "Valor a pagar"]));
@@ -130,3 +179,6 @@ export async function GET(req: NextRequest) {
   }
   return new NextResponse(csv, { headers: cabeceras });
 }
+
+const hoyISO = () => new Date().toISOString().slice(0, 10);
+const slugDe = (s: string) => s.toLowerCase().normalize("NFD").replace(/[^a-z0-9]/g, "");

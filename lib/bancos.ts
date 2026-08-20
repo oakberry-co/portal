@@ -201,3 +201,8 @@ export function csvCell(v: unknown): string {
 export function csvRow(cells: unknown[]): string {
   return cells.map(csvCell).join(",");
 }
+
+/** Códigos vigentes de la tabla de Davivienda ("Código canales"). Sirve para
+ *  VALIDAR, no para corregir: un código que no está acá se le señala a un
+ *  humano en vez de cambiarlo por el parecido (Regla 3). */
+export const CODIGOS_DAVIVIENDA: string[] = DAVIVIENDA.map((b) => b.codigo);
