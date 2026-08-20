@@ -314,6 +314,16 @@ button.ghost { background: #fff; color: var(--purple); }
   border-radius: 14px 14px 0 0; position: sticky; top: 60px; z-index: 5; font-weight: 500;
 }
 .fila-head .c-valor, .fila-head .c-pagar, .fila-head .c-ret { text-align: right; }
+
+/* ENCABEZADO QUE ORDENA (clic, como en Excel). La columna activa se marca en
+   morado con su flecha; las demás no muestran nada, porque una flechita gris en
+   las diez a la vez no dice cuál manda. */
+.th-ord { cursor: pointer; user-select: none; display: flex; align-items: center; gap: 3px; }
+.fila-head .th-ord.c-valor, .fila-head .th-ord.c-pagar { justify-content: flex-end; }
+.th-ord:hover { color: var(--purple); }
+.th-ord.on { color: var(--purple-deep); font-weight: 700; }
+.th-ord:focus-visible { outline: 2px solid var(--purple); outline-offset: 2px; border-radius: 3px; }
+.th-flecha { font-size: 8px; line-height: 1; }
 .fila { border-bottom: 1px solid var(--border); }
 .fila:last-child { border-bottom: none; border-radius: 0 0 14px 14px; }
 .fila:hover { background: #fdfbf6; }

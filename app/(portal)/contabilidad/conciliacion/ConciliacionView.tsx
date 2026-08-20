@@ -3,20 +3,29 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { SubirRetenciones } from "./SubirRetenciones";
 import { FacturaCard, type FacturaRow, type FilaPatch } from "./FacturaCard";
+import { comparar, isoWeek, type Orden } from "@/lib/orden-facturas";
 
 const MESES = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
 const PAGE = 100; // filas por página — no montamos 3.900 filas (mataba el navegador)
 
 function fechaDe(f: FacturaRow) { return new Date(f.fecha_emision); }
 
-/** Semana ISO como "YYYY-Www" (año ISO + semana), para agrupar y filtrar. */
-function isoWeek(d: Date): string {
-  const dt = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
-  const day = dt.getUTCDay() || 7;
-  dt.setUTCDate(dt.getUTCDate() + 4 - day);
-  const yearStart = new Date(Date.UTC(dt.getUTCFullYear(), 0, 1));
-  const week = Math.ceil(((dt.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
-  return `${dt.getUTCFullYear()}-W${String(week).padStart(2, "0")}`;
+/** Encabezado que ordena. La flecha se pinta SOLO en la columna activa: una
+ *  flechita gris en las diez a la vez no dice cuál manda. */
+function Th({ col, clase, orden, on, children }: {
+  col: string; clase: string; orden: Orden; on: (c: string) => void; children: React.ReactNode;
+}) {
+  const activa = orden?.col === col;
+  const titulo = activa && orden.dir === -1 ? "Ordenado de mayor a menor · clic para invertir"
+               : activa ? "Ordenado de menor a mayor · clic para quitar el orden"
+               : "Clic para ordenar de mayor a menor";
+  return (
+    <div className={`${clase} th-ord${activa ? " on" : ""}`} onClick={() => on(col)} title={titulo}
+         role="button" tabIndex={0}
+         onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); on(col); } }}>
+      {children}<span className="th-flecha">{activa ? (orden.dir === -1 ? "▼" : "▲") : ""}</span>
+    </div>
+  );
 }
 
 export function ConciliacionView({
@@ -34,6 +43,12 @@ export function ConciliacionView({
   const [desde, setDesde] = useState("");
   const [hasta, setHasta] = useState("");
   const [page, setPage] = useState(0);
+  // Primer clic = mayor a menor (es lo que uno busca cuando ordena por plata);
+  // segundo clic = menor a mayor; tercero = se quita y vuelve el orden natural
+  // (lo por clasificar primero), que es el que sirve para trabajar.
+  const [orden, setOrden] = useState<Orden>(null);
+  const ordenarPor = (col: string) =>
+    setOrden((o) => (o?.col !== col ? { col, dir: -1 } : o.dir === -1 ? { col, dir: 1 } : null));
 
   // Parches optimistas: al guardar una fila, la acción devuelve el nuevo estado y
   // lo mezclamos aquí SIN reordenar ni recargar. La fila se queda en su sitio y su
@@ -98,13 +113,20 @@ export function ConciliacionView({
     });
   }, [rows, q, anio, mes, sem, concepto, destino, prov, soloPend]);
 
-  // Al cambiar cualquier filtro/búsqueda, vuelve a la primera página.
-  useEffect(() => { setPage(0); }, [q, anio, mes, sem, concepto, destino, prov, soloPend]);
+  // El orden se aplica DESPUÉS de filtrar y ANTES de paginar: así "mayor a
+  // menor" significa la más grande de todo lo que estás viendo, no de la página.
+  const ordenadas = useMemo(() => {
+    if (!orden) return filtradas;
+    return [...filtradas].sort((a, b) => comparar(a, b, orden));
+  }, [filtradas, orden]);
 
-  const totalPag = Math.max(1, Math.ceil(filtradas.length / PAGE));
+  // Al cambiar cualquier filtro/búsqueda o el orden, vuelve a la primera página.
+  useEffect(() => { setPage(0); }, [q, anio, mes, sem, concepto, destino, prov, soloPend, orden]);
+
+  const totalPag = Math.max(1, Math.ceil(ordenadas.length / PAGE));
   const pageSafe = Math.min(page, totalPag - 1);
   const desdeIdx = pageSafe * PAGE;
-  const visible = filtradas.slice(desdeIdx, desdeIdx + PAGE);
+  const visible = ordenadas.slice(desdeIdx, desdeIdx + PAGE);
 
   const porClasificar = rows.filter((f) => f.estado === "capturada").length;
   const activos = !!(q || anio || mes || sem || concepto || destino || prov || soloPend);
@@ -176,19 +198,19 @@ export function ConciliacionView({
 
       <div className="tabla">
         <div className="fila-head">
-          <div className="c-prov">Proveedor</div>
-          <div className="c-num">Factura</div>
-          <div className="c-fecha">Fecha</div>
-          <div className="c-sem">Sem</div>
-          <div className="c-valor">Valor</div>
-          <div>Concepto</div>
-          <div>Destino</div>
-          <div className="c-plazo">Plazo</div>
+          <Th col="prov"     clase="c-prov"  orden={orden} on={ordenarPor}>Proveedor</Th>
+          <Th col="num"      clase="c-num"   orden={orden} on={ordenarPor}>Factura</Th>
+          <Th col="fecha"    clase="c-fecha" orden={orden} on={ordenarPor}>Fecha</Th>
+          <Th col="sem"      clase="c-sem"   orden={orden} on={ordenarPor}>Sem</Th>
+          <Th col="valor"    clase="c-valor" orden={orden} on={ordenarPor}>Valor</Th>
+          <Th col="concepto" clase=""        orden={orden} on={ordenarPor}>Concepto</Th>
+          <Th col="destino"  clase=""        orden={orden} on={ordenarPor}>Destino</Th>
+          <Th col="plazo"    clase="c-plazo" orden={orden} on={ordenarPor}>Plazo</Th>
           <div className="c-btn" />
-          <div className="c-pagar">A pagar</div>
+          <Th col="pagar"    clase="c-pagar" orden={orden} on={ordenarPor}>A pagar</Th>
           <div className="c-btn" />
           <div className="c-docs">Docs</div>
-          <div className="c-sems">Estado</div>
+          <Th col="estado"   clase="c-sems"  orden={orden} on={ordenarPor}>Estado</Th>
         </div>
 
         {visible.length === 0 ? (
@@ -198,11 +220,11 @@ export function ConciliacionView({
         )}
       </div>
 
-      {filtradas.length > PAGE && (
+      {ordenadas.length > PAGE && (
         <div className="pager">
           <button type="button" className="pager-btn" disabled={pageSafe === 0} onClick={() => setPage(pageSafe - 1)}>← Anteriores</button>
           <span className="pager-info">
-            {desdeIdx + 1}–{Math.min(desdeIdx + PAGE, filtradas.length)} de {filtradas.length}
+            {desdeIdx + 1}–{Math.min(desdeIdx + PAGE, ordenadas.length)} de {ordenadas.length}
             <i>página {pageSafe + 1} de {totalPag}</i>
           </span>
           <button type="button" className="pager-btn" disabled={pageSafe >= totalPag - 1} onClick={() => setPage(pageSafe + 1)}>Siguientes →</button>
