@@ -4,6 +4,7 @@ import { getCurrentUserOrNull } from "@/lib/auth";
 import { puede } from "@/lib/permisos";
 import { codigoBanco, codigoBancoDavivienda, CODIGOS_DAVIVIENDA, TIPO_DOC_FULL, TIPO_CUENTA_FULL } from "@/lib/bancos";
 import { codigoTipoId, codigoProducto, textoBanco, revisarFila, type Aviso } from "@/lib/davivienda";
+import { LISTO_PARA_PAGOS } from "@/lib/documentos-no-dian";
 import ExcelJS from "exceljs";
 
 export const dynamic = "force-dynamic";
@@ -60,8 +61,8 @@ export async function GET(req: NextRequest) {
        -- que pedírselo de vuelta.
        SELECT num_doc AS nit, razon_social AS nombre, 1 AS es_intake,
               coalesce(valor_a_pagar, valor, 0) AS monto
-         FROM cuentas_cobro
-        WHERE estado = 'aprobada' AND pago_id IS NULL AND cuenta_pago = $1
+         FROM cuentas_cobro cc
+        WHERE ${LISTO_PARA_PAGOS("cc")} AND cc.cuenta_pago = $1
        UNION ALL
        SELECT nit, razon_social, 1, round(coalesce(valor,0) * coalesce(adelanto_pct,0) / 100)
          FROM cotizaciones

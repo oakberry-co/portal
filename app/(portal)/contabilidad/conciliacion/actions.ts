@@ -5,6 +5,8 @@ import { withTx } from "@/lib/db";
 import { registrarEvento } from "@/lib/eventos";
 import { exigirCap } from "@/lib/auth";
 import { guardarRetenciones } from "@/lib/retenciones";
+import { clasificar } from "@/lib/documentos-no-dian";
+import { intentar, type Resultado } from "@/lib/resultado";
 import type { PoolClient } from "pg";
 
 // Si el valor no existe en el maestro, lo crea (autoridad humana) y lo registra.
@@ -308,5 +310,38 @@ export async function marcarTipoPago(formData: FormData) {
       actor: user.email, actorRol: user.rol, origen: "web",
     });
     return { tipo_pago: tipo };
+  });
+}
+
+/** Clasifica un documento SIN factura DIAN (cuenta de cobro o gasto interno).
+ *
+ *  Es el gemelo de `clasificar` de una factura, y por eso vive acá: quien
+ *  trabaja en Conciliación no debería tener que saber en qué tabla cayó el
+ *  documento. La escritura de verdad está en `lib/documentos-no-dian.ts`, que es
+ *  también donde vive la condición que lo deja pasar a Pagos. */
+export async function clasificarDocumento(fd: FormData): Promise<Resultado> {
+  return intentar(async () => {
+    const user = await exigirCap("clasificar");
+    const id = Number(fd.get("id"));
+    if (!Number.isFinite(id)) throw new Error("Falta el documento.");
+    const t = (k: string) => {
+      const v = String(fd.get(k) ?? "").trim();
+      return v === "" ? null : v;
+    };
+    const plazo = t("plazo_dias");
+    await withTx(async (c) => {
+      // Un concepto o destino nuevo alimenta el maestro, igual que al clasificar
+      // una factura: si no, el maestro aprende solo por un lado y las listas de
+      // las dos pantallas se separan.
+      const concepto = t("concepto"), destino = t("destino");
+      if (concepto) await asegurarConcepto(c, concepto, user.email);
+      if (destino) await asegurarDestino(c, destino, user.email);
+      await clasificar(c, id, {
+        concepto, destino, plazo_dias: plazo == null ? null : Number(plazo),
+      }, user);
+    });
+    revalidatePath("/contabilidad/conciliacion");
+    revalidatePath("/contabilidad/pagos");
+    revalidatePath("/contabilidad/cuentas-de-cobro");
   });
 }

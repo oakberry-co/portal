@@ -5,6 +5,8 @@ import { SyncPanel } from "./SyncPanel";
 import { getCurrentUser } from "@/lib/auth";
 import { puede } from "@/lib/permisos";
 import type { FacturaRow } from "./FacturaCard";
+import { DocsNoDian, type DocNoDianUI } from "./DocsNoDian";
+import { porClasificar } from "@/lib/documentos-no-dian";
 
 export const dynamic = "force-dynamic"; // siempre lee el estado vivo
 
@@ -22,7 +24,7 @@ function hora(d: Date): string {
   return d.toLocaleString("es-CO", { timeZone: "America/Bogota", hour: "2-digit", minute: "2-digit" });
 }
 
-async function cargar(): Promise<{ filas: FacturaRow[]; conceptos: string[]; destinos: string[]; sync: SyncStatus }> {
+async function cargar(): Promise<{ filas: FacturaRow[]; conceptos: string[]; destinos: string[]; sync: SyncStatus; docsNoDian: DocNoDianUI[] }> {
   const pool = getPool();
   const filas = await pool.query<FacturaRow>(
     `SELECT f.cufe, f.nombre_proveedor, f.nit_proveedor, f.numero, f.fecha_emision,
@@ -84,7 +86,11 @@ async function cargar(): Promise<{ filas: FacturaRow[]; conceptos: string[]; des
       : null,
   };
 
-  return { filas: filas.rows, conceptos: c.rows.map((r) => r.nombre), destinos: d.rows.map((r) => r.nombre), sync };
+  // Los documentos SIN factura DIAN (cuentas de cobro aprobadas y gastos
+  // internos) que están esperando concepto/destino/retenciones.
+  const docsNoDian = (await porClasificar()) as unknown as DocNoDianUI[];
+
+  return { filas: filas.rows, conceptos: c.rows.map((r) => r.nombre), destinos: d.rows.map((r) => r.nombre), sync, docsNoDian };
 }
 
 export default async function ConciliacionPage() {
@@ -109,7 +115,7 @@ export default async function ConciliacionPage() {
     );
   }
 
-  const { filas, conceptos, destinos, sync } = data;
+  const { filas, conceptos, destinos, sync, docsNoDian } = data;
   const { rol } = await getCurrentUser();
   const puedeClasificar = puede(rol, "clasificar");  // contador (causador) = false
   // El contador SÍ sube el Excel de retenciones: es justo su trabajo.
@@ -119,6 +125,9 @@ export default async function ConciliacionPage() {
     <div className="container">
       <h1>🧾 Conciliación de pagos</h1>
       <SyncPanel ultima={sync.ultima} nuevas={sync.nuevas} pendiente={sync.pendiente} />
+      {/* Va ARRIBA de la grilla a propósito: son pocos y son los que frenan un
+          pago. Si quedaran al final de 4.000 facturas, nadie los vería. */}
+      <DocsNoDian docs={docsNoDian} conceptos={conceptos} destinos={destinos} puedeClasificar={puedeClasificar} />
       <ConciliacionView filas={filas} conceptos={conceptos} destinos={destinos} puedeClasificar={puedeClasificar} puedeExport={puede(rol, "retenciones")} puedeRetenciones={puedeRetenciones} />
 
       <p className="chain-note">

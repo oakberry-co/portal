@@ -25,6 +25,9 @@ const MENU: Grupo[] = [
       { label: "Pagos", href: "/contabilidad/pagos", cap: "ver_pagos" },
       { label: "Conciliación de bancos", cap: "pagos" },
       { label: "Cuentas de cobro", href: "/contabilidad/cuentas-de-cobro", cap: "ver_intake" },
+      // Lo que nadie nos factura (servicios públicos, impuestos, reembolsos). Lo
+      // carga el equipo desde adentro, no un proveedor desde afuera.
+      { label: "Gasto sin factura", href: "/contabilidad/gasto-sin-factura", cap: "clasificar" },
       { label: "Cotizaciones", href: "/contabilidad/cotizaciones", cap: "ver_intake" },
       { label: "Órdenes de compra", cap: "ver_conciliacion" },
       { label: "Pagos internacionales", cap: "pagos" },

@@ -774,3 +774,56 @@ COMMIT;
 ALTER TABLE cuentas_cobro ADD COLUMN IF NOT EXISTS recurrente BOOLEAN NOT NULL DEFAULT FALSE;
 COMMENT ON COLUMN cuentas_cobro.recurrente IS
   'El proveedor ya tenía cuenta certificada: no volvió a subir los 3 documentos de identidad, solo el soporte. La cuenta de pago sale del maestro, NO de este envío.';
+
+-- -----------------------------------------------------------------------------
+-- 20) EL DOCUMENTO SIN FACTURA DIAN TAMBIÉN SE CLASIFICA (2026-08-20)
+--
+-- Antes, aprobar una cuenta de cobro la mandaba DERECHO a Pagos. Pero una cuenta
+-- de cobro es un gasto igual que una factura: hay que decir a qué concepto y a
+-- qué tienda se carga, y practicarle sus retenciones. Si salta ese paso, el
+-- gasto se paga pero no se puede leer — y el destino, que es lo que dice en qué
+-- tienda cayó la plata, queda vacío para siempre.
+--
+-- Ahora: aprobar la vuelve CLASIFICABLE, aparece en Conciliación de pagos junto
+-- a las facturas, y solo entra al tablero de Pagos cuando tiene concepto,
+-- destino y retenciones confirmadas. Mismo camino que una factura normal.
+--
+-- Se reusa `cuentas_cobro` en vez de crear otra tabla: ya trae retenciones,
+-- aprobación, correos al proveedor, cuenta bancaria y enlace al pago. Una tabla
+-- gemela sería una segunda copia de esa lógica, que es exactamente cómo se
+-- desincronizan (pasó con el candado de aprobación el 19-ago).
+--
+-- `area` NO es `destino`: el área la declara el PROVEEDOR en el portal público
+-- (lista corta: MERCADEO, OPERACIONES…) y el destino lo decide CONTABILIDAD
+-- contra el maestro (~50 tiendas). Por eso son dos columnas y no una.
+ALTER TABLE cuentas_cobro
+  ADD COLUMN IF NOT EXISTS destino          TEXT,
+  ADD COLUMN IF NOT EXISTS destino_fuente   TEXT,          -- 'humano' | 'area'
+  ADD COLUMN IF NOT EXISTS concepto_fuente  TEXT,          -- 'humano' | 'proveedor'
+  ADD COLUMN IF NOT EXISTS plazo_dias       INT,
+  ADD COLUMN IF NOT EXISTS fecha_vencimiento DATE,
+  ADD COLUMN IF NOT EXISTS clasificada_por  TEXT,
+  ADD COLUMN IF NOT EXISTS clasificada_en   TIMESTAMPTZ;
+
+-- De dónde salió el documento y qué es.
+--
+-- `origen='interno'` es el carril nuevo: SERVICIOS PÚBLICOS y otros gastos que
+-- nadie nos factura electrónicamente y que sube una persona del equipo
+-- (compras@) desde una página PRIVADA del portal — no un formulario público.
+-- No pasa por bandeja de aprobación porque quien lo sube ya es de la casa; entra
+-- directo a clasificarse.
+--
+-- `tipo_detalle` es el "otro, ¿cuál?": si el gasto no es un servicio público ni
+-- una cuenta de cobro, se escribe qué es. Se guarda aparte del concepto contable
+-- a propósito — lo que la persona escribe describe el gasto, el concepto lo
+-- clasifica, y mezclarlos convierte el maestro en una lista de frases sueltas.
+ALTER TABLE cuentas_cobro
+  ADD COLUMN IF NOT EXISTS origen       TEXT NOT NULL DEFAULT 'portal_publico',  -- portal_publico | interno
+  ADD COLUMN IF NOT EXISTS tipo         TEXT NOT NULL DEFAULT 'cuenta_cobro',    -- cuenta_cobro | servicio_publico | otro
+  ADD COLUMN IF NOT EXISTS tipo_detalle TEXT,
+  ADD COLUMN IF NOT EXISTS numero       TEXT,        -- nº del recibo/documento soporte
+  ADD COLUMN IF NOT EXISTS fecha_documento DATE,
+  ADD COLUMN IF NOT EXISTS creado_por   TEXT;
+
+CREATE INDEX IF NOT EXISTS ix_cc_clasificar
+  ON cuentas_cobro (estado) WHERE estado = 'aprobada' AND pago_id IS NULL;

@@ -1,6 +1,7 @@
 import { getPool } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { puede } from "@/lib/permisos";
+import { LISTO_PARA_PAGOS } from "@/lib/documentos-no-dian";
 import { PagosView, type FilaPago, type FilaIntake, type PagoHecho, type CuentaPago, type Adelanto } from "./PagosView";
 
 export const dynamic = "force-dynamic";
@@ -29,7 +30,11 @@ const SQL_INTAKE = `
          (cb.num_cuenta IS NOT NULL) AS tiene_banco, cb.banco, cb.certificada
     FROM cuentas_cobro cc
     LEFT JOIN cuentas_bancarias_proveedor cb ON cb.nit = cc.num_doc
-   WHERE cc.estado = 'aprobada' AND cc.pago_id IS NULL
+   -- Aprobada ya NO alcanza: entra a Pagos cuando está CLASIFICADA (concepto,
+   -- destino y retenciones), igual que una factura. Mientras tanto vive en
+   -- Conciliación. La condición es una sola en todo el sistema — si se copia,
+   -- una copia envejece y el candado deja de existir por un lado.
+   WHERE ${LISTO_PARA_PAGOS("cc")}
   UNION ALL
   SELECT 'cotizacion', cot.id, coalesce(cot.codigo, 'COT-' || cot.id),
          cot.razon_social, cot.nit, cot.concepto, cot.area,
