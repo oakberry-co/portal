@@ -14,7 +14,11 @@ export type MaestrosData = {
   destinos: { nombre: string; short_code: string | null; activo: boolean; creado_por: string | null }[];
   proveedores: { nit: string; nombre: string | null; concepto_default: string | null; destino_default: string | null; cuenta_puc_default: string | null; retencion_hint: string | null; plazo_dias: number | null; tipo_pago_default: string | null; fuente: string; n_facturas: number | null; confianza: string | null }[];
   cuentas: { codigo: string; nombre: string; activo: boolean }[];
-  retenciones: { nit: string; nombre: string | null; retefuente: string | null; reteica: string | null; reteiva: string | null; humano: boolean }[];
+  retenciones: { nit: string; nombre: string | null; retefuente: string | null; reteica: string | null;
+                 reteiva: string | null; humano: boolean;
+                 // Lo que el equipo practica de verdad; `desfasada` = el maestro
+                 // lleva 5+ facturas siendo contradicho.
+                 prac_rf: string | null; prac_casos: number | null; desfasada: boolean }[];
   bancos: { nit: string; nombre: string | null; titular_nombre: string | null; titular_apellido: string | null; tipo_doc: string | null; num_doc: string | null; banco: string | null; tipo_cuenta: string | null; num_cuenta: string | null; correo: string | null; referencia: string | null; fuente: string }[];
 };
 
@@ -23,7 +27,7 @@ const TABS = [
   { key: "destinos", label: "Destinos", fuente: "Google Sheet · se alimenta del “+agregar” de la grilla" },
   { key: "proveedores", label: "Proveedores", fuente: "Facturas + Siigo · APRENDE cada vez que clasificas · plazo de pago incluido" },
   { key: "cuentas", label: "Cuentas PUC", fuente: "La entrega tu equipo contable" },
-  { key: "retenciones", label: "Retenciones", fuente: "Base del equipo + Siigo (se cruza por NIT)" },
+  { key: "retenciones", label: "Retenciones", fuente: "La fija el equipo · se compara con lo que se practica de verdad (cron 6:20am)" },
   { key: "bancos", label: "Cuentas bancarias", fuente: "Para el archivo del banco (Pagos) · súbela por Sheet o agrégala a mano" },
 ] as const;
 
@@ -200,16 +204,36 @@ export function MaestrosView({ data, soloRetenciones = false }: {
             <button type="submit">Agregar</button>
           </form>
           {data.retenciones.length === 0 && <p className="mst-empty">Aún vacío. Se llena con la base del equipo, de Siigo por NIT, o manual aquí.</p>}
-          <table className="mst-tabla"><thead><tr><th>NIT</th><th>Proveedor</th><th>ReteFuente</th><th>ReteICA</th><th>ReteIVA</th><th>Fuente</th></tr></thead>
+          {/* "Se practica" es la columna que hace de esto un maestro VIVO: lo
+              que los contadores confirman factura a factura, al lado de lo que
+              alguien fijó una vez. Cuando no coinciden, el que suele estar mal
+              es el maestro — pero cambiarlo es decisión de una persona, no de
+              un cron, así que se muestra y no se pisa. */}
+          <table className="mst-tabla"><thead><tr><th>NIT</th><th>Proveedor</th><th>ReteFuente</th><th>ReteICA</th><th>ReteIVA</th><th>Se practica</th><th>Fuente</th></tr></thead>
             <tbody>{data.retenciones.filter((r) => match(r.nit, r.nombre)).map((r) => (
-              <tr key={r.nit}>
+              <tr key={r.nit} className={r.desfasada ? "desfasada" : ""}>
                 <td className="mono">{r.nit}</td>
                 <td>{r.nombre ?? <span className="muted">—</span>}</td>
                 <td><Edit grupo="retenciones" id={r.nit} campo="retefuente" value={r.retefuente} num suffix="%" /></td>
                 <td><Edit grupo="retenciones" id={r.nit} campo="reteica" value={r.reteica} num suffix="%" /></td>
                 <td><Edit grupo="retenciones" id={r.nit} campo="reteiva" value={r.reteiva} num suffix="%" /></td>
-                <td>{r.humano ? <span className="ft hum">humano</span> : <span className="ft off">Sheet</span>}</td>
+                <td>
+                  {r.prac_rf == null ? <span className="muted">—</span> : (
+                    <span title={`Lo que el equipo aplicó en ${r.prac_casos} facturas`}>
+                      {r.desfasada && "⚠️ "}{r.prac_rf}%
+                      <i className="muted mini"> · {r.prac_casos} fact.</i>
+                    </span>
+                  )}
+                </td>
+                <td>{r.humano ? <span className="ft hum">humano</span> : <span className="ft off">aprendida</span>}</td>
               </tr>))}</tbody></table>
+          <p className="mst-hint">
+            <b>Se practica</b> = el criterio del equipo contable, contado de las retenciones que
+            ellos mismos confirmaron. Se recalcula cada mañana. Si sale ⚠️, el maestro dice una
+            cosa y el equipo lleva 5+ facturas haciendo otra: casi siempre el viejo es el maestro.
+            <b>Nada de esto se aplica solo</b> — las retenciones las siguen practicando ellos;
+            esta columna existe para que su criterio quede guardado y no se pierda.
+          </p>
         </>
       )}
 

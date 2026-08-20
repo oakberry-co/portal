@@ -165,12 +165,12 @@ def main() -> int:
         (listos if n >= LISTO_CASOS and c >= LISTO_CONCORDANCIA else observacion).append(fila)
 
     print("\n" + "═" * 78)
-    print(f"¿QUÉ SE PODRÍA APLICAR SOLO?  (listo = {LISTO_CASOS}+ casos y "
+    print(f"QUÉ TAN ESTABLE ES CADA CONCEPTO  (estable = {LISTO_CASOS}+ casos y "
           f"{LISTO_CONCORDANCIA:.0f}%+ de acuerdo)")
     print("═" * 78)
     if listos:
-        print(f"\n✅ LISTOS ({len(listos)}) — el equipo ya decidió lo mismo tantas veces "
-              "que aplicarlo solo no cambiaría nada:")
+        print(f"\n✅ ESTABLES ({len(listos)}) — el equipo decidió lo mismo tantas veces "
+              "que la tarifa ya no está en discusión:")
         for concepto, rf, ica, aplica, n, c, _ in listos:
             que = "NO retiene" if not aplica else f"RF {rf}%" + (f" · ICA {ica}%" if ica else "")
             print(f"   {concepto[:32]:32} {que:26} {n:>3} casos · {c:.0f}% de acuerdo")
@@ -181,8 +181,10 @@ def main() -> int:
         for concepto, rf, ica, aplica, n, c, _ in observacion[:12]:
             falta = ("faltan casos" if n < LISTO_CASOS else "el equipo no siempre decide igual")
             print(f"   {concepto[:32]:32} {n:>3} casos · {c:.0f}% de acuerdo   ({falta})")
-    print("\nMientras un concepto no esté LISTO, la regla solo PRECARGA el modal y "
-          "\ndice de dónde salió. Nada se aplica solo hoy — eso lo decides tú.")
+    print("\nESTO NO AUTOMATIZA NADA. El equipo contable practica el 100% de las"
+          "\nretenciones a mano; esta tabla solo MIDE qué tan consistente es su"
+          "\ncriterio, para el comparativo del futuro. La sugerencia del modal es"
+          "\nsu propio historial devuelto, no un cálculo que reemplace su trabajo.")
 
     conn.close()
     return 0

@@ -40,6 +40,8 @@ from aprender_retenciones import tarifa_moda  # noqa: E402  (misma moda, un solo
 
 # Con menos de esto no se registra nada: dos facturas no son un patrón.
 MIN_CASOS = 3
+# Dos tarifas son la misma decisión si difieren menos de esto (2,49% y 2,5%).
+TOLERANCIA_TARIFA = 0.15
 # Cuándo la tarifa de un proveedor ya es tan estable que aplicarla sola no
 # cambiaría nada. Es el mismo umbral del hermano por concepto.
 LISTO_CASOS = 10
@@ -93,8 +95,11 @@ def main() -> int:
 
     # Lo que un humano fijó no se toca. Se pregunta por (nit, tipo), no por NIT:
     # el equipo pudo fijar la ReteFuente y dejar el ICA sin definir.
-    cur.execute("SELECT nit_proveedor, tipo FROM maestro_retenciones WHERE fuente = 'humano'")
-    intocables = {(nit, tipo) for nit, tipo in cur.fetchall()}
+    cur.execute("SELECT nit_proveedor, tipo, tarifa FROM maestro_retenciones WHERE fuente = 'humano'")
+    fijadas = {(nit, tipo): tarifa for nit, tipo, tarifa in cur.fetchall()}
+    intocables = set(fijadas)
+    practicadas: list[tuple] = []
+    conflictos: list[tuple] = []
 
     print(f"{'PROVEEDOR':36} {'n':>3}  qué se registra")
     print("─" * 92)
@@ -107,30 +112,49 @@ def main() -> int:
             continue
         partes, filas = [], []
         for tipo, clave, base in TIPOS:
-            if (nit, tipo) in intocables:
-                partes.append(f"{tipo}: la fijó un humano")
-                saltadas += 1
-                continue
             valores = d[clave]
             tarifa, concordancia = tarifa_moda(valores)
-            # MIN_CASOS sobre los casos que SÍ tuvieron esa retención, no sobre
-            # el total de facturas del proveedor. Amande tenía ReteIVA en 1 de 33
-            # y salía como "15%, 100% de acuerdo" — 100% de UNA sola vez. Una
-            # excepción no es una tarifa.
+            # El mínimo va sobre los casos que SÍ tuvieron esa retención, no
+            # sobre el total de facturas del proveedor: Amande tenía ReteIVA en 1
+            # de 33 y salía como "15%, 100% de acuerdo" — 100% de UNA sola vez.
             if tarifa is not None and len(valores) >= MIN_CASOS:
-                partes.append(f"{tipo} {tarifa}% ({len(valores)}/{d['n']}, {concordancia:.0f}%)")
-                filas.append((tipo, tarifa, base, len(valores), concordancia))
-            elif clave in ("rf", "ica") and d["ceros_" + clave] >= MIN_CASOS:
-                # NO RETIENE: tan útil como la tarifa, y hoy invisible.
-                partes.append(f"{tipo} 0% — no retiene ({d['ceros_' + clave]} seguidas)")
-                filas.append((tipo, 0, base, d["ceros_" + clave], 100.0))
-        if not filas and not partes:
+                casos = len(valores)
+            elif clave in ("rf", "ica") and not valores and d["ceros_" + clave] >= MIN_CASOS:
+                # "NO RETIENE" es tan útil como la tarifa, y hoy es invisible.
+                tarifa, concordancia, casos = 0, 100.0, d["ceros_" + clave]
+            else:
+                continue
+
+            # LO QUE EL EQUIPO PRACTICA SE REGISTRA SIEMPRE, aunque la tarifa la
+            # haya fijado un humano. Ahí está el punto: lo que suben los
+            # contadores es el norte. No pisa la tarifa —eso lo decide una
+            # persona— pero deja de ser invisible.
+            practicadas.append((nit, tipo, tarifa, casos, concordancia))
+
+            fijada = fijadas.get((nit, tipo))
+            if fijada is not None:
+                # El maestro manda, pero si lleva N facturas contradiciéndolo,
+                # es que se quedó viejo. Callarlo es condenar al revisor a
+                # corregir el mismo número precargado para siempre.
+                if abs(float(fijada) - float(tarifa)) > TOLERANCIA_TARIFA:
+                    partes.append(f"⚠️ {tipo}: el maestro dice {float(fijada)}% "
+                                  f"y practicas {tarifa}% ({casos} casos)")
+                    conflictos.append((nombre, nit, tipo, float(fijada), tarifa, casos, concordancia))
+                else:
+                    partes.append(f"{tipo}: fijada por un humano en {float(fijada)}% · coincide")
+                continue
+
+            partes.append(f"{tipo} {tarifa}% ({casos}/{d['n']}, {concordancia:.0f}%)" if tarifa
+                          else f"{tipo} 0% — no retiene ({casos} seguidas)")
+            filas.append((tipo, tarifa, base, casos, concordancia))
+
+        if not partes:
             continue
         print(f"{nombre:36} {d['n']:>3}  " + " · ".join(partes))
         resumen.append((nombre, d["n"], filas))
 
         if args.aplicar:
-            for tipo, tarifa, base, n_casos, concordancia in filas:
+            for tipo, tarifa, base, casos, concordancia in filas:
                 cur.execute("""
                     INSERT INTO maestro_retenciones
                       (nit_proveedor, tipo, tarifa, base, fuente, creado_por)
@@ -140,6 +164,17 @@ def main() -> int:
                      WHERE maestro_retenciones.fuente <> 'humano'""",
                     (nit, tipo, tarifa, base))
                 escritas += 1
+
+    # Lo practicado se guarda AL LADO de la tarifa, sin pisarla — incluidas las
+    # humanas. Es lo que deja ver el desfase en la pantalla y en el centinela.
+    if args.aplicar:
+        for nit, tipo, tarifa, casos, concordancia in practicadas:
+            cur.execute("""
+                UPDATE maestro_retenciones
+                   SET tarifa_practicada = %s, practicada_casos = %s,
+                       practicada_conc = %s, practicada_en = now()
+                 WHERE nit_proveedor = %s AND tipo = %s""",
+                (tarifa, casos, concordancia, nit, tipo))
 
     if args.aplicar:
         conn.commit()
@@ -153,7 +188,7 @@ def main() -> int:
     listos = [(nom, n, f) for nom, n, filas in resumen
               for f in filas if n >= LISTO_CASOS and f[4] >= LISTO_CONCORDANCIA]
     print("\n" + "═" * 92)
-    print(f"TARIFAS POR PROVEEDOR YA ESTABLES  ({LISTO_CASOS}+ facturas y "
+    print(f"QUÉ TAN ESTABLE ES LA TARIFA DE CADA PROVEEDOR  ({LISTO_CASOS}+ facturas y "
           f"{LISTO_CONCORDANCIA:.0f}%+ de acuerdo)")
     print("═" * 92)
     if listos:
@@ -164,8 +199,22 @@ def main() -> int:
             print(f"   {nom[:36]:36} {que:26} {k} de {n} facturas · {conc:.0f}% de acuerdo")
     else:
         print("   Ninguna todavía.")
-    print("\nEsto solo PRECARGA el modal: la tarifa aparece puesta y un humano confirma."
-          "\nLo que el equipo fijó a mano manda siempre y no se toca.")
+    print("\n" + "═" * 92)
+    print("EL MAESTRO CONTRA LO QUE EL EQUIPO PRACTICA DE VERDAD")
+    print("═" * 92)
+    if conflictos:
+        print(f"⚠️  {len(conflictos)} tarifa(s) del maestro se quedaron viejas:\n")
+        for nombre, nit, tipo, fijada, practicada, casos, conc in conflictos:
+            print(f"   {nombre[:34]:34} {tipo:11} maestro {fijada}%  ·  practican {practicada}% "
+                  f"en {casos} facturas ({conc:.0f}% de acuerdo)")
+        print("\n   NO se pisaron: la tarifa fijada manda. Pero alguien debería mirarlas —"
+              "\n   si el equipo lleva tantas facturas haciéndolo distinto, el maestro es el"
+              "\n   que está mal, y el revisor está corrigiendo el mismo número cada vez.")
+    else:
+        print("   ✅ Ninguna. Lo que dice el maestro es lo que el equipo practica.")
+    print("\nESTO NO AUTOMATIZA NADA. El equipo contable sigue practicando el 100% de"
+          "\nlas retenciones; el maestro solo GUARDA su criterio para que no se pierda"
+          "\ny para el comparativo del futuro. Lo que fijaron a mano manda siempre.")
 
     conn.close()
     return 0

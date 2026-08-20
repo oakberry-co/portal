@@ -14,10 +14,18 @@ async function cargar(): Promise<MaestrosData> {
     pool.query("SELECT nit, nombre, concepto_default, destino_default, cuenta_puc_default, retencion_hint, plazo_dias, tipo_pago_default, fuente, n_facturas, confianza::text FROM maestro_proveedores ORDER BY nombre NULLS LAST"),
     pool.query("SELECT codigo, nombre, activo FROM maestro_cuentas_puc ORDER BY codigo"),
     pool.query(`SELECT r.nit_proveedor AS nit, mp.nombre,
-                  max(CASE WHEN r.tipo='ReteFuente' THEN r.tarifa END)::text AS retefuente,
-                  max(CASE WHEN r.tipo='ReteICA'    THEN r.tarifa END)::text AS reteica,
-                  max(CASE WHEN r.tipo='ReteIVA'    THEN r.tarifa END)::text AS reteiva,
-                  bool_or(r.fuente='humano') AS humano
+                  -- ::float antes de ::text: el NUMERIC se muestra '2.5000%' y
+                  -- '0.0000%', que se leen mal en una tabla de tarifas.
+                  max(CASE WHEN r.tipo='ReteFuente' THEN r.tarifa END)::float::text AS retefuente,
+                  max(CASE WHEN r.tipo='ReteICA'    THEN r.tarifa END)::float::text AS reteica,
+                  max(CASE WHEN r.tipo='ReteIVA'    THEN r.tarifa END)::float::text AS reteiva,
+                  bool_or(r.fuente='humano') AS humano,
+                  -- Lo que el equipo practica de verdad, al lado de lo fijado.
+                  max(CASE WHEN r.tipo='ReteFuente' THEN r.tarifa_practicada END)::float::text AS prac_rf,
+                  max(r.practicada_casos) AS prac_casos,
+                  bool_or(r.fuente='humano' AND r.tarifa_practicada IS NOT NULL
+                          AND r.practicada_casos >= 5
+                          AND abs(r.tarifa - r.tarifa_practicada) > 0.15) AS desfasada
                 FROM maestro_retenciones r
                 LEFT JOIN maestro_proveedores mp ON mp.nit = r.nit_proveedor
                 GROUP BY r.nit_proveedor, mp.nombre
