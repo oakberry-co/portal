@@ -22,16 +22,22 @@ export type Area = (typeof AREAS)[number];
  *  Los 4 son OBLIGATORIOS para poder aprobar y pasar a Pagos. La certificación
  *  bancaria es la crítica: de ella sale la cuenta que va al CSV del banco, así
  *  que tiene que ser el documento que emite la entidad — no un Word ni un papel
- *  escrito a mano (el lector los rechaza y le pide al proveedor el real). */
+ *  escrito a mano (el lector los rechaza y le pide al proveedor el real).
+ *
+ *  `formatos` decide qué archivo se acepta (ver lib/documentos.ts):
+ *    'documento' = PDF o Word. La certificación (la lee un OCR y de ahí sale la
+ *                  cuenta) y el soporte (es el papel que sustenta el pago).
+ *    'libre'     = además foto. Cédula y RUT llegan del celular y se leen a ojo;
+ *                  exigirles PDF es mandarlos a buscar un computador. */
 export const CLASES_DOC = [
   { name: "doc_certificacion", clase: "certificacion_bancaria", label: "Certificación bancaria",
-    ayuda: "La que emite tu banco. De ahí tomamos tu cuenta" },
+    ayuda: "La que emite tu banco. De ahí tomamos tu cuenta", formatos: "documento" as const },
   { name: "doc_rut", clase: "rut", label: "RUT",
-    ayuda: "Actualizado (DIAN)" },
+    ayuda: "Actualizado (DIAN)", formatos: "libre" as const },
   { name: "doc_cedula", clase: "cedula", label: "Cédula",
-    ayuda: "Del titular de la cuenta" },
+    ayuda: "Del titular de la cuenta", formatos: "libre" as const },
   { name: "doc_soporte", clase: "soporte", label: "Documento soporte",
-    ayuda: "Tu cuenta de cobro, cotización, contrato…" },
+    ayuda: "Tu cuenta de cobro, cotización, contrato…", formatos: "documento" as const },
 ] as const;
 
 /** Días de plazo de una cuenta de cobro: se pagan a 30 días desde que llega.

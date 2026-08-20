@@ -5,6 +5,7 @@
 // Luego se le hacen abonos y se cruza con la factura final para no pagar doble.
 import { subirDocumentos, avisoDocs, archivosDelForm, registrarCertificacion, etiquetaEnvio } from "@/lib/intake";
 import { AREAS, CLASES_DOC } from "@/lib/areas";
+import { revisarArchivos } from "@/lib/documentos";
 import { getPool } from "@/lib/db";
 
 export type Resultado = { ok: boolean; error?: string; codigo?: string; aviso?: string };
@@ -57,8 +58,14 @@ export async function enviarCotizacion(_prev: Resultado | null, formData: FormDa
 
   // Los documentos van a Drive, pero su falla NO tumba el envío: la cotización
   // se registra igual y lo que no subió queda marcado 'pendiente'.
+  // Mismo filtro que en cuentas de cobro: el archivo malo no entra (ver
+  // lib/documentos.ts). El navegador ya avisó; esto es lo que manda.
+  const archivos = archivosDelForm(formData, CLASES_DOC);
+  const problemas = await revisarArchivos(archivos, CLASES_DOC);
+  if (problemas.length) return { ok: false, error: problemas.join(" · ") };
+
   const { docs, fallidos } = await subirDocumentos(
-    archivosDelForm(formData, CLASES_DOC), "cotizaciones",
+    archivos, "cotizaciones",
     { nit, razon, envio: etiquetaEnvio() });
 
   try {

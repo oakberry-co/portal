@@ -1,31 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { CLASES_DOC } from "@/lib/areas";
-
-/** ¿Este PDF viene con clave? Se mira AQUÍ, en el navegador del proveedor, en el
- *  instante en que lo elige.
- *
- *  Por qué acá y no en el servidor: el lector que abre los certificados corre en
- *  la VM cada 15 minutos. Si esperamos a él, el proveedor ya cerró la página y
- *  se entera por correo horas después — o al otro día si mandó de noche. Un
- *  aviso en el momento le ahorra ese viaje entero.
- *
- *  Es una señal, no un veredicto: se busca `/Encrypt` en los bytes (lo que
- *  escribe todo PDF cifrado en su tráiler). No se intenta abrirlo ni se le pide
- *  la clave — de eso se encarga el lector, que casi siempre lo abre solo con el
- *  documento del titular. */
-async function pareceProtegido(file: File): Promise<boolean> {
-  const esPdf = file.type.includes("pdf") || file.name.toLowerCase().endsWith(".pdf");
-  if (!esPdf || file.size > 25 * 1024 * 1024) return false;
-  try {
-    const bytes = new Uint8Array(await file.arrayBuffer());
-    const txt = new TextDecoder("latin1").decode(bytes);
-    return txt.includes("/Encrypt");
-  } catch {
-    return false;   // ante la duda no se asusta al proveedor
-  }
-}
+import { motivoRechazo, tieneClave } from "@/lib/documentos";
 
 // Las 4 casillas de documentos de los portales públicos: certificación bancaria,
 // RUT, cédula y documento soporte. Una casilla por documento (y no un "sube todo
@@ -35,48 +12,77 @@ async function pareceProtegido(file: File): Promise<boolean> {
 // Pensadas para el CELULAR, que es de donde llega la mayoría: cada casilla es un
 // botón grande tocable que abre la galería o la cámara, y al elegir muestra el
 // nombre del archivo para que el proveedor sepa que sí quedó.
+//
+// EL ARCHIVO MALO SE RECHAZA AQUÍ, en el momento de elegirlo, no después. Antes
+// solo se avisaba de los PDF con clave y se dejaba enviar igual: el proveedor
+// cerraba la página creyendo que había terminado y se enteraba por correo horas
+// más tarde. Rechazar en el instante le ahorra ese viaje entero — y el servidor
+// vuelve a revisarlo, porque el `accept` de un <input> se salta arrastrando.
 export function CasillasDocumentos({ documento }: { documento?: string }) {
   const [elegidos, setElegidos] = useState<Record<string, string>>({});
-  const [protegido, setProtegido] = useState<Record<string, boolean>>({});
+  const [errores, setErrores] = useState<Record<string, string>>({});
+  const refs = useRef<Record<string, HTMLInputElement | null>>({});
+
+  const accept = (formatos: string) =>
+    formatos === "documento" ? ".pdf,.doc,.docx" : ".pdf,.doc,.docx,image/*";
 
   return (
     <div className="pub-docs">
       {CLASES_DOC.map((c) => {
         const nombre = elegidos[c.name];
+        const error = errores[c.name];
         return (
-          <label key={c.name} className={"pub-doc" + (nombre ? " puesto" : "")}>
+          <label key={c.name} className={"pub-doc" + (nombre ? " puesto" : "") + (error ? " malo" : "")}>
             <input
               name={c.name}
               type="file"
-              accept=".pdf,image/*"
+              accept={accept(c.formatos)}
               required
+              ref={(el) => { refs.current[c.name] = el; }}
               onChange={async (e) => {
                 const f = e.target.files?.[0];
-                setElegidos((prev) => ({ ...prev, [c.name]: f?.name ?? "" }));
-                const conClave = f ? await pareceProtegido(f) : false;
-                setProtegido((prev) => ({ ...prev, [c.name]: conClave }));
+                if (!f) {
+                  setElegidos((p) => ({ ...p, [c.name]: "" }));
+                  setErrores((p) => ({ ...p, [c.name]: "" }));
+                  return;
+                }
+                const malo = motivoRechazo(f, c.formatos, c.label)
+                  ?? (await tieneClave(f)
+                      ? `${c.label}: este PDF tiene contraseña y así no lo podemos abrir.`
+                      : null);
+                if (malo) {
+                  // Se descarta de verdad: si se dejara puesto, el proveedor
+                  // enviaría igual y el rechazo llegaría por correo mañana.
+                  if (refs.current[c.name]) refs.current[c.name]!.value = "";
+                  setElegidos((p) => ({ ...p, [c.name]: "" }));
+                  setErrores((p) => ({ ...p, [c.name]: malo }));
+                  return;
+                }
+                setElegidos((p) => ({ ...p, [c.name]: f.name }));
+                setErrores((p) => ({ ...p, [c.name]: "" }));
               }}
             />
-            <span className="pub-doc-ico" aria-hidden="true">{nombre ? "✓" : "+"}</span>
+            <span className="pub-doc-ico" aria-hidden="true">{nombre ? "✓" : error ? "!" : "+"}</span>
             <span className="pub-doc-txt">
               <b>{c.label} *</b>
               <i>{nombre || c.ayuda}</i>
+              {c.formatos === "documento" && !nombre && <u>PDF (mejor) o Word — no foto</u>}
             </span>
           </label>
         );
       })}
 
-      {/* El aviso va DEBAJO de las casillas y no dentro: ocupa dos renglones y
-          adentro rompería la altura pareja de la cuadrícula. */}
-      {CLASES_DOC.filter((c) => protegido[c.name]).map((c) => (
-        <div key={"p" + c.name} className="pub-protegido">
-          🔒 <b>{c.label}: este archivo tiene clave.</b>{" "}
-          {documento
-            ? <>Si la clave es tu número de documento (<b>{documento}</b>), lo abrimos sin problema y no
-               tienes que hacer nada.</>
-            : <>Si la clave es tu número de documento, lo abrimos sin problema.</>}{" "}
-          Si es otra clave, mejor <b>mándalo sin candado</b>: ábrelo y vuelve a guardarlo como PDF, o
-          tómale una foto nítida donde se vean el banco y el número de cuenta.
+      {/* Los avisos van DEBAJO de la cuadrícula: adentro romperían la altura
+          pareja de las casillas y en celular empujarían el botón de enviar. */}
+      {CLASES_DOC.filter((c) => errores[c.name]).map((c) => (
+        <div key={"e" + c.name} className="pub-rechazo" role="alert">
+          ⚠️ <b>{errores[c.name]}</b>
+          {errores[c.name]?.includes("contraseña") && (
+            <>
+              {" "}Ábrelo con la clave{documento ? <> (suele ser tu documento, <b>{documento}</b>)</> : null} y
+              vuelve a guardarlo sin candado: <b>Archivo → Imprimir → Guardar como PDF</b>.
+            </>
+          )}
         </div>
       ))}
     </div>

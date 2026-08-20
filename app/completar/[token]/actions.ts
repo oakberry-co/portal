@@ -4,6 +4,7 @@
 // NIT: dejar editar eso sería el formulario público con los candados quitados.
 import { subirDocumentos, avisoDocs, archivosDelForm, registrarCertificacion, etiquetaEnvio } from "@/lib/intake";
 import { CLASES_DOC } from "@/lib/areas";
+import { revisarArchivos } from "@/lib/documentos";
 import { getPool } from "@/lib/db";
 import { revalidatePath } from "next/cache";
 
@@ -28,6 +29,10 @@ export async function completarSolicitud(_prev: Resultado | null, formData: Form
   if (s.estado === "pagada") return { ok: false, error: "Esta solicitud ya fue pagada." };
 
   const nuevos = archivosDelForm(formData, CLASES_DOC);
+  // El mismo filtro del formulario grande: quien vuelve por el enlace de
+  // "completa tu solicitud" no puede colar lo que allá se rechaza.
+  const problemas = await revisarArchivos(nuevos, CLASES_DOC);
+  if (problemas.length) return { ok: false, error: problemas.join(" · ") };
   if (!nuevos.length) return { ok: false, error: "Adjunta al menos un documento." };
 
   const { docs, fallidos } = await subirDocumentos(

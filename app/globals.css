@@ -1078,6 +1078,14 @@ button.ghost { background: #fff; color: var(--purple); }
 .cc-adelanto { display: inline-block; margin: 4px 0 2px; padding: 5px 11px; border-radius: 8px;
   background: #fff8e6; border: 1px solid rgba(212,160,23,.35); color: #8a6100;
   font-size: 12.5px; font-weight: 600; }
+/* Casilla de documento RECHAZADA + el porqué. El rojo va en la casilla y el
+   texto abajo: en celular el proveedor ve primero que algo falló, y al bajar
+   encuentra qué hacer. */
+.pub-doc.malo { border-color: #c0395f; background: #fdeef2; }
+.pub-doc-txt u { display: block; text-decoration: none; font-size: 11px; opacity: .65; margin-top: 2px; }
+.pub-rechazo { grid-column: 1 / -1; font-size: 13px; line-height: 1.5; color: #8a2140;
+               background: #fdeef2; border: 1px solid #f5c6d2; border-left: 3px solid #c0395f;
+               border-radius: 10px; padding: 10px 12px; margin-top: 4px; }
 /* Quien entra a la bandeja pero no la opera (el contador): que sepa QUÉ sí puede
    hacer, no solo que le faltan botones. */
 .cc-solo-lectura { font-size: 12.5px; color: var(--lav); background: var(--cream-2);

@@ -6,6 +6,7 @@
 // revisa en la bandeja.
 import { subirDocumentos, avisoDocs, archivosDelForm, registrarCertificacion, etiquetaEnvio } from "@/lib/intake";
 import { AREAS, CLASES_DOC, PLAZO_CUENTA_COBRO_DIAS } from "@/lib/areas";
+import { revisarArchivos } from "@/lib/documentos";
 import { getPool } from "@/lib/db";
 
 export type Resultado = { ok: boolean; error?: string; aviso?: string };
@@ -53,8 +54,15 @@ export async function enviarCuentaCobro(_prev: Resultado | null, formData: FormD
 
   // Subir documentos a Drive (vía la VM). Quedan en CONTABILIDAD/Intake, privados.
   // Su falla NO tumba el envío: el proveedor ya llenó el formulario.
+  // NINGÚN archivo malo entra. Se revisa ACÁ además del navegador: el `accept`
+  // de un <input> se salta arrastrando el archivo, y un PDF con clave no lo abre
+  // nadie —ni el lector, ni quien revisa, ni el contador tres meses después—.
+  const archivos = archivosDelForm(formData, CLASES_DOC);
+  const problemas = await revisarArchivos(archivos, CLASES_DOC);
+  if (problemas.length) return { ok: false, error: problemas.join(" · ") };
+
   const { docs, fallidos } = await subirDocumentos(
-    archivosDelForm(formData, CLASES_DOC), "cuentas-de-cobro",
+    archivos, "cuentas-de-cobro",
     { nit: numDoc, razon, envio: etiquetaEnvio() });
 
   // banco/tipo_cuenta/num_cuenta ya NO se piden: la cuenta sale de la

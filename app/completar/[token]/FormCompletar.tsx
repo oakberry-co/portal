@@ -2,9 +2,11 @@
 
 import { useActionState, useState } from "react";
 import { completarSolicitud, type Resultado } from "./actions";
+import type { Formatos } from "@/lib/documentos";
 
 export function FormCompletar({ token, clases }: {
-  token: string; clases: { name: string; clase: string; label: string; ayuda: string }[];
+  token: string;
+  clases: { name: string; clase: string; label: string; ayuda: string; formatos: Formatos }[];
 }) {
   const [estado, action, pending] = useActionState<Resultado | null, FormData>(completarSolicitud, null);
   const [puestos, setPuestos] = useState<Record<string, string>>({});
@@ -32,7 +34,8 @@ export function FormCompletar({ token, clases }: {
       <div className="pub-docs">
         {clases.map((c) => (
           <label key={c.name} className={"pub-doc" + (puestos[c.name] ? " puesto" : "")}>
-            <input name={c.name} type="file" accept=".pdf,image/*"
+            <input name={c.name} type="file"
+                   accept={c.formatos === "documento" ? ".pdf,.doc,.docx" : ".pdf,.doc,.docx,image/*"}
                    onChange={(e) => setPuestos((p) => ({ ...p, [c.name]: e.target.files?.[0]?.name ?? "" }))} />
             <span className="pub-doc-ico" aria-hidden="true">{puestos[c.name] ? "✓" : "+"}</span>
             <span className="pub-doc-txt"><b>{c.label}</b><i>{puestos[c.name] || c.ayuda}</i></span>
