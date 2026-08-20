@@ -8,6 +8,10 @@
 //
 // Fuente: reglas del "Formato Excel Estándar" que entregó el banco (ago-2026).
 
+// Relativo a propósito: los centinelas compilan este archivo suelto con `tsc`,
+// que no resuelve el alias `@/`. Un import bonito que rompe la prueba no sirve.
+import { limpiarTextoHumano } from "./texto";
+
 export type FilaBanco = {
   nit: string; nombre: string | null;
   titular_nombre: string | null; titular_apellido: string | null;
@@ -54,7 +58,14 @@ export function sinTildes(s: string): string {
  *  (Regla 7 del formato: . $ & % / ( ) = ? #). También recorta y colapsa
  *  espacios — regla 6. */
 export function textoBanco(s: string | null | undefined): string {
-  return sinTildes((s ?? "").replace(/ñ/g, "n").replace(/Ñ/g, "N"))
+  // ÚLTIMA barrera antes del banco. `limpiarTextoHumano` repara el mojibake y
+  // borra los caracteres de control: un `PEÃA` salía como `PEAA` más un
+  // carácter INVISIBLE que ni se ve en pantalla ni se nota al revisar el Excel,
+  // y el banco recibe un titular que no es el de la cuenta. Se limpia también
+  // acá —además de al guardar— porque el maestro tiene datos viejos y este
+  // archivo mueve plata hoy.
+  const limpio = limpiarTextoHumano(s) ?? "";
+  return sinTildes(limpio.replace(/ñ/g, "n").replace(/Ñ/g, "N"))
     .replace(/[.$&%/()=?#]/g, " ")
     .replace(/\s+/g, " ")
     .trim();

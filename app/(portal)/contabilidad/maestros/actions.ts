@@ -4,7 +4,8 @@ import { revalidatePath } from "next/cache";
 import { withTx } from "@/lib/db";
 import { registrarEvento } from "@/lib/eventos";
 import { exigirCap } from "@/lib/auth";
-import { nitCanonico } from "@/lib/nit";
+import { nitCanonico, mismoNit } from "@/lib/nit";
+import { limpiarTextoHumano, limpiarCorreo } from "@/lib/texto";
 import { esBancoConocido } from "@/lib/bancos";
 
 /** Los maestros se alimentan de dos lados: (1) manualmente aquí, (2) de lo que se
@@ -181,7 +182,13 @@ export async function agregarCuentaBanco(fd: FormData) {
     throw new Error(`"${S(fd, "banco")}" no está en la lista de bancos. Elígelo del desplegable: `
       + "de ese nombre sale el código al que se transfiere.");
   }
-  const v = (k: string) => S(fd, k) || null;
+  const v = (k: string) => limpiarTextoHumano(S(fd, k));
+  // El documento del titular arrastra el mismo problema que el NIT: si es el
+  // NIT de la empresa escrito con su dígito de verificación, el archivo del
+  // banco sale con un número de identificación que no es el del tercero. Solo
+  // se corrige cuando es ESE NIT; una cédula nunca se toca.
+  const docCrudo = S(fd, "num_doc");
+  const numDoc = docCrudo && mismoNit(docCrudo, nit) ? nit : limpiarTextoHumano(docCrudo);
   await withTx(async (c) => {
     await c.query(
       `INSERT INTO cuentas_bancarias_proveedor
@@ -197,7 +204,7 @@ export async function agregarCuentaBanco(fd: FormData) {
          num_cuenta = COALESCE(EXCLUDED.num_cuenta, cuentas_bancarias_proveedor.num_cuenta),
          correo = COALESCE(EXCLUDED.correo, cuentas_bancarias_proveedor.correo),
          fuente = 'humano', actualizado_en = now()`,
-      [nit, v("titular_nombre"), v("titular_apellido"), S(fd, "tipo_doc") || "NIT", v("num_doc"), v("banco"), v("tipo_cuenta"), v("num_cuenta"), v("correo"), user.email]);
+      [nit, v("titular_nombre"), v("titular_apellido"), S(fd, "tipo_doc") || "NIT", numDoc, v("banco"), v("tipo_cuenta"), v("num_cuenta"), limpiarCorreo(S(fd, "correo")), user.email]);
     await registrarEvento(c, { cufe: null, tipo: "crea_maestro", campo: "cuenta_banco", valorNuevo: { nit, banco: S(fd, "banco") }, actor: user.email, actorRol: user.rol });
   });
   done();
@@ -258,6 +265,12 @@ export async function actualizarCampo(fd: FormData) {
   // Mismo cuidado al editar a mano: si alguien teclea el NIT con su DV, la
   // fila queda huérfana del resto del sistema.
   if (campo === "nit" && typeof valor === "string") valor = nitCanonico(valor);
+  // Se limpia EN LA PUERTA: el nombre del titular viaja hasta el archivo del
+  // banco, y un `PEÃA` pegado desde un visor de PDF sale allá como `PEAA` más
+  // un carácter invisible. El correo pegado como enlace trae `mailto:`.
+  if (def.campos[campo] === "text" && typeof valor === "string") {
+    valor = campo === "correo" ? limpiarCorreo(valor) : limpiarTextoHumano(valor);
+  }
   if (grupo === "bancos" && campo === "banco" && typeof valor === "string" && !esBancoConocido(valor)) {
     throw new Error(`"${valor}" no está en la lista de bancos. Elígelo del desplegable.`);
   }
