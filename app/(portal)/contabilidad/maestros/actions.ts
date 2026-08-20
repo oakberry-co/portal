@@ -5,6 +5,7 @@ import { withTx } from "@/lib/db";
 import { registrarEvento } from "@/lib/eventos";
 import { exigirCap } from "@/lib/auth";
 import { nitCanonico } from "@/lib/nit";
+import { esBancoConocido } from "@/lib/bancos";
 
 /** Los maestros se alimentan de dos lados: (1) manualmente aquí, (2) de lo que se
  *  hace en la grilla de conciliación (al clasificar, al usar "+agregar"). Todo lo
@@ -69,6 +70,12 @@ export async function agregarProveedor(fd: FormData) {
   const user = await guard();
   const nit = nitCanonico(S(fd, "nit"));
   if (!nit) throw new Error("Falta el NIT del proveedor.");
+  // El banco tiene que salir de la lista. Un nombre inventado no resuelve a
+  // ningún código y la fila sale al archivo del banco con el campo vacío.
+  if (!esBancoConocido(S(fd, "banco"))) {
+    throw new Error(`"${S(fd, "banco")}" no está en la lista de bancos. Elígelo del desplegable: `
+      + "de ese nombre sale el código al que se transfiere.");
+  }
   const nombre = S(fd, "nombre") || null;
   const concepto = S(fd, "concepto_default") || null;
   const destino = S(fd, "destino_default") || null;
@@ -168,6 +175,12 @@ export async function agregarCuentaBanco(fd: FormData) {
   // un solo error en pantalla. Pasó con MODAL TRACK: $37 millones (ver lib/nit.ts).
   const nit = nitCanonico(S(fd, "nit"));
   if (!nit) throw new Error("Falta el NIT del proveedor.");
+  // El banco tiene que salir de la lista. Un nombre inventado no resuelve a
+  // ningún código y la fila sale al archivo del banco con el campo vacío.
+  if (!esBancoConocido(S(fd, "banco"))) {
+    throw new Error(`"${S(fd, "banco")}" no está en la lista de bancos. Elígelo del desplegable: `
+      + "de ese nombre sale el código al que se transfiere.");
+  }
   const v = (k: string) => S(fd, k) || null;
   await withTx(async (c) => {
     await c.query(
@@ -245,6 +258,9 @@ export async function actualizarCampo(fd: FormData) {
   // Mismo cuidado al editar a mano: si alguien teclea el NIT con su DV, la
   // fila queda huérfana del resto del sistema.
   if (campo === "nit" && typeof valor === "string") valor = nitCanonico(valor);
+  if (grupo === "bancos" && campo === "banco" && typeof valor === "string" && !esBancoConocido(valor)) {
+    throw new Error(`"${valor}" no está en la lista de bancos. Elígelo del desplegable.`);
+  }
   const keyVal: string | number = def.key === "id" ? Number(id) : id;
   const extra = grupo === "proveedores" || grupo === "bancos" ? ", fuente = 'humano', actualizado_en = now()" : "";
   await withTx(async (c) => {

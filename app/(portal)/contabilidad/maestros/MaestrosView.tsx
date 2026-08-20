@@ -2,6 +2,8 @@
 
 import { useState, useTransition } from "react";
 import { BANCOS } from "@/lib/bancos";
+
+const NOMBRES_BANCO = BANCOS.map((b) => b.nombre);
 import {
   agregarConcepto, agregarDestino, agregarProveedor,
   agregarCuentaPuc, agregarRetencion, agregarCuentaBanco, actualizarCampo, toggleMaestro,
@@ -34,8 +36,12 @@ const fu = (f: string | null) =>
   : <span className="ft off">{f ?? "sync"}</span>;
 
 /** Celda editable tipo Excel: doble clic → input → guarda al salir/Enter. */
-function Edit({ grupo, id, campo, value, num, suffix }: {
+function Edit({ grupo, id, campo, value, num, suffix, opciones }: {
   grupo: string; id: string; campo: string; value: string | number | null; num?: boolean; suffix?: string;
+  /** Lista CERRADA. Se usa para el banco: de ese nombre sale el código al que
+   *  viaja la plata, y escrito a mano entraron "BACOLOMBIA" y "BANDO DE BOGOTA",
+   *  que no resuelven a ningún código. */
+  opciones?: readonly string[];
 }) {
   const orig = value == null ? "" : String(value);
   const [editing, setEditing] = useState(false);
@@ -48,6 +54,14 @@ function Edit({ grupo, id, campo, value, num, suffix }: {
     fd.set("tabla", grupo); fd.set("id", id); fd.set("campo", campo); fd.set("valor", val);
     start(() => actualizarCampo(fd));
   };
+  if (editing && opciones) return (
+    <select className="mst-edit" autoFocus value={val}
+      onChange={(e) => setVal(e.target.value)} onBlur={save}
+      onKeyDown={(e) => { if (e.key === "Enter") save(); else if (e.key === "Escape") { setVal(orig); setEditing(false); } }}>
+      <option value="">— sin banco —</option>
+      {opciones.map((o) => <option key={o} value={o}>{o}</option>)}
+    </select>
+  );
   if (editing) return (
     <input className="mst-edit" autoFocus value={val} inputMode={num ? "decimal" : undefined}
       onChange={(e) => setVal(e.target.value)} onBlur={save}
@@ -207,14 +221,16 @@ export function MaestrosView({ data, soloRetenciones = false }: {
             <input name="titular_apellido" placeholder="Apellido (si es persona)" />
             <select name="tipo_doc" defaultValue="NIT"><option value="NIT">NIT</option><option value="CC">CC</option><option value="CE">CE</option><option value="PPT">PPT</option></select>
             <input name="num_doc" placeholder="N° documento" />
-            {/* Lista, no texto libre: de este nombre sale el CÓDIGO al que
-                viaja la plata. Escrito a mano entraron "BACOLOMBIA" y "BANDO DE
-                BOGOTA", que no resuelven a ningún código y dejan la fila del
-                archivo del banco con el campo vacío. */}
-            <input name="banco" placeholder="Banco" list="lista-bancos" autoComplete="off" />
-            <datalist id="lista-bancos">
-              {BANCOS.map((b) => <option key={b.codigo} value={b.nombre} />)}
-            </datalist>
+            {/* Lista CERRADA, no texto libre ni sugerencias: de este nombre sale
+                el CÓDIGO al que viaja la plata. Escritos a mano entraron
+                "BACOLOMBIA" y "BANDO DE BOGOTA", que no resuelven a ningún
+                código y dejan la fila del archivo del banco con el campo vacío
+                —el banco la rechaza—. Los 72 nombres de esta lista sí resuelven,
+                a Davivienda y a Rappi. */}
+            <select name="banco" defaultValue="">
+              <option value="">Banco…</option>
+              {BANCOS.map((b) => <option key={b.codigo} value={b.nombre}>{b.nombre}</option>)}
+            </select>
             <select name="tipo_cuenta" defaultValue=""><option value="">Tipo cuenta</option><option value="ahorros">Ahorros</option><option value="corriente">Corriente</option><option value="deposito">Depósito</option></select>
             <input name="num_cuenta" placeholder="N° cuenta" />
             <input name="correo" placeholder="Correo (opc)" />
@@ -231,7 +247,7 @@ export function MaestrosView({ data, soloRetenciones = false }: {
                   <td><Edit grupo="bancos" id={r.nit} campo="titular_apellido" value={r.titular_apellido} /></td>
                   <td><Edit grupo="bancos" id={r.nit} campo="tipo_doc" value={r.tipo_doc} /></td>
                   <td className="mono"><Edit grupo="bancos" id={r.nit} campo="num_doc" value={r.num_doc} /></td>
-                  <td><Edit grupo="bancos" id={r.nit} campo="banco" value={r.banco} /></td>
+                  <td><Edit grupo="bancos" id={r.nit} campo="banco" value={r.banco} opciones={NOMBRES_BANCO} /></td>
                   <td><Edit grupo="bancos" id={r.nit} campo="tipo_cuenta" value={r.tipo_cuenta} /></td>
                   <td className="mono"><Edit grupo="bancos" id={r.nit} campo="num_cuenta" value={r.num_cuenta} /></td>
                   <td><Edit grupo="bancos" id={r.nit} campo="correo" value={r.correo} /></td>

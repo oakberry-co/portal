@@ -24,7 +24,8 @@ export async function GET(req: Request) {
     `SELECT f.fecha_emision, f.nit_proveedor, f.nombre_proveedor, f.numero, f.responsabilidad_dian,
             f.subtotal, f.iva, f.total,
             e.estado, e.concepto, e.destino, e.plazo_dias, e.fecha_vencimiento,
-            e.retefuente, e.reteiva, e.reteica, e.reten_total, e.valor_a_pagar, f.cufe
+            e.retefuente, e.reteiva, e.reteica, e.reten_total, e.valor_a_pagar,
+            e.otros_valor, e.otros_concepto, e.observaciones, f.cufe
        FROM facturas f JOIN factura_estado e USING (cufe)
        ${where}
       ORDER BY f.fecha_emision, f.nombre_proveedor`,
@@ -52,6 +53,9 @@ export async function GET(req: Request) {
     { header: "ReteFuente", key: "rf", width: 12, style: money },
     { header: "ReteIVA", key: "ri", width: 12, style: money },
     { header: "ReteICA", key: "ric", width: 12, style: money },
+    { header: "Otros", key: "otros", width: 12, style: money },
+    { header: "Otros concepto", key: "otrosc", width: 20 },
+    { header: "Observaciones", key: "obs", width: 26 },
     { header: "Total retención", key: "ret", width: 14, style: money },
     { header: "Valor a pagar", key: "pagar", width: 15, style: money },
     { header: "CUFE", key: "cufe", width: 42 },
@@ -75,6 +79,7 @@ export async function GET(req: Request) {
       plazo: r.plazo_dias ?? "",
       venc: ymd(r.fecha_vencimiento),
       rf: n(r.retefuente), ri: n(r.reteiva), ric: n(r.reteica),
+      otros: n(r.otros_valor), otrosc: r.otros_concepto ?? "", obs: r.observaciones ?? "",
       ret: n(r.reten_total), pagar: n(r.valor_a_pagar),
       cufe: r.cufe,
     });

@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { withTx } from "@/lib/db";
 import { registrarEvento } from "@/lib/eventos";
 import { exigirCap } from "@/lib/auth";
+import { guardarRetenciones } from "@/lib/retenciones";
 import type { PoolClient } from "pg";
 
 // Si el valor no existe en el maestro, lo crea (autoridad humana) y lo registra.
@@ -259,70 +260,18 @@ export async function confirmarRetenciones(formData: FormData) {
   const retefuente = monto("retefuente");
   const reteiva = monto("reteiva");
   const reteica = monto("reteica");
-  const retenTotal = retefuente + reteiva + reteica;
   // "Otros": descuento manual en pesos (ej. indemnización) + su concepto y observaciones.
   const otros = monto("otros_valor");
   const otrosConcepto = String(formData.get("otros_concepto") ?? "").trim() || null;
   const observaciones = String(formData.get("observaciones") ?? "").trim() || null;
 
-  return withTx(async (c) => {
-    const cur = await c.query<{
-      estado: string; retefuente: string | null; reteiva: string | null;
-      reteica: string | null; reten_total: string | null; total: string | null;
-    }>(
-      `SELECT e.estado, e.retefuente, e.reteiva, e.reteica, e.reten_total, f.total
-         FROM factura_estado e JOIN facturas f USING (cufe)
-        WHERE e.cufe = $1 FOR UPDATE`,
-      [cufe]
-    );
-    if (cur.rowCount === 0) throw new Error("Factura no encontrada: " + cufe);
-    const antes = cur.rows[0];
-
-    if (["aprobada_pago", "pagada", "causada"].includes(antes.estado)) {
-      throw new Error("Las retenciones ya no se pueden editar en este estado.");
-    }
-    // Independiente de la clasificación: si aún no está clasificada, guardamos la
-    // retención igual (el semáforo Reten se pone verde por retencion_ok) y el
-    // estado queda como estaba; si ya estaba clasificada, avanza a retenciones_ok.
-    const total = antes.total != null ? Number(antes.total) : 0;
-    const valorAPagar = total - retenTotal - otros;
-    const nuevoEstado = antes.estado === "clasificada" ? "retenciones_ok" : antes.estado;
-
-    await c.query(
-      `UPDATE factura_estado
-          SET retefuente = $2, reteiva = $3, reteica = $4,
-              reten_total = $5, valor_a_pagar = $6,
-              otros_valor = $8, otros_concepto = $9, observaciones = $10,
-              retencion_ok = TRUE, estado = $7, actualizado_en = now()
-        WHERE cufe = $1`,
-      [cufe, retefuente, reteiva, reteica, retenTotal, valorAPagar, nuevoEstado, otros, otrosConcepto, observaciones]
-    );
-
-    await registrarEvento(c, {
-      cufe,
-      tipo: "valida_retencion",
-      campo: "retenciones",
-      valorAnterior: {
-        retefuente: antes.retefuente, reteiva: antes.reteiva, reteica: antes.reteica,
-        reten_total: antes.reten_total, estado: antes.estado,
-      },
-      valorNuevo: {
-        retefuente, reteiva, reteica, reten_total: retenTotal,
-        valor_a_pagar: valorAPagar, estado: nuevoEstado,
-      },
-      actor: user.email,
-      actorRol: user.rol,
-      origen: "web",
-    });
-
-    // Devuelve lo confirmado para el parche optimista del cliente (semáforo Reten).
-    return {
-      estado: nuevoEstado, retencion_ok: true,
-      retefuente: String(retefuente), reteiva: String(reteiva), reteica: String(reteica),
-      reten_total: String(retenTotal), valor_a_pagar: String(valorAPagar),
-      otros_valor: String(otros), otros_concepto: otrosConcepto, observaciones,
-    };
-  });
+  // La escritura vive en lib/retenciones.ts porque el Excel que sube el equipo
+  // confirma las MISMAS retenciones. Dos caminos que escriben lo mismo terminan
+  // haciendo cosas distintas — así se rompió el candado de aprobación el 19-ago.
+  return withTx(async (c) => guardarRetenciones(c, cufe, {
+    retefuente, reteiva, reteica,
+    otrosValor: otros, otrosConcepto, observaciones,
+  }, user, "web"));
 }
 
 /** Marca la factura como Crédito (a pagar → entra a Pagos) o Débito (no se paga →

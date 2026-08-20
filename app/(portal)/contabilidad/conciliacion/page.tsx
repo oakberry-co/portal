@@ -102,12 +102,14 @@ export default async function ConciliacionPage() {
   const { filas, conceptos, destinos, sync } = data;
   const { rol } = await getCurrentUser();
   const puedeClasificar = puede(rol, "clasificar");  // contador (causador) = false
+  // El contador SÍ sube el Excel de retenciones: es justo su trabajo.
+  const puedeRetenciones = puede(rol, "retenciones");
 
   return (
     <div className="container">
       <h1>🧾 Conciliación de pagos</h1>
       <SyncPanel ultima={sync.ultima} nuevas={sync.nuevas} pendiente={sync.pendiente} />
-      <ConciliacionView filas={filas} conceptos={conceptos} destinos={destinos} puedeClasificar={puedeClasificar} puedeExport={puedeClasificar} />
+      <ConciliacionView filas={filas} conceptos={conceptos} destinos={destinos} puedeClasificar={puedeClasificar} puedeExport={puedeClasificar} puedeRetenciones={puedeRetenciones} />
 
       <p className="chain-note">
         🔒 Cada guardado escribe el cambio <em>y</em> su evento en la misma transacción; la bitácora

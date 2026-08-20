@@ -206,3 +206,12 @@ export function csvRow(cells: unknown[]): string {
  *  VALIDAR, no para corregir: un código que no está acá se le señala a un
  *  humano en vez de cambiarlo por el parecido (Regla 3). */
 export const CODIGOS_DAVIVIENDA: string[] = DAVIVIENDA.map((b) => b.codigo);
+
+/** ¿Este nombre de banco es uno de la lista? Es la validación del SERVIDOR: la
+ *  lista cerrada de la pantalla es comodidad, y un <select> se manipula desde la
+ *  consola en dos líneas. Un banco que no está en la lista sale al archivo con
+ *  el código VACÍO y el banco rechaza la fila. */
+export function esBancoConocido(nombre: string | null | undefined): boolean {
+  const n = (nombre ?? "").trim();
+  return n === "" || BANCOS.some((b) => b.nombre === n);
+}

@@ -29,3 +29,4 @@ npm-debug.log*
 # Python (scripts/ del sync BQ→Postgres)
 __pycache__/
 *.pyc
+.tmp-tests-*

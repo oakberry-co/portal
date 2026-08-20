@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { SubirRetenciones } from "./SubirRetenciones";
 import { FacturaCard, type FacturaRow, type FilaPatch } from "./FacturaCard";
 
 const MESES = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
@@ -19,9 +20,9 @@ function isoWeek(d: Date): string {
 }
 
 export function ConciliacionView({
-  filas, conceptos, destinos, puedeClasificar, puedeExport,
+  filas, conceptos, destinos, puedeClasificar, puedeExport, puedeRetenciones,
 }: { filas: FacturaRow[]; conceptos: string[]; destinos: string[];
-     puedeClasificar: boolean; puedeExport: boolean }) {
+     puedeClasificar: boolean; puedeExport: boolean; puedeRetenciones: boolean }) {
   const [q, setQ] = useState("");
   const [anio, setAnio] = useState("");
   const [mes, setMes] = useState("");
@@ -156,7 +157,13 @@ export function ConciliacionView({
         <input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} title="Hasta (fecha de emisión)" />
         <a className="export-btn" href={exportHref} title="Descargar informe en Excel">⬇ Excel</a>
         <span className="muted mini">(vacío = todas)</span>
+        {/* El viaje de vuelta: el equipo llena las retenciones en ESE Excel y lo
+            sube acá mismo. Bajar y subir en el mismo sitio, o se pierde. */}
+        {puedeRetenciones && <SubirRetenciones />}
       </div>
+      )}
+      {!puedeExport && puedeRetenciones && (
+        <div className="export-bar"><SubirRetenciones /></div>
       )}
 
       <p className="sub">

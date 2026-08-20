@@ -1078,6 +1078,34 @@ button.ghost { background: #fff; color: var(--purple); }
 .cc-adelanto { display: inline-block; margin: 4px 0 2px; padding: 5px 11px; border-radius: 8px;
   background: #fff8e6; border: 1px solid rgba(212,160,23,.35); color: #8a6100;
   font-size: 12.5px; font-weight: 600; }
+/* SUBIR EL EXCEL DE RETENCIONES: bajar y subir en el MISMO sitio, o se pierde. */
+.ret-subir { flex-basis: 100%; margin-top: 10px; background: var(--card); border: 1px solid var(--border);
+             border-radius: 12px; padding: 14px 16px; }
+.ret-subir-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+.ret-subir-file { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin: 10px 0; }
+.ret-subir-file input[type="file"] { font-size: 13px; max-width: 100%; }
+.ret-plan { margin-top: 10px; border-top: 1px solid var(--border); padding-top: 10px; }
+.ret-plan-tit { font-size: 13.5px; margin-bottom: 8px; }
+.ret-tabla { max-height: 340px; overflow: auto; }
+.ret-tabla table { font-size: 12.5px; min-width: 720px; }
+/* El `th` global es sticky con top:60px porque en la grilla grande el scroll lo
+   hace la PÁGINA (60px = alto de la barra). Acá el scroll lo hace este cajón, y
+   ese offset empujaba el encabezado 60px hacia abajo: los títulos salían DEBAJO
+   de la primera fila. Dentro de un contenedor con scroll propio, top va en 0. */
+.ret-tabla thead th { top: 0; }
+.ret-tabla td:last-child { white-space: nowrap; }
+.ret-tabla tr.pisa { background: #fff8e6; }
+.ret-tabla i.antes { display: block; font-style: normal; font-size: 11px; color: var(--lav); }
+.ret-problemas { margin-top: 10px; font-size: 12.5px; line-height: 1.5; color: #8a2140;
+                 background: #fdeef2; border: 1px solid #f5c6d2; border-left: 3px solid #c0395f;
+                 border-radius: 9px; padding: 9px 12px; }
+.ret-problemas ul { margin: 6px 0 0; padding-left: 18px; }
+.ret-problemas li { margin-bottom: 3px; }
+.ret-aplicar { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-top: 12px; }
+.ret-pisar { display: flex; gap: 6px; align-items: center; font-size: 12.5px; color: var(--warn); }
+.ret-ok { margin-top: 10px; font-size: 13px; color: #1f5c33; background: #eef8f0;
+          border: 1px solid #bfe0c7; border-left: 3px solid #3f9d5a; border-radius: 9px; padding: 9px 12px; }
+
 /* De dónde salió la retención precargada. Sin esto el revisor ve números
    puestos por arte de magia y no sabe si creerles. */
 .ret-sugerencia { margin: 0 0 12px; font-size: 12.5px; line-height: 1.5; color: #1f5c33;
