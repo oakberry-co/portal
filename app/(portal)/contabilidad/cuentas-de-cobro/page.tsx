@@ -34,9 +34,9 @@ async function cargar(): Promise<CuentaCobro[]> {
        -- Las MISMAS tarifas que usa la grilla de facturas: un proveedor no puede
        -- tener una retención distinta según por dónde entre su cobro.
        LEFT JOIN LATERAL (
-         SELECT max(CASE WHEN tipo='ReteFuente' THEN tarifa END)::text AS ret_rf,
-                max(CASE WHEN tipo='ReteIVA'    THEN tarifa END)::text AS ret_iva,
-                max(CASE WHEN tipo='ReteICA'    THEN tarifa END)::text AS ret_ica
+         SELECT max(CASE WHEN tipo='ReteFuente' THEN tarifa END)::float::text AS ret_rf,
+                max(CASE WHEN tipo='ReteIVA'    THEN tarifa END)::float::text AS ret_iva,
+                max(CASE WHEN tipo='ReteICA'    THEN tarifa END)::float::text AS ret_ica
            FROM maestro_retenciones WHERE nit_proveedor = cc.num_doc) mr ON TRUE
        -- Lo que el equipo ya viene practicando para ESTE concepto. No lo aplica
        -- solo: lo SUGIERE en el modal, diciendo en cuántos casos se basa.

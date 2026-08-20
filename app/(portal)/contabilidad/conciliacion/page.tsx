@@ -38,7 +38,10 @@ async function cargar(): Promise<{ filas: FacturaRow[]; conceptos: string[]; des
             p.confianza, mp.plazo_dias AS plazo_sug,
             COALESCE(e.tipo_pago, mp.tipo_pago_default) AS tipo_pago,
             p.retefuente_sug, p.reteiva_sug, p.reteica_sug,
-            mr.ret_rf::text AS ret_rf, mr.ret_ica::text AS ret_ica, mr.ret_iva::text AS ret_iva,
+            -- ::float antes de ::text: un NUMERIC da '0.0000' y '2.5000', que en la
+            -- casilla se leen mal. Así quedan '0' y '2.5'.
+            mr.ret_rf::float::text AS ret_rf, mr.ret_ica::float::text AS ret_ica,
+            mr.ret_iva::float::text AS ret_iva,
             rc.retefuente::text AS rc_rf, rc.reteica::text AS rc_ica,
             rc.aplica AS rc_aplica, rc.n_casos AS rc_n,
             rc.concordancia::text AS rc_conc, rc.fuente AS rc_fuente,

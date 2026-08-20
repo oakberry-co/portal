@@ -1,6 +1,7 @@
 #!/bin/bash
-# Portal — vuelve a aprender la tarifa de retención de cada CONCEPTO a partir de
-# lo que el equipo confirmó a mano (en el modal o subiendo el Excel).
+# Portal — vuelve a aprender las tarifas de retención a partir de lo que el equipo
+# confirmó a mano (en el modal o subiendo el Excel): por CONCEPTO y por
+# PROVEEDOR. Lo del proveedor se registra en `maestro_retenciones`.
 #
 # Regla 17: el cron ES parte del módulo. Sin esto las reglas se quedan en la foto
 # del día que se corrió a mano — que es exactamente lo que pasó: se calcularon
@@ -39,8 +40,14 @@ trap 'rm -f "$LOCKFILE"' EXIT
 # El `cd` no es adorno: el script resuelve DATABASE_URL desde .env.local del
 # repo. Sin esto el cron corre desde $HOME y no encuentra nada (Regla 17).
 cd "$PORTAL"
-echo "=== $(date '+%F %T') - aprender retenciones por concepto ===" >> "$LOG"
+echo "=== $(date '+%F %T') - aprender retenciones por CONCEPTO ===" >> "$LOG"
 $PYTHON scripts/aprender_retenciones.py --aplicar >> "$LOG" 2>&1
+
+# Y por PROVEEDOR, que va al maestro de retenciones. Los dos en la misma corrida
+# a propósito: miran los mismos datos y el modal usa los dos (la tarifa del
+# proveedor manda sobre la del concepto, por ser más específica).
+echo "=== $(date '+%F %T') - registrar tarifas por PROVEEDOR en el maestro ===" >> "$LOG"
+$PYTHON scripts/aprender_retenciones_proveedor.py --aplicar >> "$LOG" 2>&1
 echo "=== $(date '+%F %T') - done ===" >> "$LOG"
 
 find "$LOGDIR" -name "aprender_retenciones_*.log" -mtime +30 -delete 2>/dev/null || true
