@@ -52,6 +52,16 @@ for (const rol of ["causador", "conciliador", "pagador"]) {
   check(!puede(rol, "usuarios"), `${rol} no administra usuarios`);
 }
 
+console.log("\n2b) El trámite del Excel de retenciones se puede hacer COMPLETO");
+// Bajar → escribir a mano → subir es UN trámite. Si el rol puede confirmar
+// retenciones pero no puede bajar el archivo, el camino no tiene salida: pasó
+// con el contador externo, que podía subir el Excel y no obtenerlo.
+for (const rol of ["admin", "causador"]) {
+  const confirma = puede(rol, "retenciones");
+  check(!confirma || puede(rol, "ver_conciliacion"),
+        `${rol}: si confirma retenciones, puede bajar el Excel de Conciliación`);
+}
+
 console.log("\n3) Las implicaciones (ver vs operar)");
 for (const rol of ["admin", "causador", "conciliador", "pagador"]) {
   check(!puede(rol, "intake") || puede(rol, "ver_intake"),

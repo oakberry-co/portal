@@ -116,7 +116,7 @@ export default async function ConciliacionPage() {
     <div className="container">
       <h1>🧾 Conciliación de pagos</h1>
       <SyncPanel ultima={sync.ultima} nuevas={sync.nuevas} pendiente={sync.pendiente} />
-      <ConciliacionView filas={filas} conceptos={conceptos} destinos={destinos} puedeClasificar={puedeClasificar} puedeExport={puedeClasificar} puedeRetenciones={puedeRetenciones} />
+      <ConciliacionView filas={filas} conceptos={conceptos} destinos={destinos} puedeClasificar={puedeClasificar} puedeExport={puede(rol, "retenciones")} puedeRetenciones={puedeRetenciones} />
 
       <p className="chain-note">
         🔒 Cada guardado escribe el cambio <em>y</em> su evento en la misma transacción; la bitácora

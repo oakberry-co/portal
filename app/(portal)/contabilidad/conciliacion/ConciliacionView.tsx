@@ -149,7 +149,7 @@ export function ConciliacionView({
         {activos ? <button type="button" className="filtro-clear" onClick={limpiar}>Limpiar</button> : null}
       </div>
 
-      {puedeExport && (
+      {(puedeExport || puedeRetenciones) && (
       <div className="export-bar">
         <span className="muted mini">Exportar Excel del</span>
         <input type="date" value={desde} onChange={(e) => setDesde(e.target.value)} title="Desde (fecha de emisión)" />
@@ -162,9 +162,7 @@ export function ConciliacionView({
         {puedeRetenciones && <SubirRetenciones />}
       </div>
       )}
-      {!puedeExport && puedeRetenciones && (
-        <div className="export-bar"><SubirRetenciones /></div>
-      )}
+
 
       <p className="sub">
         {activos ? <><strong>{filtradas.length}</strong> de {rows.length} facturas</> : <>{rows.length} facturas</>}

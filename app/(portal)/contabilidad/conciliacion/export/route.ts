@@ -8,7 +8,11 @@ import { ETIQUETA, type Estado } from "@/lib/estados";
 export const dynamic = "force-dynamic";
 
 export async function GET(req: Request) {
-  await exigirCap("clasificar"); // solo quien opera conciliación (admin); el contador NO
+  // Quien CONFIRMA retenciones tiene que poder BAJAR el archivo que va a llenar:
+  // ese es el trámite entero (bajar → escribir a mano → subir). Antes exigía
+  // `clasificar`, que el contador externo no tiene, así que podía subir el Excel
+  // pero no obtenerlo — un camino sin salida.
+  await exigirCap("retenciones");
 
   const url = new URL(req.url);
   const desde = url.searchParams.get("desde") || null;
