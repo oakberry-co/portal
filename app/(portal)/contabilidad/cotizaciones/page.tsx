@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
 import { puede } from "@/lib/permisos";
 import { sqlCertificacion } from "@/lib/certificaciones";
+import { sqlLecturaValor } from "@/lib/valor-documento";
 import { CotizacionesView, type Cotizacion, type CandidataFactura } from "./CotizacionesView";
 
 export const dynamic = "force-dynamic";
@@ -19,7 +20,7 @@ async function cargar(): Promise<{ cots: Cotizacion[]; candidatos: CandidataFact
            cot.recurrente,
            cot.plazo_dias, cot.estado, cot.cufe_factura, cot.nota_revision, cot.revisado_por,
            cot.creado_en::text AS creado_en, cot.cuenta_pago, cot.pago_id,
-           to_jsonb(cert) AS cert, to_jsonb(cb) AS cuenta,
+           to_jsonb(cert) AS cert, to_jsonb(val) AS val, to_jsonb(cb) AS cuenta,
            coalesce(cor.lista, '[]') AS correos,
            coalesce((SELECT sum(monto) FROM cotizacion_abonos a WHERE a.cotizacion_id = cot.id),0)::float AS abono_total,
            coalesce((SELECT json_agg(json_build_object('monto', monto, 'fecha', fecha::text, 'cuenta', cuenta_pago) ORDER BY fecha)
@@ -28,6 +29,7 @@ async function cargar(): Promise<{ cots: Cotizacion[]; candidatos: CandidataFact
       FROM cotizaciones cot
       LEFT JOIN facturas f ON f.cufe = cot.cufe_factura
       ${sqlCertificacion("cotizacion", "cot.id")}
+      ${sqlLecturaValor("cotizacion", "cot.id")}
       LEFT JOIN LATERAL (
         SELECT y.banco, y.tipo_cuenta, y.num_cuenta, y.certificada
           FROM cuentas_bancarias_proveedor y WHERE y.nit = cot.nit) cb ON TRUE

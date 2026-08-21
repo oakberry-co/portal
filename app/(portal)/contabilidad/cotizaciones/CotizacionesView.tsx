@@ -4,7 +4,9 @@ import { useActionState, useMemo, useState, type ReactNode } from "react";
 import { revisarCotizacion, agregarAbono, enlazarFactura, quitarEnlace } from "./actions";
 import { DOCS_COTIZACION, DOCS_RECURRENTE, docsFaltantes } from "@/lib/areas";
 import { bloqueoAprobacion, type CertEstado, type CuentaMaestro } from "@/lib/certificaciones";
+import { type ValorEstado } from "@/lib/valor-documento";
 import { CorreosIntake, DocsIntake, PanelCuenta, type CorreoEnviado, type DocIntake } from "../_intake/PanelCuenta";
+import { PanelMonto } from "../_intake/PanelMonto";
 import { useFiltrosIntake } from "../_intake/FiltrosIntake";
 import { ErrorAccion } from "../_intake/ErrorAccion";
 import type { Resultado } from "@/lib/resultado";
@@ -22,6 +24,8 @@ export type Cotizacion = {
   revisado_por: string | null; creado_en: string;
   cuenta_pago: string | null; pago_id: number | null;
   cert: CertEstado | null; cuenta: CuentaMaestro; correos: CorreoEnviado[];
+  /** Lo que el lector sacó del documento soporte (el semáforo del monto). */
+  val: ValorEstado | null;
   abono_total: number; abonos: { monto: number; fecha: string; cuenta: string | null }[];
   fact_numero: string | null; fact_total: number | null;
 };
@@ -73,7 +77,9 @@ export function CotizacionesView({ cots, candidatos, operar }: { cots: Cotizacio
             const saldo = c.fact_total != null ? Math.max(0, c.fact_total - c.abono_total) : null;
             const cands = porNit.get(c.nit) ?? [];
             // El mismo cálculo que exige el servidor al aprobar (lib/certificaciones).
-            const bloqueo = bloqueoAprobacion(docsFaltantes(c.documentos, c.recurrente ? DOCS_RECURRENTE : DOCS_COTIZACION), c.cert, c.cuenta, c.recurrente);
+            const bloqueo = bloqueoAprobacion({
+              docsFaltan: docsFaltantes(c.documentos, c.recurrente ? DOCS_RECURRENTE : DOCS_COTIZACION),
+              cert: c.cert, cuenta: c.cuenta, val: c.val, declarado: c.valor, recurrente: c.recurrente });
             const adelanto = c.valor != null && c.adelanto_pct != null
               ? Math.round((c.valor * Number(c.adelanto_pct)) / 100) : null;
             return (
@@ -100,6 +106,12 @@ export function CotizacionesView({ cots, candidatos, operar }: { cots: Cotizacio
                 )}
 
                 <DocsIntake docs={c.documentos ?? []} />
+                {/* El monto contra el documento. Va PEGADO a los documentos porque
+                    es de lo que habla, y ARRIBA de la cuenta porque si la cifra está
+                    mal no tiene sentido ponerse a verificar cuentas primero. */}
+                <PanelMonto origen="cotizacion" id={c.id} val={c.val} declarado={c.valor}
+                            operar={operar} pagada={!!c.pago_id}
+                            docUrl={(c.documentos ?? []).find((d) => d.clase === "soporte")?.path} />
                 <PanelCuenta cert={c.cert} cuenta={c.cuenta} bloqueo={c.estado === "recibida" ? bloqueo : null} operar={operar}
                              docUrl={(c.documentos ?? []).find((d) => d.clase === "certificacion_bancaria")?.path} />
 

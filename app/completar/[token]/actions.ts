@@ -2,7 +2,7 @@
 
 // Recibe SOLO documentos, contra un token. No toca el valor, ni la cuenta, ni el
 // NIT: dejar editar eso sería el formulario público con los candados quitados.
-import { subirDocumentos, avisoDocs, archivosDelForm, registrarCertificacion, etiquetaEnvio } from "@/lib/intake";
+import { subirDocumentos, avisoDocs, archivosDelForm, registrarCertificacion, registrarSoporte, etiquetaEnvio } from "@/lib/intake";
 import { CLASES_DOC } from "@/lib/areas";
 import { revisarArchivos } from "@/lib/documentos";
 import { getPool } from "@/lib/db";
@@ -17,12 +17,12 @@ export async function completarSolicitud(_prev: Resultado | null, formData: Form
   const pool = getPool();
   const q = await pool.query<{
     tipo: "cuenta_cobro" | "cotizacion"; id: number; nit: string; razon: string;
-    estado: string; documentos: { clase?: string }[];
+    estado: string; documentos: { clase?: string }[]; valor: string | null;
   }>(
-    `SELECT 'cuenta_cobro'::text AS tipo, id, num_doc AS nit, razon_social AS razon, estado, documentos
+    `SELECT 'cuenta_cobro'::text AS tipo, id, num_doc AS nit, razon_social AS razon, estado, documentos, valor
        FROM cuentas_cobro WHERE token = $1
      UNION ALL
-     SELECT 'cotizacion', id, nit, razon_social, estado, documentos FROM cotizaciones WHERE token = $1`,
+     SELECT 'cotizacion', id, nit, razon_social, estado, documentos, valor FROM cotizaciones WHERE token = $1`,
     [token]);
   const s = q.rows[0];
   if (!s) return { ok: false, error: "Enlace inválido o vencido." };
@@ -57,6 +57,11 @@ export async function completarSolicitud(_prev: Resultado | null, formData: Form
     // Si volvió a mandar la certificación, se encola y se lee de una.
     if (docs.some((d) => d.clase === "certificacion_bancaria")) {
       await registrarCertificacion(pool, s.tipo, s.id, s.nit, docs);
+    }
+    // Y si el que cambió fue el SOPORTE, hay que releer el monto: el documento
+    // nuevo puede decir otra cifra, y el veredicto viejo hablaría del anterior.
+    if (docs.some((d) => d.clase === "soporte")) {
+      await registrarSoporte(pool, s.tipo, s.id, s.valor == null ? null : Number(s.valor), docs);
     }
   } catch (e) {
     return { ok: false, error: "No se pudo guardar: " + (e as Error).message };

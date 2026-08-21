@@ -31,7 +31,7 @@ const check = (ok, titulo, detalle = "") => {
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "candado-"));
 try {
-  execFileSync("npx", ["tsc", "lib/certificaciones.ts", "lib/areas.ts", "--outDir", tmp,
+  execFileSync("npx", ["tsc", "lib/certificaciones.ts", "lib/areas.ts", "lib/valor-documento.ts", "--outDir", tmp,
                        "--module", "commonjs", "--target", "es2020", "--skipLibCheck"],
                { cwd: RAIZ, stdio: "pipe" });
 } catch { /* solo se queja del alias de un `import type`; emite igual */ }
@@ -49,30 +49,44 @@ const CERT_OK = {
 };
 const EN_MAESTRO = { banco: "BANCOLOMBIA", tipo_cuenta: "ahorros", num_cuenta: "12345678901", certificada: true };
 
+// EL MONTO. Desde el 21-ago-2026 la aprobación tiene un peldaño más: el valor
+// registrado tiene que estar en el documento (lib/valor-documento.ts). Los casos
+// de este centinela prueban LA CUENTA, así que se les pasa un monto que cuadra
+// — si no, todos bloquearían por el motivo nuevo y dejarían de probar lo suyo.
+const DECLARADO = 500000;
+const VAL_OK = {
+  id: 1, estado: "leido", motivo: null, valor_leido: "500000", candidatos: [500000, 420168],
+  metodo: "texto_pdf", leido_en: "2026-08-21", valor_verificado: null, verificado_por: null,
+};
+/** Azúcar: los llamados viejos eran posicionales y ahora la firma es un objeto
+ *  (para que el compilador obligue a cada sitio a traer la lectura del monto). */
+const bloqueo = (docsFaltan, cert, cuenta, recurrente = false, val = VAL_OK, declarado = DECLARADO) =>
+  bloqueoAprobacion({ docsFaltan, cert, cuenta, val, declarado, recurrente });
+
 console.log("\n1) Camino normal (proveedor nuevo)");
-check(bloqueoAprobacion(docsFaltantes(LOS_4), CERT_OK, null) === null,
+check(bloqueo(docsFaltantes(LOS_4), CERT_OK, null) === null,
       "con los 4 documentos, certificación válida y cuenta verificada -> APRUEBA");
-check(bloqueoAprobacion(docsFaltantes(SOLO_SOPORTE), CERT_OK, null) !== null,
+check(bloqueo(docsFaltantes(SOLO_SOPORTE), CERT_OK, null) !== null,
       "faltando documentos -> bloquea");
-check(bloqueoAprobacion(docsFaltantes(LOS_4), null, EN_MAESTRO) !== null,
+check(bloqueo(docsFaltantes(LOS_4), null, EN_MAESTRO) !== null,
       "sin certificación -> bloquea (aunque el NIT ya tenga cuenta)");
-check(bloqueoAprobacion(docsFaltantes(LOS_4), { ...CERT_OK, cuenta_verificada: null }, null) !== null,
+check(bloqueo(docsFaltantes(LOS_4), { ...CERT_OK, cuenta_verificada: null }, null) !== null,
       "sin la verificación humana -> bloquea");
-check(bloqueoAprobacion(docsFaltantes(LOS_4), { ...CERT_OK, estado: "protegido", motivo: "con clave" }, null) !== null,
+check(bloqueo(docsFaltantes(LOS_4), { ...CERT_OK, estado: "protegido", motivo: "con clave" }, null) !== null,
       "certificación con clave -> bloquea");
 
 console.log("\n2) Cambio de cuenta");
 const CAMBIO = { ...CERT_OK, cuenta_anterior: "99999999999" };
-check(bloqueoAprobacion(docsFaltantes(LOS_4), CAMBIO, EN_MAESTRO) !== null,
+check(bloqueo(docsFaltantes(LOS_4), CAMBIO, EN_MAESTRO) !== null,
       "cuenta distinta a la que el NIT ya tenía -> bloquea hasta confirmar");
-check(bloqueoAprobacion(docsFaltantes(LOS_4), { ...CAMBIO, aplicada: true }, EN_MAESTRO) === null,
+check(bloqueo(docsFaltantes(LOS_4), { ...CAMBIO, aplicada: true }, EN_MAESTRO) === null,
       "una vez confirmado el cambio -> aprueba");
 const PREFIJO = { ...CERT_OK, cuenta_anterior: "6270388827", num_cuenta: "0570006270388827",
                   cuenta_verificada: "0570006270388827" };
-const msg = bloqueoAprobacion(docsFaltantes(LOS_4), PREFIJO, EN_MAESTRO);
+const msg = bloqueo(docsFaltantes(LOS_4), PREFIJO, EN_MAESTRO);
 check(msg !== null && /terminan igual/.test(msg),
       "misma cuenta con prefijo del banco -> lo dice con esas palabras, no 'cambió •••8827 por •••8827'");
-check(bloqueoAprobacion(docsFaltantes(LOS_4), { ...CERT_OK, cuenta_anterior: "012345678901" }, EN_MAESTRO) === null,
+check(bloqueo(docsFaltantes(LOS_4), { ...CERT_OK, cuenta_anterior: "012345678901" }, EN_MAESTRO) === null,
       "cero a la izquierda NO es un cambio de cuenta");
 
 console.log("\n3) Proveedor RECURRENTE (ya tenía cuenta certificada)");
@@ -81,18 +95,18 @@ check(docsFaltantes(SOLO_SOPORTE, DOCS_RECURRENTE).length === 0,
 check(docsFaltantes(SOLO_SOPORTE, DOCS_CUENTA_COBRO).length === 3,
       "...pero a un proveedor nuevo se le siguen exigiendo los 4",
       docsFaltantes(SOLO_SOPORTE, DOCS_CUENTA_COBRO).join(", "));
-check(bloqueoAprobacion(docsFaltantes(SOLO_SOPORTE, DOCS_RECURRENTE), null, EN_MAESTRO, true) === null,
+check(bloqueo(docsFaltantes(SOLO_SOPORTE, DOCS_RECURRENTE), null, EN_MAESTRO, true) === null,
       "con su cuenta en el maestro -> APRUEBA sin certificación nueva");
 
 console.log("\n4) Que 'recurrente' no sea una puerta trasera");
-check(bloqueoAprobacion(docsFaltantes(SOLO_SOPORTE, DOCS_RECURRENTE), null, null, true) !== null,
+check(bloqueo(docsFaltantes(SOLO_SOPORTE, DOCS_RECURRENTE), null, null, true) !== null,
       "recurrente SIN cuenta en el maestro -> BLOQUEA (no hay a dónde pagarle)");
-check(bloqueoAprobacion(docsFaltantes(SOLO_SOPORTE, DOCS_RECURRENTE), null, { ...EN_MAESTRO, num_cuenta: "" }, true) !== null,
+check(bloqueo(docsFaltantes(SOLO_SOPORTE, DOCS_RECURRENTE), null, { ...EN_MAESTRO, num_cuenta: "" }, true) !== null,
       "recurrente con la cuenta vacía en el maestro -> BLOQUEA");
-check(bloqueoAprobacion(docsFaltantes([], DOCS_RECURRENTE), null, EN_MAESTRO, true) !== null,
+check(bloqueo(docsFaltantes([], DOCS_RECURRENTE), null, EN_MAESTRO, true) !== null,
       "recurrente SIN soporte -> BLOQUEA (el soporte es lo único suyo de este cobro)");
 // Si además manda certificación, NO se salta el candado del cambio de cuenta.
-check(bloqueoAprobacion(docsFaltantes(LOS_4, DOCS_RECURRENTE), CAMBIO, EN_MAESTRO, true) !== null,
+check(bloqueo(docsFaltantes(LOS_4, DOCS_RECURRENTE), CAMBIO, EN_MAESTRO, true) !== null,
       "recurrente que SÍ manda certificación con otra cuenta -> sigue pasando por el candado del cambio");
 
 // ── CADA CARRIL PIDE LO SUYO (21-ago-2026) ─────────────────────────────────
@@ -123,10 +137,29 @@ check(docsFaltantes(SOLO_EL_SOPORTE, DOCS_COTIZACION).length === 2,
 // Una cotización de recurrente se aprueba sin certificación, PERO solo si su
 // cuenta sigue en el maestro: si alguien la borró, aprobar dejaría un anticipo
 // listo para pagar y sin a dónde.
-check(bloqueoAprobacion(docsFaltantes(SOLO_EL_SOPORTE, DOCS_RECURRENTE), null, EN_MAESTRO, true) === null,
+check(bloqueo(docsFaltantes(SOLO_EL_SOPORTE, DOCS_RECURRENTE), null, EN_MAESTRO, true) === null,
       "cotización recurrente + cuenta en el maestro: se puede aprobar");
-check(bloqueoAprobacion(docsFaltantes(SOLO_EL_SOPORTE, DOCS_RECURRENTE), null, null, true) !== null,
+check(bloqueo(docsFaltantes(SOLO_EL_SOPORTE, DOCS_RECURRENTE), null, null, true) !== null,
       "recurrente SIN cuenta en el maestro: NO se aprueba");
+
+console.log("\n9) EL MONTO — el peldaño que se agregó el 21-ago-2026");
+// Todo lo demás en regla (documentos, certificación, cuenta verificada): lo
+// único que falla es la cifra. Tiene que bloquear IGUAL.
+check(bloqueo(docsFaltantes(LOS_4), CERT_OK, null, false, VAL_OK, 14934024) !== null,
+      "documentos y cuenta perfectos, pero el monto no está en el documento -> BLOQUEA");
+check(/Ajustar monto/.test(bloqueo(docsFaltantes(LOS_4), CERT_OK, null, false, VAL_OK, 14934024) ?? ""),
+      "y dice qué hacer (Regla 18)");
+check(bloqueo(docsFaltantes(LOS_4), CERT_OK, null, false, null, 500000) !== null,
+      "SIN lectura del documento también bloquea: un candado ciego que deja pasar es peor");
+// El orden importa: el monto va ANTES que la cuenta. Si la cifra está cien veces
+// inflada, mandar al revisor a verificar cuentas primero es trabajo perdido.
+const conTodoMal = bloqueo(docsFaltantes(LOS_4), { ...CERT_OK, cuenta_verificada: null }, null,
+                           false, VAL_OK, 14934024);
+check(/monto/i.test(conTodoMal ?? ""), "con monto Y cuenta pendientes, primero se reclama el MONTO",
+      (conTodoMal ?? "").slice(0, 55) + "…");
+// Y al recurrente se le exige igual: entra sin certificación, no sin cifra.
+check(bloqueo(docsFaltantes(SOLO_SOPORTE, DOCS_RECURRENTE), null, EN_MAESTRO, true, VAL_OK, 999999) !== null,
+      "al proveedor recurrente también se le coteja el monto");
 
 console.log(fallos.length ? `\n❌ ${fallos.length} fallo(s): ${fallos.join(", ")}\n` : "\n🟢 todo OK\n");
 process.exit(fallos.length ? 1 : 0);

@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
 import { puede } from "@/lib/permisos";
 import { sqlCertificacion } from "@/lib/certificaciones";
+import { sqlLecturaValor } from "@/lib/valor-documento";
 import { CuentasCobroView, type CuentaCobro } from "./CuentasCobroView";
 
 export const dynamic = "force-dynamic";
@@ -24,10 +25,11 @@ async function cargar(): Promise<CuentaCobro[]> {
             cc.otros_concepto, cc.observaciones, cc.retencion_ok,
             coalesce(cc.valor_a_pagar, cc.valor)::float AS valor_a_pagar,
             mr.ret_rf, mr.ret_iva, mr.ret_ica, to_jsonb(rc) AS regla,
-            to_jsonb(cert) AS cert, to_jsonb(cb) AS cuenta,
+            to_jsonb(cert) AS cert, to_jsonb(val) AS val, to_jsonb(cb) AS cuenta,
             coalesce(cor.lista, '[]') AS correos
        FROM cuentas_cobro cc
        ${sqlCertificacion("cuenta_cobro", "cc.id")}
+       ${sqlLecturaValor("cuenta_cobro", "cc.id")}
        LEFT JOIN LATERAL (
          SELECT y.banco, y.tipo_cuenta, y.num_cuenta, y.certificada
            FROM cuentas_bancarias_proveedor y WHERE y.nit = cc.num_doc) cb ON TRUE

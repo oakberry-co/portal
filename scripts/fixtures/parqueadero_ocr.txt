@@ -1,0 +1,99 @@
+ESTACIONAMIENTOS LUGANO S.A.S
+CALLE 77 8411-19 OFICINA 401 - BOGOTA D.C
+ESTACIONAMIENTO CALLE 95 / NIT:860529151-1
+CALLE 954 11-63 TELEFONO:3112066451
+Facturación Electronica No,E958 56360
+Fecha 2026-08-13
+Punto fact, 001
+
+PARQUEO - Normal
+
+Concepto
+
+Placa/Codigo : BZT69H
+
+Entrada 2026-08-13 08:14
+
+Salida 2026-08-13 19:57
+
+Tiempo : 11:43
+
+11 hora(s) 43 minuto(s)
+
+Tarifa ; MOTO
+BZT69H
+
+Placa 3
+Valor por MINUTO
+
+Subtotal:
+TOTAL A PAGAR
+
+Forma de pago: Efectivo
+Recibido: $ 10,000,00
+Cambio $ 0,00
+
+Autorización Numeración de Facturación No
+00674378 Fecha: 2025-10-27 de 1 hasta ro ¡
+a vigencia 24 Meses Ñ
+oliza Axa Colpatria 27716 Vi. i
+
+lo gencia 03/11/2025 a
+acturacion Generada Por Software SECU'
+
+S FB - ACCESSCAN version a a de
+Proveedor Ecosistemas Digitales $,A,S
+
+Nit: 901,225,732-8 Ei
+
+VANEGAS 2026-08-13 20:01:07
+
+ESTACIONAMIENTOS LUGANO S:A.S
+(Te 71 11-19 OFICINA 401 - BOGOTA D.C
+TACIONAMIENTO CALLE 95 / N1T:860529157-1
+CALLE 954 114-4,) TELEFONO:3112066451
+
+Concepto PARQUEO - Normal
+Placa/Codigo : PZT69H
+Entrada 2026-08-14 08:56
+Salida 2026-08-14 20:29
+Tiempo 4 1733
+11 hora(s) 33 minuto(s)
+Tarifa B MOTO
+Placa f PZT69H
+Valor por MINUTO
+
+Nombre; MANEL FOODS SAS
+
+Documento : 901412787
+Cnt Cod. Descripcion Subtotal
+1 [PARO] Parqueadero $ 8.403,36
+
+Subtotal:
+TOTAL A PAGAR
+
+Forma de pago: Efectivo
+Recibido: $ 10.000,00
+Cambio $ 0,00
+
+futorizacion Nuneracion de Facturacion No.187641
+00674378 Fecha: 2025-10-27 de 1 hasta 1.000.000
+Autorizacion vigencia 24 Meses
+
+Poliza Axa Colpatria 27716 Vigencia 03/11/2025 a
+1 03/11/2026
+
+Facturacion Generada Por Software SECURITY ACCES
+S FB - ACCESSCAN version 1.3.198(build 2)
+Proveedor Ecosistemas Digitales S.A,S,
+
+Nit: 901.225,732:8
+VANEGAS 2026-08-14 20:31:07
+
+FACTURA ELECTRONICA - E95S 56564
+
+OUFE;
+
+CURE
+ce6Ta15dId1fab2Ídachf9/TScc3MaGacff9eb7f131457
+e 38aG090fff1fOSSEDO3TAa4Ba db FSB3A03C3fChO!

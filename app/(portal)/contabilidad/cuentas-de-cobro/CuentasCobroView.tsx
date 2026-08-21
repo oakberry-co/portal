@@ -4,7 +4,9 @@ import { useActionState, useState, type ReactNode } from "react";
 import { revisarCuentaCobro } from "./actions";
 import { DOCS_CUENTA_COBRO, DOCS_RECURRENTE, docsFaltantes } from "@/lib/areas";
 import { bloqueoAprobacion, type CertEstado, type CuentaMaestro } from "@/lib/certificaciones";
+import { type ValorEstado } from "@/lib/valor-documento";
 import { CorreosIntake, DocsIntake, PanelCuenta, type CorreoEnviado, type DocIntake } from "../_intake/PanelCuenta";
+import { PanelMonto } from "../_intake/PanelMonto";
 import { RetencionesCuentaCobro, type ReglaConcepto } from "./RetencionesCuentaCobro";
 import { useFiltrosIntake } from "../_intake/FiltrosIntake";
 import { ErrorAccion } from "../_intake/ErrorAccion";
@@ -19,6 +21,8 @@ export type CuentaCobro = {
   fecha_pago_prog: string | null; cuenta_pago: string | null; pago_id: number | null;
   recurrente: boolean;
   cert: CertEstado | null; cuenta: CuentaMaestro; correos: CorreoEnviado[];
+  /** Lo que el lector sacó del documento soporte (el semáforo del monto). */
+  val: ValorEstado | null;
   // Retenciones: el mismo modelo de la factura (montos + valor_a_pagar).
   iva_incluido: number | null; retefuente: number | null; reteiva: number | null;
   reteica: number | null; reten_total: number | null; otros_valor: number | null;
@@ -107,7 +111,9 @@ export function CuentasCobroView({ items, operar }: { items: CuentaCobro[]; oper
             // El MISMO cálculo que el servidor exige al aprobar (lib/certificaciones):
             // si la tarjeta dijera una cosa y el guard otra, el equipo aprendería a
             // pelearse con un botón que no explica nada.
-            const bloqueo = bloqueoAprobacion(docsFaltantes(c.documentos, c.recurrente ? DOCS_RECURRENTE : DOCS_CUENTA_COBRO), c.cert, c.cuenta, c.recurrente)
+            const bloqueo = bloqueoAprobacion({
+              docsFaltan: docsFaltantes(c.documentos, c.recurrente ? DOCS_RECURRENTE : DOCS_CUENTA_COBRO),
+              cert: c.cert, cuenta: c.cuenta, val: c.val, declarado: c.valor, recurrente: c.recurrente })
               ?? (c.retencion_ok ? null
                   : "Falta confirmar las retenciones — aunque sean cero, para que se pague el valor correcto.");
             const reten = c.reten_total ?? 0;
@@ -139,6 +145,12 @@ export function CuentasCobroView({ items, operar }: { items: CuentaCobro[]; oper
                 </div>
 
                 <DocsIntake docs={c.documentos ?? []} soloSoporte={c.recurrente} />
+                {/* El monto contra el documento. Va PEGADO a los documentos porque
+                    es de lo que habla, y ARRIBA de la cuenta porque si la cifra está
+                    mal no tiene sentido ponerse a verificar cuentas primero. */}
+                <PanelMonto origen="cuenta_cobro" id={c.id} val={c.val} declarado={c.valor}
+                            operar={operar} pagada={!!c.pago_id}
+                            docUrl={(c.documentos ?? []).find((d) => d.clase === "soporte")?.path} />
                 <PanelCuenta cert={c.cert} cuenta={c.cuenta} bloqueo={c.estado === "recibida" ? bloqueo : null} operar={operar}
                              docUrl={(c.documentos ?? []).find((d) => d.clase === "certificacion_bancaria")?.path} />
 

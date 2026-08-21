@@ -162,6 +162,35 @@ export async function registrarCertificacion(
   }
 }
 
+/** Encola la lectura del DOCUMENTO SOPORTE para cotejar el monto.
+ *
+ *  Hermana de `registrarCertificacion`, y por la misma razón: lo que decide a
+ *  quién y CUÁNTO se paga no puede salir solo de lo que el proveedor teclea. Acá
+ *  solo se deja la fila; el lector (scripts/leer_valores.py) corre en la VM,
+ *  donde viven poppler y tesseract.
+ *
+ *  El valor declarado se congela en la fila: si después el equipo lo corrige, se
+ *  vuelve a evaluar contra los mismos candidatos sin tener que releer el PDF. */
+export async function registrarSoporte(
+  pool: { query: (q: string, v?: unknown[]) => Promise<unknown> },
+  origenTipo: "cuenta_cobro" | "cotizacion", origenId: number,
+  valorDeclarado: number | null, docs: DocIntake[],
+): Promise<void> {
+  const sop = docs.find((d) => d.clase === "soporte" && d.estado === "subido");
+  if (!sop?.path) return;
+  const fileId = /\/d\/([A-Za-z0-9_-]{20,})/.exec(sop.path)?.[1] ?? null;
+  try {
+    await pool.query(
+      `INSERT INTO lectura_valor (origen_tipo, origen_id, drive_url, drive_file_id, valor_declarado)
+       VALUES ($1,$2,$3,$4,$5)`,
+      [origenTipo, origenId, sop.path, fileId, valorDeclarado]);
+  } catch (e) {
+    // Que no tumbe el envío del proveedor: la fila se puede recrear después, y
+    // mientras no exista el candado bloquea (que es el lado seguro).
+    console.error("[intake] no se pudo encolar la lectura del soporte:", e);
+  }
+}
+
 /** Mensaje para el proveedor cuando algún adjunto no llegó a Drive. Se le dice
  *  la verdad (su envío SÍ quedó) en vez de fallar en silencio o botarlo. */
 export function avisoDocs(fallidos: number): string | undefined {

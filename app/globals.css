@@ -1245,6 +1245,39 @@ tr.desfasada td { background: #fff8e6; }
 .cc-choque-ops i { display: block; font-style: normal; font-size: 10px; text-transform: uppercase;
   letter-spacing: .05em; color: #8a6100; font-weight: 700; }
 .cc-choque-ops b { font-size: 15px; color: var(--ink); }
+/* ---- El semáforo del MONTO (PanelMonto) ---------------------------------- */
+/* Hermano de .cc-cert: mismo lenguaje visual, porque son el mismo tipo de aviso
+   (algo del documento no cuadra y hay que resolverlo antes de aprobar).
+   Cuando el monto CUADRA es una sola línea verde y discreta: si el panel
+   gritara siempre, el equipo aprendería a saltárselo y el día que grite de
+   verdad no lo va a leer. */
+.cc-monto { margin-top: 9px; border-radius: 11px; padding: 11px 13px;
+  font-size: 12.5px; line-height: 1.55; }
+.cc-monto.ok { background: #f0f9f3; border: 1px solid rgba(39,174,96,.28); color: #1e7d47; }
+.cc-monto.ok i { font-weight: 400; }
+.cc-monto.esperando { background: var(--cream-2); border: 1px dashed var(--border); color: var(--lav); }
+.cc-monto.malo { background: #fff8e6; border: 1px solid rgba(212,160,23,.45); color: #6b4d05; }
+.cc-monto.malo b { color: #543c04; }
+/* Los montos del documento: el revisor tiene que poder COMPROBAR el aviso, no
+   solo creérselo. Con la lista al lado ve "es 10.642, no 10.650" sin abrir nada. */
+.cc-monto-cands { margin-top: 6px; padding-top: 6px; border-top: 1px dashed rgba(212,160,23,.4);
+  font-family: var(--mono); font-size: 12px; }
+.cc-monto-abrir { margin: 8px 0 0; font-size: 12.5px; }
+.cc-monto-abrir a { color: var(--purple-deep); font-weight: 700; }
+.cc-monto-form { display: flex; gap: 8px; flex-wrap: wrap; align-items: flex-end; margin-top: 10px; }
+.cc-monto-form label { display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 170px;
+  font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: #8a6100; }
+.cc-monto-form input { width: auto; font-size: 14px; padding: 9px 12px; background: #fff;
+  border: 1.5px solid rgba(212,160,23,.45); border-radius: 9px; font-weight: 400;
+  text-transform: none; letter-spacing: 0; color: var(--ink); }
+.cc-monto-form.ajuste { margin-top: 8px; padding-top: 10px; border-top: 1px solid rgba(212,160,23,.3); }
+/* En celular las dos casillas se apilan y el botón ocupa la fila: con el pulgar
+   no se acierta un botón de 90px al lado de un campo (Regla 20). */
+@media (max-width: 640px) {
+  .cc-monto-form { flex-direction: column; align-items: stretch; }
+  .cc-monto-form .cc-act { width: 100%; padding: 11px 16px; }
+}
+
 /* Retenciones de la cuenta de cobro: mismo lenguaje visual que la factura. */
 /* Devolver EXIGE motivo: sin él el proveedor no sabe qué corregir. */
 .cc-rechazo { display: flex; gap: 6px; flex: 1; min-width: 260px; }

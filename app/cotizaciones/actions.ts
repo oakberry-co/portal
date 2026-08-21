@@ -3,7 +3,7 @@
 // Recepción PÚBLICA de una cotización. Sube documentos a Drive (vía el relay de la
 // VM) y registra en `cotizaciones` (estado 'recibida') con un código COT-####.
 // Luego se le hacen abonos y se cruza con la factura final para no pagar doble.
-import { subirDocumentos, avisoDocs, archivosDelForm, registrarCertificacion, etiquetaEnvio } from "@/lib/intake";
+import { subirDocumentos, avisoDocs, archivosDelForm, registrarCertificacion, registrarSoporte, etiquetaEnvio } from "@/lib/intake";
 import { AREAS, CLASES_DOC, DOCS_COTIZACION } from "@/lib/areas";
 import { revisarArchivos } from "@/lib/documentos";
 import { getPool } from "@/lib/db";
@@ -135,6 +135,8 @@ export async function enviarCotizacion(_prev: Resultado | null, formData: FormDa
     const codigo = "COT-" + String(id).padStart(4, "0");
     await pool.query("UPDATE cotizaciones SET codigo = $2 WHERE id = $1", [id, codigo]);
     await registrarCertificacion(pool, "cotizacion", id, nit, docs);
+    // Y el soporte, para cotejar que el monto que tecleó esté en su documento.
+    await registrarSoporte(pool, "cotizacion", id, valor, docs);
     return { ok: true, codigo, aviso: avisoDocs(fallidos) };
   } catch (e) {
     return { ok: false, error: "No se pudo registrar la cotización: " + (e as Error).message };

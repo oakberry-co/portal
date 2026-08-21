@@ -6,6 +6,7 @@ import { registrarEvento } from "@/lib/eventos";
 import { exigirCap } from "@/lib/auth";
 import { DOCS_CUENTA_COBRO, DOCS_RECURRENTE, docsFaltantes, type DocGuardado, PLAZO_CUENTA_COBRO_DIAS } from "@/lib/areas";
 import { bloqueoAprobacion, sqlCertificacion, type CertEstado, type CuentaMaestro } from "@/lib/certificaciones";
+import { sqlLecturaValor, type ValorEstado } from "@/lib/valor-documento";
 import { aplicarCuentaCertificada } from "@/lib/cuenta-certificada";
 import { encolarCorreo } from "@/lib/correos";
 import { intentar, type Resultado } from "@/lib/resultado";
@@ -29,22 +30,26 @@ const ESTADOS: Record<string, string> = {
  *  del lector. Lo que decide es este SELECT, no lo que el navegador creía. */
 async function exigirAprobable(c: PoolClient, id: number): Promise<Aprobable> {
   const { rows } = await c.query<Aprobable & {
-    documentos: DocGuardado[]; cert: CertEstado | null; cuenta: CuentaMaestro; recurrente: boolean;
+    documentos: DocGuardado[]; cert: CertEstado | null; cuenta: CuentaMaestro; val: ValorEstado | null; recurrente: boolean;
   }>(
     `SELECT cc.documentos, cc.razon_social, cc.correo, cc.valor::float AS valor,
             cc.recurrente,
             cc.retencion_ok, coalesce(cc.valor_a_pagar, cc.valor)::float AS valor_a_pagar,
-            to_jsonb(cert) AS cert,
+            to_jsonb(cert) AS cert, to_jsonb(val) AS val,
             to_jsonb(cb)   AS cuenta
        FROM cuentas_cobro cc
        ${sqlCertificacion("cuenta_cobro", "cc.id")}
+       ${sqlLecturaValor("cuenta_cobro", "cc.id")}
        LEFT JOIN LATERAL (
          SELECT y.banco, y.tipo_cuenta, y.num_cuenta, y.certificada
            FROM cuentas_bancarias_proveedor y WHERE y.nit = cc.num_doc) cb ON TRUE
       WHERE cc.id = $1`, [id]);
   const r = rows[0];
   if (!r) throw new Error("Cuenta de cobro no encontrada.");
-  const bloqueo = bloqueoAprobacion(docsFaltantes(r.documentos, r.recurrente ? DOCS_RECURRENTE : DOCS_CUENTA_COBRO), r.cert, r.cuenta, r.recurrente);
+  const bloqueo = bloqueoAprobacion({
+    docsFaltan: docsFaltantes(r.documentos, r.recurrente ? DOCS_RECURRENTE : DOCS_CUENTA_COBRO),
+    cert: r.cert, cuenta: r.cuenta, val: r.val,
+    declarado: r.valor == null ? null : Number(r.valor), recurrente: r.recurrente });
   if (bloqueo) throw new Error(bloqueo);
   // Igual que una factura no entra a Pagos hasta 'retenciones_ok': aprobar sin
   // definir la retención es aprobar un pago BRUTO, y eso se paga de más.

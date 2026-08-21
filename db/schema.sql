@@ -889,3 +889,61 @@ CREATE INDEX IF NOT EXISTS ix_facturas_ref_cufe ON facturas (ref_cufe) WHERE ref
 -- camino entraría un envío sin documentos y sin a dónde pagarle.
 ALTER TABLE cotizaciones
   ADD COLUMN IF NOT EXISTS recurrente BOOLEAN NOT NULL DEFAULT FALSE;
+
+-- -----------------------------------------------------------------------------
+-- 17) EL MONTO TAMBIÉN LO DICE EL DOCUMENTO, NO SOLO EL PROVEEDOR
+--
+-- Hermana de la sección 13 (la cuenta la certifica el banco). Allá el problema
+-- era a QUIÉN se le paga; acá es CUÁNTO.
+--
+-- El caso: COT-0026 (21-ago-2026). La cotización de ENDIPACK decía
+-- `TOTAL A PAGAR $ 149.340,24` y el proveedor tecleó `$ 14.934.024` — el mismo
+-- número sin la coma, cien veces más grande. Con 100% de adelanto, aprobarla
+-- giraba catorce millones. No hubo mala fe: escribió los centavos como pesos.
+--
+-- El lector saca TODOS los montos del documento soporte y se pregunta si el
+-- valor registrado está entre ellos. No elige cuál es el total (cada proveedor
+-- rotula distinto y equivocarse eligiendo sería peor que no elegir) y NUNCA
+-- corrige: bloquea aprobar y deja que un humano lea el papel.
+--
+-- Candado: una solicitud cuyo monto no cuadra con su documento NO se aprueba.
+-- Salida: `valor_verificado` — alguien abre el documento y escribe el total.
+-- -----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS lectura_valor (
+  id             BIGSERIAL PRIMARY KEY,
+  origen_tipo    TEXT NOT NULL,          -- 'cuenta_cobro' | 'cotizacion'
+  origen_id      BIGINT NOT NULL,
+  drive_url      TEXT NOT NULL,          -- el soporte tal como llegó
+  drive_file_id  TEXT,
+  -- El valor que el proveedor tecleó, CONGELADO al momento de leer: sirve para
+  -- saber si la lectura sigue hablando del mismo monto después de una
+  -- corrección (si el equipo lo ajusta, el veredicto se recalcula).
+  valor_declarado NUMERIC(16,2),
+  -- Lo que el lector encontró. `valor_leido` es el mayor monto del documento
+  -- (la mejor apuesta para MOSTRAR, nunca para decidir) y `candidatos` son
+  -- todos, que es lo que de verdad se compara.
+  valor_leido    NUMERIC(16,2),
+  candidatos     JSONB NOT NULL DEFAULT '[]',
+  estado         TEXT NOT NULL DEFAULT 'pendiente',
+                 -- pendiente | cuadra | no_cuadra | ilegible
+  motivo         TEXT,
+  metodo         TEXT,                   -- texto_pdf | ocr
+  texto_crudo    TEXT,                   -- evidencia de lo leído (auditoría)
+  leido_en       TIMESTAMPTZ,
+  -- EL PASO HUMANO, que es el que de verdad desbloquea: alguien abrió el
+  -- documento y escribió el total que ve. Igual que con la cuenta bancaria, lo
+  -- que leyó la máquina no basta para mover plata.
+  valor_verificado NUMERIC(16,2),
+  verificado_por   TEXT,
+  verificado_en    TIMESTAMPTZ,
+  creado_en      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS ix_lval_origen ON lectura_valor (origen_tipo, origen_id);
+CREATE INDEX IF NOT EXISTS ix_lval_estado ON lectura_valor (estado);
+
+-- Corrección del monto por el equipo (ver `corregirValor`). Se guarda el valor
+-- ORIGINAL que tecleó el proveedor: sin él, después de la corrección nadie
+-- podría reconstruir qué llegó por el portal — y eso es justo lo que hay que
+-- poder mostrarle al proveedor cuando pregunte.
+ALTER TABLE cotizaciones  ADD COLUMN IF NOT EXISTS valor_original NUMERIC(16,2);
+ALTER TABLE cuentas_cobro ADD COLUMN IF NOT EXISTS valor_original NUMERIC(16,2);

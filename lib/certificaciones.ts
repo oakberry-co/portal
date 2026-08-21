@@ -14,8 +14,15 @@
 //   4. y el paso final: un humano ABRIÓ el documento y ESCRIBIÓ la cuenta.
 // Aprobar es además lo que ESCRIBE esa cuenta en el maestro de pagos.
 //
+// Desde el 21-ago-2026 hay un quinto candado y vive en su propio módulo
+// (lib/valor-documento.ts): el MONTO tiene que estar en el documento. Se evalúa
+// DESDE ACÁ y no en cada bandeja, porque son cuatro los sitios que preguntan
+// "¿se puede aprobar?" (dos server actions y dos vistas) y un candado que hay
+// que acordarse de repetir cuatro veces es un candado que un día falta en uno.
+//
 // Módulo PURO (sin base ni sesión): se importa en cliente para pintar el aviso
 // y en servidor para bloquear. El enforcement real es el servidor.
+import { bloqueoValor, type ValorEstado } from "./valor-documento";
 
 /** Lo que el lector sacó de la certificación de ESTE envío (null = nunca llegó). */
 export type CertEstado = {
@@ -87,10 +94,26 @@ export function cola(num: string | null | undefined): string {
  *  hoy en el maestro. La cuenta se escribe en el maestro AL APROBAR (ver
  *  lib/cuenta-certificada.ts), así que exigirla antes sería pedirle al revisor
  *  el resultado de la acción que está a punto de hacer. */
-export function bloqueoAprobacion(
-  docsFaltan: string[], cert: CertEstado | null, cuenta: CuentaMaestro,
-  recurrente = false,
-): string | null {
+/** Todo lo que hace falta para decidir si un envío se puede aprobar.
+ *
+ *  Es un objeto y no una lista de parámetros a propósito: los campos son
+ *  OBLIGATORIOS, así que el compilador obliga a cada sitio nuevo a traer la
+ *  lectura del monto. Con un parámetro opcional al final, el sitio que se
+ *  olvidara de pasarlo se quedaría sin ese candado y en silencio — que es
+ *  exactamente cómo se pagaron 5 cuentas de cobro sin destino el 21-ago. */
+export type Aprobacion = {
+  docsFaltan: string[];
+  cert: CertEstado | null;
+  cuenta: CuentaMaestro;
+  /** Lo que el lector sacó del documento soporte (null = no hay lectura). */
+  val: ValorEstado | null;
+  /** El monto que la solicitud tiene HOY: contra eso se coteja el documento. */
+  declarado: number | null;
+  recurrente?: boolean;
+};
+
+export function bloqueoAprobacion(a: Aprobacion): string | null {
+  const { docsFaltan, cert, cuenta, val, declarado, recurrente = false } = a;
   // SENTINELA. Si la consulta que trae `cert` no seleccionó `cuenta_verificada`,
   // el campo llega `undefined` y este candado lo lee como "nadie la verificó":
   // bloquea SIEMPRE, sin decir por qué. Pasó — el guard de aprobación tenía su
@@ -104,6 +127,11 @@ export function bloqueoAprobacion(
   if (docsFaltan.length) {
     return `Faltan documentos: ${docsFaltan.join(", ")}. Pídeselos al proveedor antes de aprobar.`;
   }
+  // EL MONTO, Y VA TEMPRANO. Si el valor está cien veces inflado, mandar al
+  // revisor a verificar cuentas bancarias primero es hacerle perder el trabajo:
+  // esa solicitud no se va a aprobar hasta que la cifra se arregle.
+  const porElMonto = bloqueoValor(val, declarado);
+  if (porElMonto) return porElMonto;
   // PROVEEDOR RECURRENTE: no mandó certificación porque su cuenta ya vive en el
   // maestro, certificada en un envío anterior y confirmada por un humano. Lo que
   // se exige acá es que ESA cuenta siga estando: si alguien la borró, aprobar

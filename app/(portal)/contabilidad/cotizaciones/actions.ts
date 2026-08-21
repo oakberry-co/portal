@@ -6,6 +6,7 @@ import { registrarEvento } from "@/lib/eventos";
 import { exigirCap } from "@/lib/auth";
 import { DOCS_COTIZACION, DOCS_RECURRENTE, docsFaltantes, type DocGuardado } from "@/lib/areas";
 import { bloqueoAprobacion, sqlCertificacion, type CertEstado, type CuentaMaestro } from "@/lib/certificaciones";
+import { sqlLecturaValor, type ValorEstado } from "@/lib/valor-documento";
 import { syncAbono } from "@/lib/abonos";
 import { aplicarCuentaCertificada } from "@/lib/cuenta-certificada";
 import { encolarCorreo } from "@/lib/correos";
@@ -30,22 +31,26 @@ const ESTADOS: Record<string, string> = {
  *  cotización sin anticipo se paga por su factura, que ya tiene su carril. */
 async function exigirAprobable(c: PoolClient, id: number): Promise<Aprobable> {
   const { rows } = await c.query<Aprobable & {
-    documentos: DocGuardado[]; cert: CertEstado | null; cuenta: CuentaMaestro;
+    documentos: DocGuardado[]; cert: CertEstado | null; cuenta: CuentaMaestro; val: ValorEstado | null;
     valor: string | null; adelanto_pct: string | null; requiere_adelanto: boolean;
     recurrente: boolean;
   }>(
     `SELECT cot.documentos, cot.valor, cot.adelanto_pct, cot.requiere_adelanto, cot.recurrente,
             cot.razon_social, cot.correo, cot.codigo, cot.plazo_dias,
-            to_jsonb(cert) AS cert, to_jsonb(cb) AS cuenta
+            to_jsonb(cert) AS cert, to_jsonb(val) AS val, to_jsonb(cb) AS cuenta
        FROM cotizaciones cot
        ${sqlCertificacion("cotizacion", "cot.id")}
+       ${sqlLecturaValor("cotizacion", "cot.id")}
        LEFT JOIN LATERAL (
          SELECT y.banco, y.tipo_cuenta, y.num_cuenta, y.certificada
            FROM cuentas_bancarias_proveedor y WHERE y.nit = cot.nit) cb ON TRUE
       WHERE cot.id = $1`, [id]);
   const r = rows[0];
   if (!r) throw new Error("Cotización no encontrada.");
-  const bloqueo = bloqueoAprobacion(docsFaltantes(r.documentos, r.recurrente ? DOCS_RECURRENTE : DOCS_COTIZACION), r.cert, r.cuenta, r.recurrente);
+  const bloqueo = bloqueoAprobacion({
+    docsFaltan: docsFaltantes(r.documentos, r.recurrente ? DOCS_RECURRENTE : DOCS_COTIZACION),
+    cert: r.cert, cuenta: r.cuenta, val: r.val,
+    declarado: r.valor == null ? null : Number(r.valor), recurrente: r.recurrente });
   if (bloqueo) throw new Error(bloqueo);
   if (!r.requiere_adelanto || !Number(r.adelanto_pct ?? 0) || !Number(r.valor ?? 0)) {
     throw new Error("Esta cotización no tiene adelanto (valor y %) — no hay monto que pasar a Pagos. "

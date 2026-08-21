@@ -4,7 +4,7 @@
 // a Drive (vía el relay de la VM) y registra el envío en `cuentas_cobro` (estado
 // 'recibida'). Sin login: esta ruta está fuera del middleware. Contabilidad la
 // revisa en la bandeja.
-import { subirDocumentos, avisoDocs, archivosDelForm, registrarCertificacion, etiquetaEnvio } from "@/lib/intake";
+import { subirDocumentos, avisoDocs, archivosDelForm, registrarCertificacion, registrarSoporte, etiquetaEnvio } from "@/lib/intake";
 import { AREAS, CLASES_DOC, PLAZO_CUENTA_COBRO_DIAS } from "@/lib/areas";
 import { revisarArchivos } from "@/lib/documentos";
 import { getPool } from "@/lib/db";
@@ -165,6 +165,7 @@ export async function enviarCuentaCobro(_prev: Resultado | null, formData: FormD
        telefono, area, concepto || null, s("descripcion") || null,
        valor, JSON.stringify(docs), recurrente, PLAZO_CUENTA_COBRO_DIAS]);
     await registrarCertificacion(pool, "cuenta_cobro", r.rows[0].id, numDoc, docs);
+    await registrarSoporte(pool, "cuenta_cobro", r.rows[0].id, valor, docs);
   } catch (e) {
     return { ok: false, error: "No se pudo registrar el envío: " + (e as Error).message };
   }

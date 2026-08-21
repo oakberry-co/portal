@@ -1,7 +1,8 @@
 #!/bin/bash
 # Portal — (1) lee las certificaciones bancarias que llegan por los portales
-# públicos y extrae la cuenta oficial del proveedor, y (2) le escribe al
-# proveedor lo que quedó pendiente. Corre en la VM: ahí viven tesseract, poppler,
+# públicos y extrae la cuenta oficial del proveedor, (2) lee el DOCUMENTO
+# SOPORTE y saca los montos, para cotejar que el valor registrado esté en el
+# papel, y (3) le escribe al proveedor lo que quedó pendiente. Corre en la VM: ahí viven tesseract, poppler,
 # las credenciales de Drive y las llaves de SES; en Vercel no existe ninguna.
 #
 # Regla 17: el cron ES parte del módulo. Sin esto, el proveedor sube su
@@ -42,6 +43,13 @@ trap 'rm -f "$LOCKFILE"' EXIT
 cd "$PORTAL"
 echo "=== $(date '+%F %T') - leer certificaciones ===" >> "$LOG"
 $PYTHON scripts/leer_certificaciones.py --commit >> "$LOG" 2>&1
+
+# El monto también sale del documento, no solo de lo que teclea el proveedor.
+# `--encolar-faltantes` es la red: si la fila no se creó al recibir el envío (o
+# el envío es anterior a este módulo), se crea acá. Sin eso el candado del portal
+# bloquearía para siempre algo que la máquina podía haber mirado sola.
+echo "=== $(date '+%F %T') - leer montos del soporte ===" >> "$LOG"
+$PYTHON scripts/leer_valores.py --commit --encolar-faltantes >> "$LOG" 2>&1
 
 # Y en la misma corrida se vacía la cola de correos al proveedor: el lector acaba
 # de encolar los avisos de "tu certificación no sirve", y las aprobaciones/pagos
