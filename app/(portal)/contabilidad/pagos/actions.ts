@@ -260,11 +260,13 @@ export async function confirmarPagoIntake(fd: FormData) {
     const q = tipo === "cuenta_cobro"
       ? `SELECT id, razon_social AS nombre, num_doc AS nit, estado, cuenta_pago, pago_id,
                 correo, coalesce(valor_a_pagar, valor, 0) AS debido, 0 AS saldo, 'CC-' || id AS ref,
+                concepto, destino, retencion_ok,
                 coalesce(valor, 0) AS bruto, coalesce(reten_total, 0) AS retenciones,
                 coalesce(numero, '') AS documento
            FROM cuentas_cobro WHERE id = $1 FOR UPDATE`
       : `SELECT id, razon_social AS nombre, nit, estado, cuenta_pago, pago_id,
-                correo, round(coalesce(valor,0) * coalesce(adelanto_pct,0) / 100) AS debido,
+                correo, NULL::text AS concepto, NULL::text AS destino, TRUE AS retencion_ok,
+                round(coalesce(valor,0) * coalesce(adelanto_pct,0) / 100) AS debido,
                 coalesce(valor,0) - round(coalesce(valor,0) * coalesce(adelanto_pct,0) / 100) AS saldo,
                 coalesce(codigo, 'COT-' || id) AS ref,
                 coalesce(valor, 0) AS bruto, 0 AS retenciones,
@@ -274,12 +276,26 @@ export async function confirmarPagoIntake(fd: FormData) {
       id: number; nombre: string; nit: string; estado: string; correo: string | null;
       cuenta_pago: string | null; pago_id: number | null; debido: string;
       saldo: string; ref: string; bruto: string; retenciones: string; documento: string;
+      concepto: string | null; destino: string | null; retencion_ok: boolean;
     }>(q, [id]);
     const s = rows[0];
     if (!s) throw new Error("Solicitud no encontrada.");
     if (s.pago_id) throw new Error("Esta solicitud ya tiene un pago registrado.");
     const estadosOk = tipo === "cuenta_cobro" ? ["aprobada"] : ["aprobada", "facturada"];
     if (!estadosOk.includes(s.estado)) throw new Error("La solicitud no está aprobada.");
+    // EL CANDADO SE VUELVE A EVALUAR CONTRA LA BASE, no solo al pintar la
+    // pantalla. Pasó de verdad el 20-ago: la clasificación se volvió obligatoria
+    // para entrar al tablero, pero quien ya tenía Pagos abierto siguió viendo
+    // los botones del build anterior y pagó 5 cuentas de cobro SIN destino. La
+    // consulta decide qué se VE; solo esto decide qué se PUEDE.
+    if (tipo === "cuenta_cobro") {
+      const falta = [!s.concepto ? "concepto" : null, !s.destino ? "destino" : null,
+                     !s.retencion_ok ? "retenciones" : null].filter(Boolean);
+      if (falta.length) {
+        throw new Error(`Todavía le falta ${falta.join(" y ")}. Clasifícala en Conciliación de `
+          + "pagos y vuelve: un gasto pagado sin destino no se puede leer después.");
+      }
+    }
     if (!s.cuenta_pago) throw new Error("Elige primero la cuenta desde la que se paga.");
 
     const debido = Number(s.debido);

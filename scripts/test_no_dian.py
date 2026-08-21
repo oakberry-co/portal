@@ -117,11 +117,33 @@ def main():
                               retencion_ok=TRUE, valor_a_pagar=480000 WHERE id = %s""", (sp,))
         check(en_pagos(cur, sp), "clasificado: pasa a Pagos igual que una cuenta de cobro")
 
-        print("\n6) Lo ya pagado sale del carril (no se re-clasifica ni se re-paga)")
+        print("\n6) Lo ya pagado sale del tablero, pero NO se esconde de Conciliación")
         cur.execute("UPDATE cuentas_cobro SET pago_id = 1 WHERE id = %s", (sp,))
         check(not en_pagos(cur, sp), "con pago asociado: fuera del tablero")
+        # El 20-ago se pagaron 5 cuentas de cobro SIN destino (pantalla vieja
+        # abierta). Si la lista de "por clasificar" escondiera lo pagado, ese
+        # gasto se quedaba sin decir en qué tienda cayó para siempre.
+        cur.execute("UPDATE cuentas_cobro SET destino = NULL WHERE id = %s", (sp,))
+        cur.execute("""SELECT count(*) FROM cuentas_cobro cc
+                        WHERE cc.id = %s AND cc.estado IN ('aprobada','pagada')
+                          AND NOT (cc.concepto IS NOT NULL AND cc.destino IS NOT NULL
+                                   AND cc.retencion_ok)""", (sp,))
+        check(cur.fetchone()[0] == 1,
+              "un documento pagado sin destino SIGUE en la lista por clasificar")
 
-        print("\n7) `area` y `destino` son cosas distintas y no se pisan")
+        print("\n7) El candado se re-evalúa AL PAGAR, no solo al pintar la pantalla")
+        # Lo que falló de verdad: la consulta decide qué se VE, y quien tenía la
+        # página abierta desde antes siguió viendo botones del build anterior.
+        accion = open(os.path.join(RAIZ, "app/(portal)/contabilidad/pagos/actions.ts"),
+                      encoding="utf-8").read()
+        i = accion.find("export async function confirmarPagoIntake")
+        cuerpo = accion[i:i + 4000] if i >= 0 else ""
+        check("Clasifícala en Conciliación" in cuerpo,
+              "confirmarPagoIntake vuelve a revisar concepto/destino/retenciones contra la base")
+        check("s.destino" in cuerpo and "s.concepto" in cuerpo,
+              "y lo hace con los datos que trae de la consulta, no con lo que mandó el navegador")
+
+        print("\n8) `area` y `destino` son cosas distintas y no se pisan")
         cur.execute("SELECT area, destino FROM cuentas_cobro WHERE id = %s", (cc,))
         area, destino = cur.fetchone()
         check(destino is None and area is None,

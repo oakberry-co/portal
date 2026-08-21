@@ -36,11 +36,15 @@ export const LISTO_PARA_PAGOS = (pfx: string) =>
    AND ${pfx}.concepto IS NOT NULL AND ${pfx}.destino IS NOT NULL
    AND ${pfx}.retencion_ok`;
 
-/** Lo aprobado que TODAVÍA no está clasificado: lo que aparece en Conciliación
- *  esperando concepto, destino y retenciones. Es el complemento exacto del
- *  anterior, escrito así para que se lea que uno empieza donde el otro termina. */
+/** Lo que TODAVÍA no está clasificado: lo que aparece en Conciliación esperando
+ *  concepto, destino y retenciones.
+ *
+ *  Incluye lo YA PAGADO a propósito. El 20-ago se pagaron 5 cuentas de cobro sin
+ *  destino (la pantalla vieja seguía abierta) y, si esta lista las escondiera,
+ *  ese gasto se quedaría sin decir en qué tienda cayó PARA SIEMPRE — que es
+ *  justo el problema que este carril vino a resolver. Pagar no es archivar. */
 export const POR_CLASIFICAR = (pfx: string) =>
-  `${pfx}.estado = 'aprobada' AND ${pfx}.pago_id IS NULL
+  `${pfx}.estado IN ('aprobada', 'pagada')
    AND NOT (${pfx}.concepto IS NOT NULL AND ${pfx}.destino IS NOT NULL AND ${pfx}.retencion_ok)`;
 
 export type DocNoDian = {
@@ -143,9 +147,22 @@ export async function clasificar(
     "SELECT concepto, destino, plazo_dias, estado, pago_id FROM cuentas_cobro WHERE id = $1 FOR UPDATE", [id]);
   if (!cur.rowCount) throw new Error("Ese documento ya no existe.");
   const antes = cur.rows[0];
-  // Ya pagado = ya no se toca: cambiar el destino después del pago deja el
-  // registro contable diciendo algo distinto de lo que salió del banco.
-  if (antes.pago_id) throw new Error("Este documento ya se pagó: su clasificación no se cambia desde acá.");
+  // YA PAGADO: se puede LLENAR lo que está vacío, no CAMBIAR lo ya decidido.
+  //
+  // La diferencia no es un tecnicismo. Cambiar el destino de algo ya pagado deja
+  // el registro contable diciendo algo distinto de lo que salió del banco —eso
+  // sigue prohibido—, pero llenar un hueco no cambia ninguna decisión: la
+  // completa. Sin esta distinción, las 5 cuentas de cobro que se pagaron sin
+  // destino el 20-ago se quedaban sin clasificar para siempre.
+  if (antes.pago_id) {
+    const pisa = (["concepto", "destino", "plazo_dias"] as const).filter(
+      (k) => k in campos && antes[k] != null && String(antes[k]) !== String(campos[k] ?? ""));
+    if (pisa.length) {
+      throw new Error(`Este documento ya se pagó: ${pisa.join(" y ")} no se puede cambiar `
+        + "(el registro contable quedaría diciendo algo distinto de lo que salió del banco). "
+        + "Lo que sí se puede es llenar lo que quedó vacío.");
+    }
+  }
 
   const sets: string[] = [], vals: unknown[] = [id];
   const push = (col: string, v: unknown) => { vals.push(v); sets.push(`${col} = $${vals.length}`); };
