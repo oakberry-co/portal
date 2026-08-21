@@ -2,8 +2,21 @@
 const nextConfig = {
   // El cliente `pg` es solo de servidor; que no intente empacarlo al bundle del navegador.
   serverExternalPackages: ["pg", "exceljs", "@anthropic-ai/sdk"],
-  // Los formularios públicos de intake suben documentos (PDF/imágenes) por Server Action.
-  experimental: { serverActions: { bodySizeLimit: "15mb" } },
+
+  // OJO: ESTE NÚMERO NO SUBE EL TOPE, SOLO PUEDE BAJARLO.
+  //
+  // Los formularios públicos de intake suben documentos por Server Action, y el
+  // tope de verdad lo pone VERCEL: 4,5 MB por request, con un 413
+  // `FUNCTION_PAYLOAD_TOO_LARGE` devuelto EN EL BORDE, antes de que la función
+  // exista. Comprobado contra producción el 21-ago-2026 (4,0 MB → 405; 5,5 MB →
+  // 413). Acá decía "15mb" y eso fue justamente lo que nos hizo creer que 15 MB
+  // pasaban: el proveedor adjuntaba, daba enviar, y la página se caía sin código
+  // de error, porque no hubo error del servidor — no hubo servidor.
+  //
+  // Queda alineado con `TOPE_ENVIO_BYTES` (lib/documentos.ts), que es lo que el
+  // navegador le promete al proveedor. Las dos cifras tienen que decir lo mismo;
+  // el centinela `scripts/test_peso_documentos.js` lo comprueba.
+  experimental: { serverActions: { bodySizeLimit: "4mb" } },
 };
 
 export default nextConfig;

@@ -3,6 +3,7 @@
 import { useActionState, useState } from "react";
 import { completarSolicitud, type Resultado } from "./actions";
 import type { Formatos } from "@/lib/documentos";
+import { CasillasDocumentos } from "../../CasillasDocumentos";
 
 export function FormCompletar({ token, clases }: {
   token: string;
@@ -31,17 +32,12 @@ export function FormCompletar({ token, clases }: {
         <br /><b>Súbelo sin contraseña</b> — si tu banco te lo entrega con clave, ábrelo y vuelve
         a guardarlo, o mándanos una foto nítida.
       </p>
-      <div className="pub-docs">
-        {clases.map((c) => (
-          <label key={c.name} className={"pub-doc" + (puestos[c.name] ? " puesto" : "")}>
-            <input name={c.name} type="file"
-                   accept={c.formatos === "documento" ? ".pdf,.doc,.docx" : ".pdf,.doc,.docx,image/*"}
-                   onChange={(e) => setPuestos((p) => ({ ...p, [c.name]: e.target.files?.[0]?.name ?? "" }))} />
-            <span className="pub-doc-ico" aria-hidden="true">{puestos[c.name] ? "✓" : "+"}</span>
-            <span className="pub-doc-txt"><b>{c.label}</b><i>{puestos[c.name] || c.ayuda}</i></span>
-          </label>
-        ))}
-      </div>
+      {/* LAS MISMAS casillas de los otros dos intakes, no una copia parecida.
+          Esta pantalla tenía su propio <input type="file"> y por eso era la
+          única sin filtro de formato, sin aviso de PDF con clave y sin control
+          de peso — justo lo que tumbaba el envío en Vercel (413, ver
+          TOPE_ENVIO_BYTES). Acá no son obligatorias: se sube SOLO lo que falta. */}
+      <CasillasDocumentos clases={clases} obligatorios={false} onCambio={setPuestos} />
 
       {estado?.error && <div className="pub-err">{estado.error}</div>}
       {pending ? (

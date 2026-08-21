@@ -54,8 +54,10 @@ for (const n of ["cedula.zip", "cedula.mp4", "cedula.exe"]) {
 }
 
 console.log("\n3) Tamaño");
+// El tope real es el del ENVÍO (4 MB, ver TOPE_ENVIO_BYTES): lo pone Vercel, no
+// nosotros. El peso del conjunto lo cuida scripts/test_peso_documentos.js.
 check(motivoRechazo(falso("a.pdf", 26 * 1024 * 1024), "documento", "Soporte") !== null,
-      "rechaza más de 25 MB");
+      "rechaza el archivo que no cabe en un envío");
 check(motivoRechazo(new File([], "vacio.pdf"), "documento", "Soporte") !== null,
       "rechaza el archivo vacío (0 bytes)");
 
