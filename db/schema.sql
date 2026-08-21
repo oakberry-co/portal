@@ -947,3 +947,38 @@ CREATE INDEX IF NOT EXISTS ix_lval_estado ON lectura_valor (estado);
 -- poder mostrarle al proveedor cuando pregunte.
 ALTER TABLE cotizaciones  ADD COLUMN IF NOT EXISTS valor_original NUMERIC(16,2);
 ALTER TABLE cuentas_cobro ADD COLUMN IF NOT EXISTS valor_original NUMERIC(16,2);
+
+-- -----------------------------------------------------------------------------
+-- 18) LOS DOCUMENTOS SUBEN DE A UNO (y por eso caben los pesados)
+--
+-- El envío del intake viajaba como UN request con los 3-4 documentos adentro, y
+-- Vercel corta cualquier request de más de 4,5 MB EN EL BORDE (413). O sea que
+-- el tope era para TODO junto: tres PDF de 2 MB pasaban uno a uno y el envío se
+-- caía igual, sin llegar al servidor y sin un error que el proveedor pudiera
+-- entender.
+--
+-- Ahora cada documento sube en su propia petición y el tope pasa a ser POR
+-- DOCUMENTO. Lo que se guarda acá es el resultado de cada subida, agrupado por
+-- un `lote` que genera el SERVIDOR.
+--
+-- POR QUÉ UNA TABLA Y NO MANDAR LOS LINKS DE VUELTA EN EL FORMULARIO: porque el
+-- intake es PÚBLICO. Si el navegador enviara la lista de documentos ya subidos,
+-- cualquiera podría inventarse una con links que no existen y la solicitud
+-- entraría a la bandeja con documentos de mentira. Con el lote, las URLs las
+-- sigue produciendo el servidor y el navegador solo lleva un token aleatorio —
+-- el mismo criterio del token de /completar.
+-- -----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS intake_subida (
+  id         BIGSERIAL PRIMARY KEY,
+  lote       TEXT NOT NULL,          -- secreto aleatorio del servidor (24 bytes)
+  clase      TEXT NOT NULL,          -- certificacion_bancaria | rut | cedula | soporte
+  nombre     TEXT NOT NULL,
+  path       TEXT NOT NULL DEFAULT '',
+  tipo       TEXT,
+  estado     TEXT NOT NULL,          -- subido | pendiente (no llegó a Drive)
+  error      TEXT,
+  envio      TEXT,                   -- carpeta de Drive del lote (la fija el 1er archivo)
+  creado_en  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS ix_intake_subida_lote ON intake_subida (lote);
+CREATE INDEX IF NOT EXISTS ix_intake_subida_fecha ON intake_subida (creado_en);

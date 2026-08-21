@@ -4,9 +4,9 @@
 // a Drive (vía el relay de la VM) y registra el envío en `cuentas_cobro` (estado
 // 'recibida'). Sin login: esta ruta está fuera del middleware. Contabilidad la
 // revisa en la bandeja.
-import { subirDocumentos, avisoDocs, archivosDelForm, registrarCertificacion, registrarSoporte, etiquetaEnvio } from "@/lib/intake";
+import { avisoDocs, registrarCertificacion, registrarSoporte } from "@/lib/intake";
+import { docsDelLote } from "@/lib/intake-subida";
 import { AREAS, CLASES_DOC, PLAZO_CUENTA_COBRO_DIAS } from "@/lib/areas";
-import { revisarArchivos } from "@/lib/documentos";
 import { getPool } from "@/lib/db";
 import { nitCanonico } from "@/lib/nit";
 import { reconocer, datosDe } from "@/lib/proveedor-conocido";
@@ -133,21 +133,19 @@ export async function enviarCuentaCobro(_prev: Resultado | null, formData: FormD
     return { ok: false, error: "El valor a cobrar tiene que ser un número mayor que cero." };
   }
 
-  // Subir documentos a Drive (vía la VM). Quedan en CONTABILIDAD/Intake, privados.
-  // Su falla NO tumba el envío: el proveedor ya llenó el formulario.
-  // NINGÚN archivo malo entra. Se revisa ACÁ además del navegador: el `accept`
-  // de un <input> se salta arrastrando el archivo, y un PDF con clave no lo abre
-  // nadie —ni el lector, ni quien revisa, ni el contador tres meses después—.
-  const archivos = archivosDelForm(formData, CLASES_DOC);
-  const problemas = await revisarArchivos(archivos, CLASES_DOC);
-  if (problemas.length) return { ok: false, error: problemas.join(" · ") };
-  if (recurrente && !archivos.some((a) => a.clase === "soporte")) {
+  // LOS DOCUMENTOS YA ESTÁN ARRIBA: subieron de a uno (lib/intake-subida.ts),
+  // cada uno en su propia petición, porque los cuatro juntos chocaban contra el
+  // tope de 4,5 MB de Vercel y el envío moría en el borde sin dejar error.
+  //
+  // Se leen de la base por el `lote` —un secreto del servidor— y no del
+  // formulario: el intake es PÚBLICO, y si el navegador mandara los links de
+  // Drive cualquiera podría inventarse documentos que no existen. La revisión
+  // del archivo (formato, peso, PDF con clave) ya la hizo el servidor al subirlo.
+  const docs = await docsDelLote(String(formData.get("lote") ?? "").trim());
+  const fallidos = docs.filter((d) => d.estado === "pendiente").length;
+  if (recurrente && !docs.some((d) => d.clase === "soporte")) {
     return { ok: false, error: "Falta el documento soporte (tu cuenta de cobro o factura de este servicio)." };
   }
-
-  const { docs, fallidos } = await subirDocumentos(
-    archivos, "cuentas-de-cobro",
-    { nit: numDoc, razon, envio: etiquetaEnvio() });
 
   // banco/tipo_cuenta/num_cuenta ya NO se piden: la cuenta sale de la
   // certificación bancaria que lee el sistema (columnas se dejan por historia).

@@ -16,7 +16,6 @@
 
 // EL TOPE DE PESO NO LO PONEMOS NOSOTROS: LO PONE VERCEL.
 //
-// Un envío del intake viaja como UN request (Server Action con multipart), y
 // Vercel corta cualquier request de más de **4,5 MB** con un 413
 // `FUNCTION_PAYLOAD_TOO_LARGE` — EN EL BORDE, antes de que la función exista.
 // Comprobado contra producción el 21-ago-2026: 4,0 MB llega (405), 5,5 MB no
@@ -31,9 +30,13 @@
 // estaba bien. La regla del navegador tiene que ser la MISMA que la del borde,
 // o el proveedor recibe un permiso que nadie va a honrar (Regla 18).
 //
-// 4 MB y no 4,5: el request lleva además los campos de texto, los nombres de
-// las casillas y las fronteras del multipart. El margen es para eso.
-export const TOPE_ENVIO_BYTES = 4 * 1000 * 1000;
+// ES POR ARCHIVO, no por envío: desde que cada documento sube en su propia
+// petición (lib/intake-subida.ts) el tope dejó de ser para todo junto. Un envío
+// con cuatro documentos de 3 MB pasa sin problema; uno solo de 5 MB, no.
+//
+// 4 MB y no 4,5: la petición lleva además el nombre del archivo, la clase y las
+// fronteras del multipart. El margen es para eso.
+export const TOPE_ARCHIVO_BYTES = 4 * 1000 * 1000;
 
 /** Peso en la unidad que el proveedor entiende. "3,2 MB", no "3355443 bytes". */
 export function pesoLegible(bytes: number): string {
@@ -65,11 +68,12 @@ export function motivoRechazo(file: File, formatos: Formatos, etiqueta: string):
   }
   // Un solo archivo ya no puede pasar el tope del ENVÍO completo: si pasa, no
   // hay combinación posible de los otros que quepa. Decía 25 MB, que era una
-  // cifra nuestra sin relación con la que manda (ver TOPE_ENVIO_BYTES).
-  if (file.size > TOPE_ENVIO_BYTES) {
+  // cifra nuestra sin relación con la que manda (ver TOPE_ARCHIVO_BYTES).
+  if (file.size > TOPE_ARCHIVO_BYTES) {
     return `${etiqueta}: pesa ${pesoLegible(file.size)} y solo podemos recibir `
-      + `${pesoLegible(TOPE_ENVIO_BYTES)} por envío. Si es una foto, tómala de nuevo con menos `
-      + `resolución; si es un PDF escaneado, vuelve a guardarlo desde "Imprimir → Guardar como PDF".`;
+      + `${pesoLegible(TOPE_ARCHIVO_BYTES)} por documento. Si es una foto, tómala de nuevo con menos `
+      + `resolución; si es un PDF escaneado, vuelve a guardarlo desde "Imprimir → Guardar como PDF" `
+      + `— eso suele dejarlo en la décima parte.`;
   }
   if (file.size === 0) {
     return `${etiqueta}: el archivo llegó vacío. Vuelve a adjuntarlo.`;
@@ -84,65 +88,11 @@ export function motivoRechazo(file: File, formatos: Formatos, etiqueta: string):
  *  legible). Se acepta y, si no abre, el revisor lo devuelve — es el caso raro. */
 export async function tieneClave(file: File): Promise<boolean> {
   const esPdf = file.type.includes("pdf") || ext(file.name) === ".pdf";
-  if (!esPdf || file.size > TOPE_ENVIO_BYTES) return false;
+  if (!esPdf || file.size > TOPE_ARCHIVO_BYTES) return false;
   try {
     const txt = new TextDecoder("latin1").decode(new Uint8Array(await file.arrayBuffer()));
     return txt.includes("/Encrypt");
   } catch {
     return false;   // ante la duda, pasa: lo agarra el lector
   }
-}
-
-/** Revisa TODOS los archivos de un envío. Devuelve la lista de problemas (vacía
- *  = todo bien). Se usa en el servidor, que es donde la regla de verdad manda. */
-export async function revisarArchivos(
-  archivos: { file: File; clase: string }[],
-  clases: readonly { clase: string; label: string; formatos: Formatos }[],
-): Promise<string[]> {
-  const problemas: string[] = [];
-  // El peso del CONJUNTO también en el servidor. Hoy el borde de Vercel corta
-  // antes (413) y esto casi nunca se alcanza a ejecutar; se pone igual porque la
-  // regla no puede vivir solo en el navegador —el `accept` y el peso se saltan
-  // desde la consola— y porque el día que los archivos suban por otra vía (sin
-  // pasar por el request de la acción), este es el único que queda de pie.
-  const pesado = motivoPorPesoTotal(archivos.map(({ file, clase }) => ({
-    nombre: file.name, peso: file.size,
-    etiqueta: clases.find((c) => c.clase === clase)?.label ?? file.name,
-  })));
-  if (pesado) problemas.push(pesado);
-  for (const { file, clase } of archivos) {
-    const def = clases.find((c) => c.clase === clase);
-    // Un adjunto suelto ('otro') no tiene casilla: se le pide lo mínimo.
-    const formatos: Formatos = def?.formatos ?? "libre";
-    const etiqueta = def?.label ?? file.name;
-    const m = motivoRechazo(file, formatos, etiqueta);
-    if (m) { problemas.push(m); continue; }
-    if (await tieneClave(file)) {
-      problemas.push(`${etiqueta}: el PDF tiene contraseña y así no lo podemos abrir. `
-        + `Ábrelo con la clave y vuelve a guardarlo sin candado (Archivo → Imprimir → Guardar como PDF).`);
-    }
-  }
-  return problemas;
-}
-
-/** ¿Caben TODOS juntos? Devuelve el motivo del rechazo, o null.
- *
- *  Se mide el total y no archivo por archivo porque el tope es del REQUEST: tres
- *  documentos de 2 MB pasan uno a uno y el envío igual se cae. Se nombra el más
- *  pesado —que es el que hay que arreglar— y se dice qué hacer con él, porque
- *  "pesa mucho" sin salida es un proveedor que no vuelve (Regla 18). La salida
- *  existe de verdad: el envío entra sin ese documento y contabilidad manda el
- *  enlace de /completar para subirlo aparte.
- */
-export function motivoPorPesoTotal(
-  archivos: { nombre: string; peso: number; etiqueta: string }[],
-): string | null {
-  const total = archivos.reduce((a, x) => a + x.peso, 0);
-  if (total <= TOPE_ENVIO_BYTES) return null;
-  const gordo = archivos.reduce((a, x) => (x.peso > a.peso ? x : a), archivos[0]);
-  return `Tus documentos juntos pesan ${pesoLegible(total)} y solo podemos recibir `
-    + `${pesoLegible(TOPE_ENVIO_BYTES)} por envío. El más pesado es ${gordo.etiqueta} `
-    + `(${gordo.nombre}, ${pesoLegible(gordo.peso)}): quítalo, manda el resto, y te enviamos `
-    + `un enlace para subir ese solo. Si es un escaneo, guardarlo de nuevo desde `
-    + `"Imprimir → Guardar como PDF" suele dejarlo en la décima parte.`;
 }

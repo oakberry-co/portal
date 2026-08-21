@@ -3,7 +3,7 @@
 import { useRef, useState } from "react";
 import { CLASES_DOC } from "@/lib/areas";
 import type { Formatos } from "@/lib/documentos";
-import { motivoRechazo, motivoPorPesoTotal, tieneClave } from "@/lib/documentos";
+import { motivoRechazo, tieneClave } from "@/lib/documentos";
 import { comprimirFoto } from "@/lib/imagen";
 
 // Las 4 casillas de documentos de los portales públicos: certificación bancaria,
@@ -21,12 +21,14 @@ import { comprimirFoto } from "@/lib/imagen";
 // más tarde. Rechazar en el instante le ahorra ese viaje entero — y el servidor
 // vuelve a revisarlo, porque el `accept` de un <input> se salta arrastrando.
 //
-// EL PESO SE MIDE SOBRE EL CONJUNTO, no archivo por archivo (21-ago-2026). El
-// tope es del REQUEST completo y lo pone Vercel: tres documentos de 2 MB pasan
-// uno a uno y el envío se cae igual, en el borde, sin llegar al servidor. Y se
-// mide leyendo lo que HAY EN LOS INPUTS, no la suma de lo que creemos haber
-// dejado: si la foto aliviana pero no se pudo escribir de vuelta, lo que viaja
-// es el original y el contador tiene que verlo.
+// EL PESO SE MIDE POR DOCUMENTO (21-ago-2026), porque cada uno sube en su propia
+// petición (lib/subir-lote.ts). El tope lo pone Vercel —4,5 MB por request, y lo
+// corta en el borde sin dejar error— y el navegador tiene que decir LO MISMO que
+// el borde, o el proveedor recibe un permiso que nadie va a honrar (Regla 18).
+//
+// Se mide leyendo lo que HAY EN EL INPUT, no lo que creemos haber dejado ahí: si
+// la foto aliviana pero el navegador no dejó escribirla de vuelta, lo que viaja
+// es el original y eso es lo que hay que juzgar.
 type Clase = { name: string; clase: string; label: string; ayuda: string; formatos: Formatos };
 
 export function CasillasDocumentos({ documento, clases, obligatorios = true, onCambio }: {
@@ -65,13 +67,6 @@ export function CasillasDocumentos({ documento, clases, obligatorios = true, onC
       return input.files[0]?.size === f.size;
     } catch { return false; }
   };
-
-  /** Lo que HOY pesan los inputs, con etiqueta, para poder nombrar al culpable. */
-  const enviosActuales = () =>
-    CASILLAS.map((c) => {
-      const f = refs.current[c.name]?.files?.[0];
-      return f ? { nombre: f.name, peso: f.size, etiqueta: c.label } : null;
-    }).filter((x): x is { nombre: string; peso: number; etiqueta: string } => x !== null);
 
   const limpiar = (name: string, motivo: string) => {
     // Se descarta de verdad: si se dejara puesto, el proveedor enviaría igual y
@@ -116,9 +111,6 @@ export function CasillasDocumentos({ documento, clases, obligatorios = true, onC
                         ? `${c.label}: este PDF tiene contraseña y así no lo podemos abrir.`
                         : null);
                   if (malo) { limpiar(c.name, malo); return; }
-                  // Cabe él; ¿caben TODOS? El tope es del envío completo.
-                  const pesado = motivoPorPesoTotal(enviosActuales());
-                  if (pesado) { limpiar(c.name, pesado); return; }
                   poner(c.name, f.name);
                   setErrores((p) => ({ ...p, [c.name]: "" }));
                 } finally {

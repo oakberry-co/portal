@@ -1441,3 +1441,12 @@ tr.desfasada td { background: #fff8e6; }
 .c-esnc { background: var(--coral); color: #fff; border-radius: 4px; padding: 0 4px;
   font-size: 8.5px; font-weight: 800; margin-left: 4px; vertical-align: middle; }
 .c-tienenc { color: var(--coral); font-size: 9px; font-weight: 800; margin-left: 4px; }
+
+/* Avance de la subida documento por documento (fase 1 del envío). Sin barra, la
+   pantalla se ve congelada medio minuto desde datos móviles — y ahí es cuando el
+   proveedor le da enviar otra vez y manda la solicitud dos veces. */
+.pub-progreso { margin: 10px auto 4px; max-width: 320px; font-size: 12.5px; color: var(--lav); }
+.pub-progreso-barra { height: 6px; border-radius: 999px; background: var(--border-lav);
+  overflow: hidden; margin-bottom: 6px; }
+.pub-progreso-barra i { display: block; height: 100%; background: var(--purple);
+  border-radius: 999px; transition: width .25s ease; }

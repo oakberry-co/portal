@@ -1,10 +1,11 @@
 "use client";
 
-import { useActionState, useRef, useState } from "react";
+import { useActionState, useRef, useState, useTransition } from "react";
 import { enviarCotizacion, reconocerProveedor, type Reconocido, type Resultado } from "./actions";
 import { CasillasDocumentos } from "../CasillasDocumentos";
 import { RevisarAntesDeEnviar, resumenDe, type FilaResumen } from "../RevisarAntesDeEnviar";
 import { AREAS, PLAZOS_NEGOCIADOS, DOCS_COTIZACION, DOCS_RECURRENTE } from "@/lib/areas";
+import { subirLote, type Progreso } from "@/lib/subir-lote";
 
 const CAMPOS = [
   { name: "razon_social", etiqueta: "Razón social" },
@@ -34,6 +35,27 @@ export function FormCotizacion() {
   const formRef = useRef<HTMLFormElement>(null);
   // Para que el aviso de "tiene clave" diga CUÁL documento probaríamos.
   const [doc, setDoc] = useState("");
+  // FASE 1 DEL ENVÍO: los documentos suben de a uno ANTES de mandar el
+  // formulario. Los cuatro juntos en un solo request chocaban contra el tope de
+  // 4,5 MB de Vercel y la página se caía sin decir por qué (ver lib/subir-lote).
+  const [progreso, setProgreso] = useState<Progreso | null>(null);
+  const [errSubida, setErrSubida] = useState("");
+  const [enviando, empezar] = useTransition();
+
+  async function enviar(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const f = formRef.current;
+    if (!f) return;
+    setErrSubida("");
+    const fd = new FormData(f);
+    setProgreso({ hecho: 0, total: 0, actual: "" });
+    const r = await subirLote(fd, "cotizaciones",
+                              esRecurrente ? DOCS_RECURRENTE : DOCS_COTIZACION, setProgreso);
+    setProgreso(null);
+    if (!r.ok) { setErrSubida(r.error); return; }
+    // `fd` ya no lleva archivos: lleva el lote. El envío final es diminuto.
+    empezar(() => action(fd));
+  }
 
   function revisar() {
     const f = formRef.current;
@@ -109,7 +131,7 @@ export function FormCotizacion() {
   }
 
   return (
-    <form action={action} className="pub-form" ref={formRef}>
+    <form onSubmit={enviar} className="pub-form" ref={formRef}>
       <div className={"pub-campos" + (paso === "datos" ? "" : " pub-oculto")}>
       {esRecurrente ? (
         <>
@@ -211,12 +233,13 @@ export function FormCotizacion() {
 
       </div>
 
-      {estado?.error && <div className="pub-err">{estado.error}</div>}
+      {(estado?.error || errSubida) && <div className="pub-err">{estado?.error ?? errSubida}</div>}
 
       {paso === "datos" ? (
         <button className="pub-btn" type="button" onClick={revisar}>Revisar y enviar →</button>
       ) : (
-        <RevisarAntesDeEnviar filas={resumen.filas} docs={resumen.docs} pending={pending}
+        <RevisarAntesDeEnviar filas={resumen.filas} docs={resumen.docs}
+                              pending={pending || enviando || progreso !== null} progreso={progreso}
                               onCorregir={() => setPaso("datos")} textoEnviar="Enviar cotización" />
       )}
     </form>

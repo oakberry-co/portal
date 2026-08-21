@@ -13,9 +13,12 @@ const nextConfig = {
   // pasaban: el proveedor adjuntaba, daba enviar, y la página se caía sin código
   // de error, porque no hubo error del servidor — no hubo servidor.
   //
-  // Queda alineado con `TOPE_ENVIO_BYTES` (lib/documentos.ts), que es lo que el
-  // navegador le promete al proveedor. Las dos cifras tienen que decir lo mismo;
-  // el centinela `scripts/test_peso_documentos.js` lo comprueba.
+  // Es un tope POR PETICIÓN, y desde que cada documento sube en la suya
+  // (lib/intake-subida.ts) eso equivale a un tope POR DOCUMENTO: un envío con
+  // cuatro documentos de 3 MB pasa sin problema. Queda alineado con
+  // `TOPE_ARCHIVO_BYTES` (lib/documentos.ts), que es lo que el navegador le
+  // promete al proveedor; el centinela `scripts/test_peso_documentos.js`
+  // comprueba que las dos cifras digan lo mismo.
   experimental: { serverActions: { bodySizeLimit: "4mb" } },
 };
 

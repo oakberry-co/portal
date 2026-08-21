@@ -65,18 +65,30 @@ export function resumenDe(fd: FormData, campos: CampoResumen[],
   return { filas, docs };
 }
 
-export function RevisarAntesDeEnviar({ filas, docs, pending, onCorregir, textoEnviar }: {
+export function RevisarAntesDeEnviar({ filas, docs, pending, onCorregir, textoEnviar, progreso }: {
   filas: FilaResumen[];
   docs: { label: string; nombre: string | null }[];
   pending: boolean;
   onCorregir: () => void;
   textoEnviar: string;
+  /** Avance de la subida documento por documento. Sin esto la pantalla dice
+   *  "subiendo" durante medio minuto sin moverse, y desde datos móviles eso se
+   *  lee como colgado — que es justo cuando el proveedor le da enviar otra vez. */
+  progreso?: { hecho: number; total: number; actual: string } | null;
 }) {
   if (pending) {
     return (
       <div className="pub-procesando" role="status" aria-live="polite">
         <div className="pub-spinner" aria-hidden="true" />
         <h3>Subiendo tus documentos…</h3>
+        {progreso && progreso.total > 0 && (
+          <div className="pub-progreso">
+            <div className="pub-progreso-barra">
+              <i style={{ width: `${Math.round((progreso.hecho / progreso.total) * 100)}%` }} />
+            </div>
+            <span>{Math.min(progreso.hecho + 1, progreso.total)} de {progreso.total} · {progreso.actual}</span>
+          </div>
+        )}
         <p>
           Puede tardar hasta un minuto si estás con datos móviles.
           <b> No cierres esta página</b> ni le des enviar otra vez.
