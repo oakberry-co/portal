@@ -49,19 +49,12 @@ const CERT_OK = {
 };
 const EN_MAESTRO = { banco: "BANCOLOMBIA", tipo_cuenta: "ahorros", num_cuenta: "12345678901", certificada: true };
 
-// EL MONTO. Desde el 21-ago-2026 la aprobación tiene un peldaño más: el valor
-// registrado tiene que estar en el documento (lib/valor-documento.ts). Los casos
-// de este centinela prueban LA CUENTA, así que se les pasa un monto que cuadra
-// — si no, todos bloquearían por el motivo nuevo y dejarían de probar lo suyo.
-const DECLARADO = 500000;
-const VAL_OK = {
-  id: 1, estado: "leido", motivo: null, valor_leido: "500000", candidatos: [500000, 420168],
-  metodo: "texto_pdf", leido_en: "2026-08-21", valor_verificado: null, verificado_por: null,
-};
-/** Azúcar: los llamados viejos eran posicionales y ahora la firma es un objeto
- *  (para que el compilador obligue a cada sitio a traer la lectura del monto). */
-const bloqueo = (docsFaltan, cert, cuenta, recurrente = false, val = VAL_OK, declarado = DECLARADO) =>
-  bloqueoAprobacion({ docsFaltan, cert, cuenta, val, declarado, recurrente });
+// EL MONTO NO ESTÁ ACÁ a propósito: es una ALARMA, no un candado. Se coteja
+// contra el documento y la bandeja lo grita, pero no impide aprobar — quien
+// decide es el humano. Lo cuida scripts/test_valor_documento.js.
+/** Azúcar: los llamados eran posicionales y la firma pasó a ser un objeto. */
+const bloqueo = (docsFaltan, cert, cuenta, recurrente = false) =>
+  bloqueoAprobacion({ docsFaltan, cert, cuenta, recurrente });
 
 console.log("\n1) Camino normal (proveedor nuevo)");
 check(bloqueo(docsFaltantes(LOS_4), CERT_OK, null) === null,
@@ -72,8 +65,17 @@ check(bloqueo(docsFaltantes(LOS_4), null, EN_MAESTRO) !== null,
       "sin certificación -> bloquea (aunque el NIT ya tenga cuenta)");
 check(bloqueo(docsFaltantes(LOS_4), { ...CERT_OK, cuenta_verificada: null }, null) !== null,
       "sin la verificación humana -> bloquea");
-check(bloqueo(docsFaltantes(LOS_4), { ...CERT_OK, estado: "protegido", motivo: "con clave" }, null) !== null,
-      "certificación con clave -> bloquea");
+// LO QUE EL LECTOR HAYA PODIDO LEER YA NO TRANCA (21-ago-2026). Una foto
+// borrosa o un PDF con clave dejaban la solicitud esperando a una máquina que no
+// iba a poder, con una persona mirando el documento al lado. Ahora el único
+// requisito es que ESA persona escriba banco, tipo y número.
+check(bloqueo(docsFaltantes(LOS_4), { ...CERT_OK, estado: "protegido", motivo: "con clave",
+                                      cuenta_verificada: null }, null) !== null,
+      "certificación con clave y SIN que nadie la lea -> bloquea");
+check(bloqueo(docsFaltantes(LOS_4), { ...CERT_OK, estado: "protegido", motivo: "con clave" }, null) === null,
+      "pero con clave y CON un humano que la abrió y escribió la cuenta -> APRUEBA");
+check(bloqueo(docsFaltantes(LOS_4), { ...CERT_OK, estado: "ilegible", num_cuenta: null }, null) === null,
+      "e ilegible para el lector, legible para una persona -> APRUEBA");
 
 console.log("\n2) Cambio de cuenta");
 const CAMBIO = { ...CERT_OK, cuenta_anterior: "99999999999" };
@@ -142,24 +144,15 @@ check(bloqueo(docsFaltantes(SOLO_EL_SOPORTE, DOCS_RECURRENTE), null, EN_MAESTRO,
 check(bloqueo(docsFaltantes(SOLO_EL_SOPORTE, DOCS_RECURRENTE), null, null, true) !== null,
       "recurrente SIN cuenta en el maestro: NO se aprueba");
 
-console.log("\n9) EL MONTO — el peldaño que se agregó el 21-ago-2026");
-// Todo lo demás en regla (documentos, certificación, cuenta verificada): lo
-// único que falla es la cifra. Tiene que bloquear IGUAL.
-check(bloqueo(docsFaltantes(LOS_4), CERT_OK, null, false, VAL_OK, 14934024) !== null,
-      "documentos y cuenta perfectos, pero el monto no está en el documento -> BLOQUEA");
-check(/Ajustar monto/.test(bloqueo(docsFaltantes(LOS_4), CERT_OK, null, false, VAL_OK, 14934024) ?? ""),
-      "y dice qué hacer (Regla 18)");
-check(bloqueo(docsFaltantes(LOS_4), CERT_OK, null, false, null, 500000) !== null,
-      "SIN lectura del documento también bloquea: un candado ciego que deja pasar es peor");
-// El orden importa: el monto va ANTES que la cuenta. Si la cifra está cien veces
-// inflada, mandar al revisor a verificar cuentas primero es trabajo perdido.
-const conTodoMal = bloqueo(docsFaltantes(LOS_4), { ...CERT_OK, cuenta_verificada: null }, null,
-                           false, VAL_OK, 14934024);
-check(/monto/i.test(conTodoMal ?? ""), "con monto Y cuenta pendientes, primero se reclama el MONTO",
-      (conTodoMal ?? "").slice(0, 55) + "…");
-// Y al recurrente se le exige igual: entra sin certificación, no sin cifra.
-check(bloqueo(docsFaltantes(SOLO_SOPORTE, DOCS_RECURRENTE), null, EN_MAESTRO, true, VAL_OK, 999999) !== null,
-      "al proveedor recurrente también se le coteja el monto");
+console.log("\n9) LA CUENTA LA ESCRIBE EL HUMANO: banco, tipo y número");
+// Antes solo se le pedía el NÚMERO y el banco salía del OCR. Un banco mal leído
+// no resuelve a ningún código y la fila sale al archivo bancario con el campo
+// vacío: el banco la rechaza y el proveedor no cobra. Pasó con "BACOLOMBIA".
+check(bloqueo(docsFaltantes(LOS_4), { ...CERT_OK, cuenta_verificada: null }, null) !== null,
+      "sin que un humano escriba la cuenta -> bloquea");
+const pide = bloqueo(docsFaltantes(LOS_4), { ...CERT_OK, cuenta_verificada: null }, null);
+check(/banco/i.test(pide ?? "") && /tipo/i.test(pide ?? ""),
+      "y el mensaje pide los TRES datos, no solo el número", (pide ?? "").slice(0, 70) + "…");
 
 console.log(fallos.length ? `\n❌ ${fallos.length} fallo(s): ${fallos.join(", ")}\n` : "\n🟢 todo OK\n");
 process.exit(fallos.length ? 1 : 0);

@@ -3,9 +3,9 @@
 // Recepción PÚBLICA de una cotización. Sube documentos a Drive (vía el relay de la
 // VM) y registra en `cotizaciones` (estado 'recibida') con un código COT-####.
 // Luego se le hacen abonos y se cruza con la factura final para no pagar doble.
-import { avisoDocs, registrarCertificacion, registrarSoporte } from "@/lib/intake";
-import { docsDelLote } from "@/lib/intake-subida";
-import { AREAS, DOCS_COTIZACION } from "@/lib/areas";
+import { subirDocumentos, avisoDocs, archivosDelForm, registrarCertificacion, registrarSoporte, etiquetaEnvio } from "@/lib/intake";
+import { AREAS, CLASES_DOC, DOCS_COTIZACION } from "@/lib/areas";
+import { revisarArchivos } from "@/lib/documentos";
 import { getPool } from "@/lib/db";
 import { nitCanonico } from "@/lib/nit";
 import { reconocer, datosDe } from "@/lib/proveedor-conocido";
@@ -97,23 +97,28 @@ export async function enviarCotizacion(_prev: Resultado | null, formData: FormDa
   const plazo = Number(s("plazo_dias").replace(/[^\d]/g, ""));
   const plazoDias = Number.isFinite(plazo) && plazo >= 0 && plazo <= 180 ? plazo : null;
 
-  // LOS DOCUMENTOS YA ESTÁN ARRIBA. Subieron de a uno antes de llegar acá
-  // (lib/intake-subida.ts), porque los cuatro juntos en un solo request chocaban
-  // contra el tope de 4,5 MB de Vercel y el envío moría en el borde, sin error.
-  //
-  // No se leen del formulario ni se les cree al navegador: se leen de la base
-  // por el `lote`, que es un secreto que generó el servidor. El intake es
-  // público — si el navegador mandara los links, cualquiera podría inventarlos.
-  const docs = await docsDelLote(String(formData.get("lote") ?? "").trim());
-  const fallidos = docs.filter((d) => d.estado === "pendiente").length;
+  // Los documentos van a Drive, pero su falla NO tumba el envío: la cotización
+  // se registra igual y lo que no subió queda marcado 'pendiente'.
+  // Mismo filtro que en cuentas de cobro: el archivo malo no entra (ver
+  // lib/documentos.ts). El navegador ya avisó; esto es lo que manda.
+  // `CLASES_DOC` acá es el mapa de FORMATOS (qué archivo se acepta en cada
+  // casilla), no la lista de obligatorios: esa es DOCS_COTIZACION, que no lleva
+  // cédula. Si el navegador manda una de todos modos, se valida igual.
+  const archivos = archivosDelForm(formData, CLASES_DOC);
+  const problemas = await revisarArchivos(archivos, CLASES_DOC);
+  if (problemas.length) return { ok: false, error: problemas.join(" · ") };
   // Lo único propio de ESTE envío. Sin soporte no hay qué cotizar, y sin
   // certificación (cuando es nuevo) no sabríamos a qué cuenta pagar el anticipo.
   const exigidos = recurrente ? ["soporte"] : DOCS_COTIZACION.map((c) => c.clase);
-  const faltanDocs = exigidos.filter((clase) => !docs.some((d) => d.clase === clase));
+  const faltanDocs = exigidos.filter((clase) => !archivos.some((a) => a.clase === clase));
   if (faltanDocs.length) {
     const nombres = DOCS_COTIZACION.filter((c) => faltanDocs.includes(c.clase)).map((c) => c.label);
     return { ok: false, error: "Falta adjuntar: " + nombres.join(", ") + "." };
   }
+
+  const { docs, fallidos } = await subirDocumentos(
+    archivos, "cotizaciones",
+    { nit, razon, envio: etiquetaEnvio() });
 
   try {
     const pool = getPool();

@@ -113,7 +113,7 @@ export function CuentasCobroView({ items, operar }: { items: CuentaCobro[]; oper
             // pelearse con un botón que no explica nada.
             const bloqueo = bloqueoAprobacion({
               docsFaltan: docsFaltantes(c.documentos, c.recurrente ? DOCS_RECURRENTE : DOCS_CUENTA_COBRO),
-              cert: c.cert, cuenta: c.cuenta, val: c.val, declarado: c.valor, recurrente: c.recurrente })
+              cert: c.cert, cuenta: c.cuenta, recurrente: c.recurrente })
               ?? (c.retencion_ok ? null
                   : "Falta confirmar las retenciones — aunque sean cero, para que se pague el valor correcto.");
             const reten = c.reten_total ?? 0;

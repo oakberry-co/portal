@@ -49,8 +49,7 @@ async function exigirAprobable(c: PoolClient, id: number): Promise<Aprobable> {
   if (!r) throw new Error("Cotización no encontrada.");
   const bloqueo = bloqueoAprobacion({
     docsFaltan: docsFaltantes(r.documentos, r.recurrente ? DOCS_RECURRENTE : DOCS_COTIZACION),
-    cert: r.cert, cuenta: r.cuenta, val: r.val,
-    declarado: r.valor == null ? null : Number(r.valor), recurrente: r.recurrente });
+    cert: r.cert, cuenta: r.cuenta, recurrente: r.recurrente });
   if (bloqueo) throw new Error(bloqueo);
   if (!r.requiere_adelanto || !Number(r.adelanto_pct ?? 0) || !Number(r.valor ?? 0)) {
     throw new Error("Esta cotización no tiene adelanto (valor y %) — no hay monto que pasar a Pagos. "
@@ -177,4 +176,50 @@ export async function quitarEnlace(fd: FormData) {
     await registrarEvento(c, { cufe: cufe ?? null, tipo: "quita_enlace_cotizacion", campo: "cufe_factura", valorNuevo: { cotizacion_id: cotId }, actor: user.email, actorRol: user.rol, origen: "web" });
   });
   done();
+}
+
+/** CLASIFICAR: concepto y destino puestos por un humano, contra los maestros.
+ *
+ *  Es lo que abre el paso a Pagos (ver la consulta del tablero). Aprobar ya no
+ *  basta: el `area` y el `concepto` que escribió el proveedor en un formulario
+ *  público son referencia, no verdad contable — si el gasto entra sin destino,
+ *  después nadie sabe en qué tienda cayó y eso no se llena solo.
+ *
+ *  Misma regla que en cuentas de cobro para lo ya pagado: LLENAR lo vacío se
+ *  puede, CAMBIAR lo decidido no (el registro contable quedaría diciendo algo
+ *  distinto de lo que salió del banco). */
+export async function clasificarCotizacion(_prev: Resultado | null, fd: FormData): Promise<Resultado> {
+  return intentar(async () => {
+    const user = await guard();
+    const id = Number(fd.get("id"));
+    const concepto = String(fd.get("concepto") ?? "").trim() || null;
+    const destino = String(fd.get("destino") ?? "").trim() || null;
+    if (!id) throw new Error("Cotización inválida.");
+    if (!concepto || !destino) throw new Error("Elige concepto y destino: los dos.");
+    await withTx(async (c) => {
+      const { rows } = await c.query<{ concepto: string | null; destino: string | null; pago_id: number | null }>(
+        "SELECT concepto, destino, pago_id FROM cotizaciones WHERE id = $1 FOR UPDATE", [id]);
+      const antes = rows[0];
+      if (!antes) throw new Error("Cotización no encontrada.");
+      if (antes.pago_id) {
+        const pisa = (["concepto", "destino"] as const).filter(
+          (k) => antes[k] != null && antes[k] !== (k === "concepto" ? concepto : destino));
+        if (pisa.length) {
+          throw new Error(`El adelanto ya se pagó: ${pisa.join(" y ")} no se puede cambiar. `
+            + "Lo que sí se puede es llenar lo que quedó vacío.");
+        }
+      }
+      await c.query(
+        `UPDATE cotizaciones SET concepto = $2, destino = $3,
+                                 clasificada_por = $4, clasificada_en = now()
+          WHERE id = $1`, [id, concepto, destino, user.email]);
+      await registrarEvento(c, {
+        cufe: null, tipo: "clasifica_cotizacion", campo: "concepto,destino",
+        valorAnterior: { id, concepto: antes.concepto, destino: antes.destino },
+        valorNuevo: { id, concepto, destino },
+        actor: user.email, actorRol: user.rol, origen: "web",
+      });
+    });
+    done();
+  });
 }

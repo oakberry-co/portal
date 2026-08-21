@@ -6,18 +6,17 @@
 // aprobarla giraba catorce millones en vez de ciento cuarenta y nueve mil. Nadie
 // lo habría notado hasta el extracto.
 //
-// La idea es la misma que ya sostiene la cuenta bancaria: NO se le cree al
-// proveedor, se le cree al DOCUMENTO. Con una diferencia obligada — la cuenta la
-// escribe el banco en un papel oficial, mientras que una cotización la arma cada
-// proveedor a su manera, así que acá el lector acierta menos. Por eso:
+// ESTO ES UNA ALARMA, NO UN CANDADO. Una cotización la arma cada proveedor a su
+// manera, así que el lector acierta bastante menos que con una certificación
+// bancaria — y un candado que se equivoca seguido es un candado que el equipo
+// aprende a odiar. Entonces:
 //
-//   * NUNCA corrige (Regla 3: el parecido sugiere, jamás afirma). Solo dice
-//     "el documento no dice eso" y BLOQUEA aprobar.
+//   * NUNCA corrige y NUNCA bloquea (Regla 3: el parecido sugiere, jamás
+//     afirma). Grita "el documento no dice eso" y muestra lo que sí dice.
 //   * "Cuadra" = el valor tecleado aparece TAL CUAL entre los montos del
 //     documento. Nada de tolerancias ni de "se parece" (playbook: llaves de
 //     dinero sin tolerancias) — o está o no está.
-//   * Y siempre hay salida: un humano abre el documento y escribe el total que
-//     ve. Eso desbloquea, igual que con la cuenta (Regla 18).
+//   * Quien decide es el humano, con el botón de ajustar el monto al lado.
 //
 // El caso caro es además el más fácil de cazar: para saber que 14.934.024 está
 // mal no hace falta leer bien el documento, basta con que sea 100 veces mayor
@@ -42,9 +41,6 @@ export type ValorEstado = {
   candidatos: number[];        // TODOS los montos vistos, como evidencia
   metodo: string | null;       // texto_pdf | ocr
   leido_en: string | null;
-  // EL PASO HUMANO: alguien abrió el documento y escribió el total que ve.
-  valor_verificado: string | null;
-  verificado_por: string | null;
 };
 
 /** Se compara en PESOS ENTEROS, no en centavos. No es una tolerancia: es la
@@ -148,7 +144,7 @@ export function veredicto(declarado: number | null, candidatos: number[]): Vered
 export function sqlLecturaValor(origen: "cuenta_cobro" | "cotizacion", refId: string): string {
   return `LEFT JOIN LATERAL (
     SELECT lv.id, lv.estado, lv.motivo, lv.valor_leido, lv.candidatos, lv.metodo,
-           lv.leido_en::text AS leido_en, lv.valor_verificado, lv.verificado_por
+           lv.leido_en::text AS leido_en
       FROM lectura_valor lv
      WHERE lv.origen_tipo = '${origen}' AND lv.origen_id = ${refId}
      ORDER BY lv.id DESC LIMIT 1) val ON TRUE`;
@@ -164,52 +160,4 @@ export function montosLegibles(candidatos: number[], cuantos = 4): string {
   const orden = [...candidatos].sort((a, b) => b - a);
   const top = orden.slice(0, cuantos).map(cop).join(", ");
   return orden.length > cuantos ? `${top} y ${orden.length - cuantos} más` : top;
-}
-
-/** ¿Por qué NO se puede aprobar por el lado del MONTO? `null` = se puede.
- *
- *  Escalera, y en cada peldaño hay salida: si el lector no ayudó, un humano abre
- *  el documento y escribe el total. Nunca se queda "no se puede y no sé qué
- *  hacer" (Regla 18).
- *
- *  Ojo: la AUSENCIA de lectura también bloquea. Es deliberado — si el lector no
- *  corrió, el candado quedaría ciego, y un candado ciego que deja pasar es peor
- *  que no tenerlo. La salida es la misma: verificar a mano. */
-export function bloqueoValor(val: ValorEstado | null, declarado: number | null): string | null {
-  // SENTINELA, igual que en certificaciones: si la consulta no trajo la columna
-  // del paso humano, este candado bloquearía siempre sin decir por qué.
-  if (val && !("valor_verificado" in val)) {
-    throw new Error("Bug: la consulta de la lectura del valor no trae 'valor_verificado'. "
-                  + "Ármala con sqlLecturaValor() en vez de copiar el LEFT JOIN LATERAL.");
-  }
-  const verificado = val?.valor_verificado != null ? Number(val.valor_verificado) : null;
-
-  // El humano ya leyó el papel: su palabra vale más que la del lector.
-  if (verificado != null && Number.isFinite(verificado)) {
-    if (mismoMonto(verificado, declarado)) return null;
-    return `El total que leíste en el documento (${cop(verificado)}) no es el que está registrado `
-         + `(${cop(declarado ?? 0)}). Corrige el monto con "Ajustar monto" antes de aprobar — `
-         + "lo registrado es lo que se transfiere.";
-  }
-
-  if (!val) {
-    return "Todavía no se ha revisado que el monto coincida con el documento. "
-         + "Abre el soporte y escribe el total que ves ahí para seguir.";
-  }
-  if (val.estado === "pendiente") {
-    return "El monto del documento todavía no se ha leído (el lector corre cada 15 minutos). "
-         + "Puedes esperar, o abrir el soporte y escribir el total que ves.";
-  }
-  const v = veredicto(declarado, val.candidatos ?? []);
-  if (v.estado === "ilegible") {
-    return "No se pudo leer ningún monto del documento (puede ser una foto borrosa o un formato "
-         + "raro). Ábrelo y escribe el total que ves ahí.";
-  }
-  if (v.estado === "no_cuadra") {
-    return `El monto registrado (${cop(declarado ?? 0)}) no aparece en el documento. `
-         + `${v.motivo ?? ""} Los montos que sí están: ${montosLegibles(val.candidatos ?? [])}. `
-         + "Abre el soporte, escribe el total que ves, y si el registrado está mal corrígelo "
-         + "con \"Ajustar monto\".";
-  }
-  return null;   // cuadra: el proveedor y su propio documento dicen lo mismo
 }

@@ -48,8 +48,7 @@ async function exigirAprobable(c: PoolClient, id: number): Promise<Aprobable> {
   if (!r) throw new Error("Cuenta de cobro no encontrada.");
   const bloqueo = bloqueoAprobacion({
     docsFaltan: docsFaltantes(r.documentos, r.recurrente ? DOCS_RECURRENTE : DOCS_CUENTA_COBRO),
-    cert: r.cert, cuenta: r.cuenta, val: r.val,
-    declarado: r.valor == null ? null : Number(r.valor), recurrente: r.recurrente });
+    cert: r.cert, cuenta: r.cuenta, recurrente: r.recurrente });
   if (bloqueo) throw new Error(bloqueo);
   // Igual que una factura no entra a Pagos hasta 'retenciones_ok': aprobar sin
   // definir la retención es aprobar un pago BRUTO, y eso se paga de más.

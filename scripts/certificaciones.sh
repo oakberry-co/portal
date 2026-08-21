@@ -51,10 +51,6 @@ $PYTHON scripts/leer_certificaciones.py --commit >> "$LOG" 2>&1
 echo "=== $(date '+%F %T') - leer montos del soporte ===" >> "$LOG"
 $PYTHON scripts/leer_valores.py --commit --encolar-faltantes >> "$LOG" 2>&1
 
-# Y se barren los lotes de subida que nadie llegó a enviar (ver limpiar_lotes.py).
-echo "=== $(date '+%F %T') - limpiar lotes abandonados ===" >> "$LOG"
-$PYTHON scripts/limpiar_lotes.py --commit >> "$LOG" 2>&1
-
 # Y en la misma corrida se vacía la cola de correos al proveedor: el lector acaba
 # de encolar los avisos de "tu certificación no sirve", y las aprobaciones/pagos
 # del portal esperan acá. Van juntos a propósito — el proveedor recibe el aviso

@@ -14,15 +14,14 @@
 //   4. y el paso final: un humano ABRIÓ el documento y ESCRIBIÓ la cuenta.
 // Aprobar es además lo que ESCRIBE esa cuenta en el maestro de pagos.
 //
-// Desde el 21-ago-2026 hay un quinto candado y vive en su propio módulo
-// (lib/valor-documento.ts): el MONTO tiene que estar en el documento. Se evalúa
-// DESDE ACÁ y no en cada bandeja, porque son cuatro los sitios que preguntan
-// "¿se puede aprobar?" (dos server actions y dos vistas) y un candado que hay
-// que acordarse de repetir cuatro veces es un candado que un día falta en uno.
+// EL MONTO NO ES UN CANDADO, ES UNA ALARMA. Se coteja contra el documento
+// soporte (lib/valor-documento.ts) y cuando no cuadra la bandeja lo GRITA, con
+// los montos que sí trae el papel al lado — pero no bloquea. Quien decide es el
+// humano, que para eso tiene el botón de ajustar el monto. Decisión de Daniel,
+// 21-ago-2026: la máquina avisa, no manda.
 //
 // Módulo PURO (sin base ni sesión): se importa en cliente para pintar el aviso
 // y en servidor para bloquear. El enforcement real es el servidor.
-import { bloqueoValor, type ValorEstado } from "./valor-documento";
 
 /** Lo que el lector sacó de la certificación de ESTE envío (null = nunca llegó). */
 export type CertEstado = {
@@ -30,12 +29,16 @@ export type CertEstado = {
   estado: string;            // pendiente | valida | ilegible | no_es_certificacion
   motivo: string | null;
   banco: string | null;
+  tipo_cuenta: string | null;
   num_cuenta: string | null;
   aplicada: boolean;         // ¿su cuenta se escribió en el maestro?
   cuenta_anterior: string | null;  // la que el NIT ya tenía (cambio de cuenta)
   leido_en: string | null;
-  // La cuenta que un HUMANO leyó del documento y escribió. Es la que manda.
+  // Lo que un HUMANO leyó del documento y escribió. Es lo que manda y lo que
+  // entra al maestro al aprobar: los TRES datos, no solo el número.
   cuenta_verificada: string | null;
+  banco_verificado: string | null;
+  tipo_verificado: string | null;
   verificada_por: string | null;
 };
 
@@ -71,9 +74,9 @@ export type CuentaMaestro = {
  *  código (nunca entrada del usuario) y `refId` la columna con el id. */
 export function sqlCertificacion(origen: "cuenta_cobro" | "cotizacion", refId: string): string {
   return `LEFT JOIN LATERAL (
-    SELECT cb.id, cb.estado, cb.motivo, cb.banco, cb.num_cuenta, cb.aplicada,
+    SELECT cb.id, cb.estado, cb.motivo, cb.banco, cb.tipo_cuenta, cb.num_cuenta, cb.aplicada,
            cb.cuenta_anterior, cb.leido_en::text AS leido_en,
-           cb.cuenta_verificada, cb.verificada_por
+           cb.cuenta_verificada, cb.banco_verificado, cb.tipo_verificado, cb.verificada_por
       FROM certificacion_bancaria cb
      WHERE cb.origen_tipo = '${origen}' AND cb.origen_id = ${refId}
      ORDER BY cb.id DESC LIMIT 1) cert ON TRUE`;
@@ -94,26 +97,18 @@ export function cola(num: string | null | undefined): string {
  *  hoy en el maestro. La cuenta se escribe en el maestro AL APROBAR (ver
  *  lib/cuenta-certificada.ts), así que exigirla antes sería pedirle al revisor
  *  el resultado de la acción que está a punto de hacer. */
-/** Todo lo que hace falta para decidir si un envío se puede aprobar.
- *
- *  Es un objeto y no una lista de parámetros a propósito: los campos son
- *  OBLIGATORIOS, así que el compilador obliga a cada sitio nuevo a traer la
- *  lectura del monto. Con un parámetro opcional al final, el sitio que se
- *  olvidara de pasarlo se quedaría sin ese candado y en silencio — que es
- *  exactamente cómo se pagaron 5 cuentas de cobro sin destino el 21-ago. */
+/** Todo lo que hace falta para decidir si un envío se puede aprobar. Objeto y no
+ *  lista de parámetros para que agregar un candado no obligue a revisar el orden
+ *  de los argumentos en los cuatro sitios que preguntan. */
 export type Aprobacion = {
   docsFaltan: string[];
   cert: CertEstado | null;
   cuenta: CuentaMaestro;
-  /** Lo que el lector sacó del documento soporte (null = no hay lectura). */
-  val: ValorEstado | null;
-  /** El monto que la solicitud tiene HOY: contra eso se coteja el documento. */
-  declarado: number | null;
   recurrente?: boolean;
 };
 
 export function bloqueoAprobacion(a: Aprobacion): string | null {
-  const { docsFaltan, cert, cuenta, val, declarado, recurrente = false } = a;
+  const { docsFaltan, cert, cuenta, recurrente = false } = a;
   // SENTINELA. Si la consulta que trae `cert` no seleccionó `cuenta_verificada`,
   // el campo llega `undefined` y este candado lo lee como "nadie la verificó":
   // bloquea SIEMPRE, sin decir por qué. Pasó — el guard de aprobación tenía su
@@ -130,8 +125,6 @@ export function bloqueoAprobacion(a: Aprobacion): string | null {
   // EL MONTO, Y VA TEMPRANO. Si el valor está cien veces inflado, mandar al
   // revisor a verificar cuentas bancarias primero es hacerle perder el trabajo:
   // esa solicitud no se va a aprobar hasta que la cifra se arregle.
-  const porElMonto = bloqueoValor(val, declarado);
-  if (porElMonto) return porElMonto;
   // PROVEEDOR RECURRENTE: no mandó certificación porque su cuenta ya vive en el
   // maestro, certificada en un envío anterior y confirmada por un humano. Lo que
   // se exige acá es que ESA cuenta siga estando: si alguien la borró, aprobar
@@ -151,29 +144,14 @@ export function bloqueoAprobacion(a: Aprobacion): string | null {
     return "No hay certificación bancaria registrada para este envío: sin ella no sabemos a qué cuenta pagar. "
          + "Pídele al proveedor que la vuelva a enviar por el portal.";
   }
-  if (cert.estado === "pendiente") {
-    return "La certificación bancaria todavía no se ha leído (el lector corre cada 15 minutos). Intenta en un rato.";
-  }
-  if (cert.estado !== "valida") {
-    return `La certificación no sirve: ${cert.motivo ?? "no se pudo validar"} `
-         + "Escríbele al proveedor pidiéndole el documento que emite su banco.";
-  }
-  if (!(cert.num_cuenta ?? "").trim()) {
-    return "La certificación se dio por válida pero no quedó con número de cuenta. "
-         + "Vuelve a correr el lector (scripts/leer_certificaciones.py) sobre este documento.";
-  }
-  // EL PASO HUMANO, Y VA PRIMERO. El OCR ayuda, no decide: a esa cuenta se le
-  // manda plata y ningún lector acierta el 100% de los formatos. Alguien abre el
-  // documento y escribe el número.
-  //
-  // Antes esto iba DESPUÉS del cambio de cuenta y quedaba un callejón sin
-  // salida: no se podía confirmar el cambio sin verificar, y la verificación no
-  // se mostraba hasta resolver el cambio. Además el orden correcto es este:
-  // hasta que un humano no lea el papel no se sabe siquiera SI cambió — lo que
-  // leyó el OCR puede estar mal.
+  // EL ÚNICO REQUISITO ES EL HUMANO. Lo que el lector haya podido o no leer ya
+  // NO tranca nada (21-ago-2026): antes, una foto borrosa o un PDF con clave
+  // dejaban la solicitud esperando a una máquina que no iba a poder, mientras
+  // una persona tenía el documento abierto al lado. El lector propone; quien
+  // decide abre el papel y escribe banco, tipo y número.
   if (!(cert.cuenta_verificada ?? "").trim()) {
-    return "Falta el paso final: abre la certificación y escribe el número de cuenta que ves. "
-         + "Lo que leyó el sistema no basta para mover plata.";
+    return "Falta el paso final: abre la certificación y escribe los datos de la cuenta "
+         + "(banco, tipo y número). A esa cuenta se le manda plata.";
   }
   // El caso peligroso: el NIT ya tenía otra cuenta. No se aprueba hasta que
   // alguien diga si el cambio es real (el intake es público). Se compara contra

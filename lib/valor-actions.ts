@@ -1,18 +1,11 @@
 "use server";
 
-// EL MONTO: verificarlo y, si está mal, corregirlo.
+// AJUSTAR EL MONTO QUE SE VA A PAGAR.
 //
-// Dos acciones para dos momentos distintos, y no una sola a propósito:
-//
-//   1. VERIFICAR — un humano abre el documento y escribe el total que ve. Es
-//      leer, no decidir. No cambia nada de la solicitud.
-//   2. AJUSTAR — cambiar el monto que se va a pagar. Eso sí es una decisión, y
-//      lleva motivo obligatorio, queda en la bitácora y no se puede hacer
-//      después de pagar.
-//
-// Separarlas importa: si "escribo lo que veo" cambiara el valor de una vez, un
-// dedo torcido al teclear el total del papel se convertiría en el monto de la
-// transferencia sin que nadie lo confirmara.
+// El portal lee el documento soporte y AVISA cuando la cifra registrada no
+// aparece en él (lib/valor-documento.ts), pero no bloquea nada: quien decide es
+// el humano, y esta es su herramienta. Lleva motivo obligatorio, queda en la
+// bitácora y no se puede usar después de pagar.
 
 import { revalidatePath } from "next/cache";
 import { withTx } from "@/lib/db";
@@ -41,50 +34,6 @@ function leerOrigen(fd: FormData): { origen: Origen; id: number } {
   const id = Number(fd.get("id"));
   if (!TABLA[origen] || !id) throw new Error("Solicitud inválida.");
   return { origen, id };
-}
-
-/** El monto que el humano leyó EN EL PAPEL. No cambia la solicitud: solo deja
- *  registrado qué dice el documento, según alguien que lo abrió.
- *
- *  Es lo que desbloquea cuando el lector no ayudó (foto borrosa, formato raro) y
- *  lo que delata cuando el valor registrado está mal: si lo leído no coincide
- *  con lo registrado, el candado lo dice y manda a "Ajustar monto". */
-export async function verificarMonto(_prev: Resultado | null, fd: FormData): Promise<Resultado> {
-  return intentar(async () => {
-    const user = await exigirCap("intake");
-    const { origen, id } = leerOrigen(fd);
-    const total = pesos(String(fd.get("total") ?? ""));
-    if (total == null || !Number.isFinite(total) || total <= 0) {
-      throw new Error("Escribe el total que ves en el documento, en pesos.");
-    }
-    await withTx(async (c) => {
-      // Se escribe sobre la ÚLTIMA lectura del envío; si no hay ninguna (el
-      // soporte no se alcanzó a encolar) se crea, porque el humano ya hizo el
-      // trabajo y perderlo sería pedírselo otra vez.
-      const { rows } = await c.query<{ id: number }>(
-        `SELECT id FROM lectura_valor
-          WHERE origen_tipo = $1 AND origen_id = $2 ORDER BY id DESC LIMIT 1 FOR UPDATE`,
-        [origen, id]);
-      if (rows[0]) {
-        await c.query(
-          `UPDATE lectura_valor
-              SET valor_verificado = $2, verificado_por = $3, verificado_en = now()
-            WHERE id = $1`, [rows[0].id, total, user.email]);
-      } else {
-        await c.query(
-          `INSERT INTO lectura_valor
-             (origen_tipo, origen_id, drive_url, estado, valor_verificado, verificado_por, verificado_en)
-           VALUES ($1,$2,'', 'ilegible', $3, $4, now())`,
-          [origen, id, total, user.email]);
-      }
-      await registrarEvento(c, {
-        cufe: null, tipo: "verifica_monto_documento", campo: "valor",
-        valorNuevo: { origen, id, total_en_documento: total },
-        actor: user.email, actorRol: user.rol, origen: "web",
-      });
-    });
-    refrescar();
-  });
 }
 
 /** CORRIGE el monto que se va a pagar.

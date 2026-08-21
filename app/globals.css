@@ -1239,6 +1239,15 @@ tr.desfasada td { background: #fff8e6; }
 .cc-verif-form { display: flex; gap: 8px; flex-wrap: wrap; }
 .cc-verif-form input { width: auto; flex: 1; min-width: 190px; font-size: 14px; padding: 9px 12px;
   border: 1.5px solid var(--border-lav); border-radius: 9px; font-family: var(--mono); }
+/* Banco y tipo: el banco es lista cerrada porque un nombre a mano no resuelve a
+   ningún código y la fila sale al archivo bancario con el campo vacío. */
+.cc-verif-form select { width: auto; font-size: 14px; padding: 9px 12px; background: #fff;
+  border: 1.5px solid var(--border-lav); border-radius: 9px; color: var(--ink); }
+.cc-verif-form select:first-child { flex: 1; min-width: 170px; }
+@media (max-width: 640px) {
+  .cc-verif-form { flex-direction: column; align-items: stretch; }
+  .cc-verif-form select, .cc-verif-form input, .cc-verif-form .cc-act { width: 100%; }
+}
 .cc-choque { background: #fff8e6; border: 1px solid rgba(212,160,23,.4); border-radius: 10px;
   padding: 11px 13px; color: #6b4d05; font-size: 12.5px; }
 .cc-choque-ops { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 9px 0; }
@@ -1442,11 +1451,26 @@ tr.desfasada td { background: #fff8e6; }
   font-size: 8.5px; font-weight: 800; margin-left: 4px; vertical-align: middle; }
 .c-tienenc { color: var(--coral); font-size: 9px; font-weight: 800; margin-left: 4px; }
 
-/* Avance de la subida documento por documento (fase 1 del envío). Sin barra, la
-   pantalla se ve congelada medio minuto desde datos móviles — y ahí es cuando el
-   proveedor le da enviar otra vez y manda la solicitud dos veces. */
-.pub-progreso { margin: 10px auto 4px; max-width: 320px; font-size: 12.5px; color: var(--lav); }
-.pub-progreso-barra { height: 6px; border-radius: 999px; background: var(--border-lav);
-  overflow: hidden; margin-bottom: 6px; }
-.pub-progreso-barra i { display: block; height: 100%; background: var(--purple);
-  border-radius: 999px; transition: width .25s ease; }
+/* EL VALOR EN LETRAS, en la pantalla de "revisa antes de enviar". Nace de una
+   cotización que llegó cien veces inflada: el proveedor vio "$ 14.934.024"
+   formateado y no le sonó raro. "CATORCE MILLONES..." sí suena raro cuando lo
+   que uno tiene en la mano dice ciento cuarenta y nueve mil. */
+.pub-resumen-plata dd { font-size: 20px; font-weight: 800; color: var(--purple, #4b2d6f); }
+.pub-resumen-plata dd em { display: block; margin-top: 3px; font-style: normal;
+  font-size: 12px; font-weight: 700; letter-spacing: .02em; line-height: 1.4;
+  color: #8a6100; text-transform: uppercase; }
+
+/* Clasificación de la cotización: sin concepto y destino no pasa a Pagos. */
+.cot-clasif { margin-top: 10px; padding: 10px 12px; border-radius: 11px;
+  background: #fff8e6; border: 1px solid rgba(212,160,23,.4); }
+.cot-clasif.ok { background: #f0f9f3; border-color: rgba(39,174,96,.28); }
+.cot-clasif form { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.cot-clasif-tit { font-size: 11px; font-weight: 800; text-transform: uppercase;
+  letter-spacing: .04em; color: #8a6100; }
+.cot-clasif.ok .cot-clasif-tit { color: #1e7d47; }
+.cot-clasif select { width: auto; flex: 1; min-width: 150px; font-size: 13px; padding: 8px 11px;
+  background: #fff; border: 1.5px solid rgba(212,160,23,.45); border-radius: 9px; color: var(--ink); }
+@media (max-width: 640px) {
+  .cot-clasif form { flex-direction: column; align-items: stretch; }
+  .cot-clasif select, .cot-clasif .cc-act { width: 100%; }
+}

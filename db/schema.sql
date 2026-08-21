@@ -906,8 +906,9 @@ ALTER TABLE cotizaciones
 -- rotula distinto y equivocarse eligiendo sería peor que no elegir) y NUNCA
 -- corrige: bloquea aprobar y deja que un humano lea el papel.
 --
--- Candado: una solicitud cuyo monto no cuadra con su documento NO se aprueba.
--- Salida: `valor_verificado` — alguien abre el documento y escribe el total.
+-- NO es un candado: es una ALARMA. La bandeja lo grita y muestra los montos que
+-- sí trae el papel, pero quien decide es el humano — con el botón de corregir el
+-- monto al lado. Un aviso que se equivoca seguido es un aviso que se ignora.
 -- -----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS lectura_valor (
   id             BIGSERIAL PRIMARY KEY,
@@ -930,12 +931,6 @@ CREATE TABLE IF NOT EXISTS lectura_valor (
   metodo         TEXT,                   -- texto_pdf | ocr
   texto_crudo    TEXT,                   -- evidencia de lo leído (auditoría)
   leido_en       TIMESTAMPTZ,
-  -- EL PASO HUMANO, que es el que de verdad desbloquea: alguien abrió el
-  -- documento y escribió el total que ve. Igual que con la cuenta bancaria, lo
-  -- que leyó la máquina no basta para mover plata.
-  valor_verificado NUMERIC(16,2),
-  verificado_por   TEXT,
-  verificado_en    TIMESTAMPTZ,
   creado_en      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS ix_lval_origen ON lectura_valor (origen_tipo, origen_id);
@@ -949,36 +944,37 @@ ALTER TABLE cotizaciones  ADD COLUMN IF NOT EXISTS valor_original NUMERIC(16,2);
 ALTER TABLE cuentas_cobro ADD COLUMN IF NOT EXISTS valor_original NUMERIC(16,2);
 
 -- -----------------------------------------------------------------------------
--- 18) LOS DOCUMENTOS SUBEN DE A UNO (y por eso caben los pesados)
+-- 19) LA CUENTA LA ESCRIBE EL HUMANO — LOS TRES DATOS, NO SOLO EL NÚMERO
 --
--- El envío del intake viajaba como UN request con los 3-4 documentos adentro, y
--- Vercel corta cualquier request de más de 4,5 MB EN EL BORDE (413). O sea que
--- el tope era para TODO junto: tres PDF de 2 MB pasaban uno a uno y el envío se
--- caía igual, sin llegar al servidor y sin un error que el proveedor pudiera
--- entender.
+-- El lector saca banco / tipo / número de la certificación, pero el que manda es
+-- quien abre el documento. Antes solo se le pedía TECLEAR el número y el banco y
+-- el tipo salían del OCR: si el OCR leía mal el banco, la fila salía al archivo
+-- bancario con el código equivocado y el banco la rechazaba.
 --
--- Ahora cada documento sube en su propia petición y el tope pasa a ser POR
--- DOCUMENTO. Lo que se guarda acá es el resultado de cada subida, agrupado por
--- un `lote` que genera el SERVIDOR.
+-- Ahora el revisor escribe los tres: el banco de una LISTA CERRADA (lib/bancos),
+-- el tipo (ahorros/corriente) y el número. Y eso es lo que entra al maestro al
+-- aprobar. El OCR queda como ayuda: propone, ya no decide.
 --
--- POR QUÉ UNA TABLA Y NO MANDAR LOS LINKS DE VUELTA EN EL FORMULARIO: porque el
--- intake es PÚBLICO. Si el navegador enviara la lista de documentos ya subidos,
--- cualquiera podría inventarse una con links que no existen y la solicitud
--- entraría a la bandeja con documentos de mentira. Con el lote, las URLs las
--- sigue produciendo el servidor y el navegador solo lleva un token aleatorio —
--- el mismo criterio del token de /completar.
+-- Efecto secundario buscado: una certificación que el lector no pudo abrir
+-- (foto borrosa, PDF con clave) YA NO BLOQUEA. El humano la abre, lee y escribe.
+-- Antes se quedaba trancada esperando a una máquina.
 -- -----------------------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS intake_subida (
-  id         BIGSERIAL PRIMARY KEY,
-  lote       TEXT NOT NULL,          -- secreto aleatorio del servidor (24 bytes)
-  clase      TEXT NOT NULL,          -- certificacion_bancaria | rut | cedula | soporte
-  nombre     TEXT NOT NULL,
-  path       TEXT NOT NULL DEFAULT '',
-  tipo       TEXT,
-  estado     TEXT NOT NULL,          -- subido | pendiente (no llegó a Drive)
-  error      TEXT,
-  envio      TEXT,                   -- carpeta de Drive del lote (la fija el 1er archivo)
-  creado_en  TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-CREATE INDEX IF NOT EXISTS ix_intake_subida_lote ON intake_subida (lote);
-CREATE INDEX IF NOT EXISTS ix_intake_subida_fecha ON intake_subida (creado_en);
+ALTER TABLE certificacion_bancaria ADD COLUMN IF NOT EXISTS banco_verificado TEXT;
+ALTER TABLE certificacion_bancaria ADD COLUMN IF NOT EXISTS tipo_verificado  TEXT;
+
+-- -----------------------------------------------------------------------------
+-- 20) LA COTIZACIÓN TAMBIÉN SE CLASIFICA ANTES DE PAGARSE
+--
+-- El adelanto de una cotización entraba a Pagos con el `area` y el `concepto`
+-- que escribió el PROVEEDOR en un formulario público. Se pagaba bien, pero el
+-- gasto quedaba sin decir en qué tienda cayó ni contra qué concepto, y eso
+-- después no se llena solo.
+--
+-- Es la misma decisión que se tomó el 21-ago para las cuentas de cobro: aprobar
+-- no manda a Pagos; lo que abre el paso es tener CONCEPTO y DESTINO puestos por
+-- un humano, contra los maestros. Lo que el proveedor escribió queda como
+-- referencia (`area`, y `concepto` si nadie lo tocó), no como verdad contable.
+-- -----------------------------------------------------------------------------
+ALTER TABLE cotizaciones ADD COLUMN IF NOT EXISTS destino         TEXT;
+ALTER TABLE cotizaciones ADD COLUMN IF NOT EXISTS clasificada_por TEXT;
+ALTER TABLE cotizaciones ADD COLUMN IF NOT EXISTS clasificada_en  TIMESTAMPTZ;

@@ -103,9 +103,7 @@ export default async function CompletarPage({ params }: { params: Promise<{ toke
               </div>
             )}
 
-            <FormCompletar token={token}
-                           carril={s.tipo === "cuenta_cobro" ? "cuentas-de-cobro" : "cotizaciones"}
-                           clases={pedir.length ? pedir.map((c) => ({ ...c })) : CLASES_DOC.map((c) => ({ ...c }))} />
+            <FormCompletar token={token} clases={pedir.length ? pedir.map((c) => ({ ...c })) : CLASES_DOC.map((c) => ({ ...c }))} />
           </>
         )}
 

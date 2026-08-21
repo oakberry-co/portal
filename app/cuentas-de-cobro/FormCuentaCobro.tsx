@@ -1,11 +1,10 @@
 "use client";
 
-import { useActionState, useRef, useState, useTransition } from "react";
+import { useActionState, useRef, useState } from "react";
 import { enviarCuentaCobro, reconocerProveedor, type Reconocido, type Resultado } from "./actions";
 import { CasillasDocumentos } from "../CasillasDocumentos";
 import { RevisarAntesDeEnviar, resumenDe, type FilaResumen } from "../RevisarAntesDeEnviar";
 import { AREAS, CLASES_DOC } from "@/lib/areas";
-import { subirLote, type Progreso } from "@/lib/subir-lote";
 
 // Solo el soporte: al recurrente no se le vuelven a pedir los documentos de
 // identidad, que es justo lo que lo hacía abandonar desde el celular.
@@ -38,26 +37,6 @@ export function FormCuentaCobro({ conceptos }: { conceptos: string[] }) {
   const formRef = useRef<HTMLFormElement>(null);
   // Para que el aviso de "tiene clave" diga CUÁL documento probaríamos.
   const [doc, setDoc] = useState("");
-  // FASE 1: los documentos suben de a uno ANTES de mandar el formulario. Los
-  // cuatro juntos chocaban contra el tope de 4,5 MB de Vercel y la página se
-  // caía sin decir por qué (ver lib/subir-lote.ts).
-  const [progreso, setProgreso] = useState<Progreso | null>(null);
-  const [errSubida, setErrSubida] = useState("");
-  const [enviando, empezar] = useTransition();
-
-  async function enviar(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    const f = formRef.current;
-    if (!f) return;
-    setErrSubida("");
-    const fd = new FormData(f);
-    setProgreso({ hecho: 0, total: 0, actual: "" });
-    const r = await subirLote(fd, "cuentas-de-cobro",
-                              esRecurrente ? SOLO_SOPORTE : CLASES_DOC, setProgreso);
-    setProgreso(null);
-    if (!r.ok) { setErrSubida(r.error); return; }
-    empezar(() => action(fd));
-  }
 
   function revisar() {
     const f = formRef.current;
@@ -131,7 +110,7 @@ export function FormCuentaCobro({ conceptos }: { conceptos: string[] }) {
   }
 
   return (
-    <form onSubmit={enviar} className="pub-form" ref={formRef}>
+    <form action={action} className="pub-form" ref={formRef}>
       <div className={"pub-campos" + (paso === "datos" ? "" : " pub-oculto")}>
       {esRecurrente ? (
         <>
@@ -235,13 +214,12 @@ export function FormCuentaCobro({ conceptos }: { conceptos: string[] }) {
 
       </div>
 
-      {(estado?.error || errSubida) && <div className="pub-err">{estado?.error ?? errSubida}</div>}
+      {estado?.error && <div className="pub-err">{estado.error}</div>}
 
       {paso === "datos" ? (
         <button className="pub-btn" type="button" onClick={revisar}>Revisar y enviar →</button>
       ) : (
-        <RevisarAntesDeEnviar filas={resumen.filas} docs={resumen.docs}
-                              pending={pending || enviando || progreso !== null} progreso={progreso}
+        <RevisarAntesDeEnviar filas={resumen.filas} docs={resumen.docs} pending={pending}
                               onCorregir={() => setPaso("datos")} textoEnviar="Enviar cuenta de cobro" />
       )}
     </form>

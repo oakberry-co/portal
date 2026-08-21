@@ -13,7 +13,8 @@
 //      equipo aprende a ignorar.
 //   2. El NIT y los códigos de la DIAN no cuentan como plata. Es lo que evita el
 //      falso "cuadra", que es el error caro.
-//   3. La escalera de bloqueo tiene salida en cada peldaño (Regla 18).
+//   3. Es una ALARMA, no un candado: avisa y muestra los montos del papel, pero
+//      quien decide es el humano (con el botón de corregir el monto al lado).
 //   4. EL ESPEJO: scripts/leer_valores.py tiene que sacar EXACTAMENTE los mismos
 //      montos que lib/valor-documento.ts. El script escribe los candidatos y el
 //      portal calcula el veredicto sobre ellos: si leen distinto, el semáforo
@@ -41,7 +42,7 @@ try {
                        "--module", "commonjs", "--target", "es2020", "--lib", "es2020,dom",
                        "--skipLibCheck"], { cwd: RAIZ, stdio: "pipe" });
 } catch (e) { /* emite igual */ }
-const { montosDeTexto, veredicto, bloqueoValor, mismoMonto } =
+const { montosDeTexto, veredicto, mismoMonto, montosLegibles, bloqueoValor } =
   require(path.join(tmp, "valor-documento.js"));
 
 const texto = (n) => fs.readFileSync(path.join(FIX, n), "utf8");
@@ -78,35 +79,22 @@ console.log("\n4) Pesos enteros, no centavos (no es tolerancia: es la unidad)");
 check(mismoMonto(149340.24, 149340), "149.340,24 del papel = 149.340 tecleado");
 check(!mismoMonto(149341, 149340), "pero 149.341 NO es 149.340");
 
-console.log("\n5) La escalera de bloqueo, con salida en cada peldaño (Regla 18)");
-const conCandidatos = (c, extra = {}) => ({
-  id: 1, estado: "leido", motivo: null, valor_leido: String(Math.max(...c)),
-  candidatos: c, metodo: "texto_pdf", leido_en: "2026-08-21",
-  valor_verificado: null, verificado_por: null, ...extra });
+console.log("\n5) Es una ALARMA: informa, no manda");
+// La bandeja tiene que poder MOSTRAR de dónde sale el aviso. Un aviso que el
+// revisor no puede comprobar termina obedecido a ciegas o ignorado, y las dos
+// son malas. Por eso los montos del papel se enseñan al lado.
+const lista = montosLegibles(endipack);
+check(/149\.340/.test(lista), "se muestran los montos del documento", lista);
+check(veredicto(500000, []).estado === "ilegible",
+      "sin montos leídos dice 'ilegible', no inventa un 'no cuadra'");
+check(montosLegibles([]) === "ninguno", "y dice 'ninguno' en vez de una lista vacía");
+// Lo que ya NO existe: el candado. Decisión de Daniel el 21-ago — una cotización
+// la arma cada proveedor a su manera y un candado que se equivoca seguido es un
+// candado que el equipo aprende a odiar. Quien decide es el humano.
+check(typeof bloqueoValor === "undefined",
+      "el módulo YA NO exporta un bloqueo: esto avisa, no tranca");
 
-check(bloqueoValor(conCandidatos(endipack), 149340) === null, "cuadra → no bloquea");
-const b1 = bloqueoValor(conCandidatos(endipack), 14934024);
-check(b1 !== null, "no cuadra → bloquea");
-check(/Ajustar monto/.test(b1 ?? ""), "y dice QUÉ hacer", (b1 ?? "").slice(-70));
-check(bloqueoValor(null, 100) !== null,
-      "SIN lectura también bloquea (un candado ciego que deja pasar es peor que ninguno)");
-check(/escribe el total/i.test(bloqueoValor(null, 100) ?? ""), "…y ofrece la salida humana");
-check(bloqueoValor(conCandidatos([1], { estado: "pendiente" }), 100) !== null,
-      "pendiente bloquea, pero avisa que el lector corre cada 15 min");
-check(bloqueoValor(conCandidatos([], { estado: "ilegible" }), 100) !== null, "ilegible bloquea");
-
-console.log("\n6) El paso humano manda sobre la máquina");
-const verif = conCandidatos(endipack, { valor_verificado: "149340", verificado_por: "a@b.co" });
-check(bloqueoValor(verif, 149340) === null,
-      "si un humano leyó 149.340 y eso es lo registrado, pasa");
-const choque = bloqueoValor(verif, 14934024);
-check(choque !== null && /149.340/.test(choque), "si leyó otra cosa, lo dice con las dos cifras");
-// El caso que de verdad importa: el lector falló pero el humano leyó bien.
-const soloHumano = conCandidatos([], { estado: "ilegible", valor_verificado: "500000" });
-check(bloqueoValor(soloHumano, 500000) === null,
-      "documento ilegible + humano que lo leyó → desbloquea igual");
-
-console.log("\n7) EL ESPEJO: leer_valores.py saca lo mismo que valor-documento.ts");
+console.log("\n6) EL ESPEJO: leer_valores.py saca lo mismo que valor-documento.ts");
 const fixtures = fs.readdirSync(FIX).filter((f) => f.endsWith(".txt"));
 const py = path.join(tmp, "montos_py.json");
 try {

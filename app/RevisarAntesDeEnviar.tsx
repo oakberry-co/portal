@@ -17,8 +17,9 @@
 // Compartido por las dos landings para que digan lo mismo.
 
 import { CLASES_DOC } from "@/lib/areas";
+import { enLetras } from "@/lib/letras";
 
-export type FilaResumen = { etiqueta: string; valor: string };
+export type FilaResumen = { etiqueta: string; valor: string; letras?: string };
 export type CampoResumen = { name: string; etiqueta: string; formato?: "money" | "pct" };
 
 const cop = new Intl.NumberFormat("es-CO", { style: "currency", currency: "COP", maximumFractionDigits: 0 });
@@ -55,7 +56,16 @@ export function resumenDe(fd: FormData, campos: CampoResumen[],
   const filas = campos
     .map(({ name, etiqueta, formato }) => {
       const bruto = String(fd.get(name) ?? "").trim();
-      return { etiqueta, valor: bruto === "" ? "" : formatear(bruto, formato) };
+      if (bruto === "") return { etiqueta, valor: "" };
+      // EL VALOR, ADEMÁS, EN LETRAS. "14.934.024" y "149.340" se parecen cuando
+      // uno va rápido con el pulgar; "CATORCE MILLONES..." y "CIENTO CUARENTA Y
+      // NUEVE MIL..." no se parecen en nada. Es el truco que las facturas usan
+      // desde siempre — el documento que originó esto lo trae impreso.
+      const n = formato === "money" ? Number(bruto.replace(/[^\d]/g, "")) : NaN;
+      return {
+        etiqueta, valor: formatear(bruto, formato),
+        ...(Number.isFinite(n) && n > 0 ? { letras: enLetras(n) } : {}),
+      };
     })
     .filter((f) => f.valor !== "");
   const docs = clases.map((c) => {
@@ -65,30 +75,18 @@ export function resumenDe(fd: FormData, campos: CampoResumen[],
   return { filas, docs };
 }
 
-export function RevisarAntesDeEnviar({ filas, docs, pending, onCorregir, textoEnviar, progreso }: {
+export function RevisarAntesDeEnviar({ filas, docs, pending, onCorregir, textoEnviar }: {
   filas: FilaResumen[];
   docs: { label: string; nombre: string | null }[];
   pending: boolean;
   onCorregir: () => void;
   textoEnviar: string;
-  /** Avance de la subida documento por documento. Sin esto la pantalla dice
-   *  "subiendo" durante medio minuto sin moverse, y desde datos móviles eso se
-   *  lee como colgado — que es justo cuando el proveedor le da enviar otra vez. */
-  progreso?: { hecho: number; total: number; actual: string } | null;
 }) {
   if (pending) {
     return (
       <div className="pub-procesando" role="status" aria-live="polite">
         <div className="pub-spinner" aria-hidden="true" />
         <h3>Subiendo tus documentos…</h3>
-        {progreso && progreso.total > 0 && (
-          <div className="pub-progreso">
-            <div className="pub-progreso-barra">
-              <i style={{ width: `${Math.round((progreso.hecho / progreso.total) * 100)}%` }} />
-            </div>
-            <span>{Math.min(progreso.hecho + 1, progreso.total)} de {progreso.total} · {progreso.actual}</span>
-          </div>
-        )}
         <p>
           Puede tardar hasta un minuto si estás con datos móviles.
           <b> No cierres esta página</b> ni le des enviar otra vez.
@@ -102,12 +100,19 @@ export function RevisarAntesDeEnviar({ filas, docs, pending, onCorregir, textoEn
   return (
     <div className="pub-revisar">
       <div className="pub-sec">Revisa antes de enviar</div>
+      <p className="pub-hint">
+        <b>Mira bien el valor.</b> Está escrito en letras justo debajo para que puedas
+        comprobarlo contra tu documento — si dice otra cosa, corrígelo antes de enviar.
+      </p>
 
       <dl className="pub-resumen">
         {filas.map((f) => (
-          <div key={f.etiqueta}>
+          <div key={f.etiqueta} className={f.letras ? "pub-resumen-plata" : undefined}>
             <dt>{f.etiqueta}</dt>
-            <dd>{f.valor}</dd>
+            <dd>
+              {f.valor}
+              {f.letras && <em>{f.letras}</em>}
+            </dd>
           </div>
         ))}
       </dl>

@@ -23,23 +23,30 @@ export async function aplicarCuentaCertificada(
     id: number; nit: string | null; estado: string; banco: string | null;
     tipo_cuenta: string | null; num_cuenta: string | null; titular_doc: string | null;
     cuenta_anterior: string | null; aplicada: boolean; cuenta_verificada: string | null;
+    banco_verificado: string | null; tipo_verificado: string | null;
   }>(
     `SELECT id, nit, estado, banco, tipo_cuenta, num_cuenta, titular_doc,
-            cuenta_anterior, aplicada, cuenta_verificada
+            cuenta_anterior, aplicada, cuenta_verificada, banco_verificado, tipo_verificado
        FROM certificacion_bancaria WHERE id = $1 FOR UPDATE`, [certId]);
   const cert = rows[0];
   if (!cert) throw new Error("Certificación no encontrada.");
-  if (cert.estado !== "valida") throw new Error("Solo se puede aplicar una certificación válida.");
   if (!cert.nit) throw new Error("La certificación no tiene NIT: no se sabe a qué proveedor aplicarla.");
-  if (!cert.num_cuenta) throw new Error("La certificación no trae número de cuenta.");
-  // LA QUE MANDA es la que un humano leyó del documento y escribió. El OCR es el
-  // asistente: si el revisor corrigió lo leído, su número es el que va al banco.
+  // LO QUE MANDA ES LO QUE ESCRIBIÓ EL HUMANO — los tres datos, no solo el
+  // número. El OCR es el asistente: propone y se puede equivocar (un banco mal
+  // leído sale al archivo bancario con el código vacío y el banco lo rechaza).
+  //
+  // Ya NO se exige que la certificación esté 'valida': si el lector no pudo
+  // abrir el documento pero una persona sí, esa persona alcanza. Antes la
+  // solicitud se quedaba trancada esperando a una máquina que no iba a poder.
   const cuenta = (cert.cuenta_verificada ?? "").trim();
+  const banco = (cert.banco_verificado ?? "").trim() || cert.banco;
+  const tipo = (cert.tipo_verificado ?? "").trim() || cert.tipo_cuenta;
   // El NIT entra por un formulario público: puede venir con el dígito de
   // verificación pegado. Si se guarda así, la cuenta no cruza con las facturas
   // de ese mismo proveedor y el pago se cae del archivo del banco (ver lib/nit.ts).
   const nit = nitCanonico(cert.nit);
-  if (!cuenta) throw new Error("Nadie ha verificado esta cuenta contra el documento.");
+  if (!cuenta) throw new Error("Nadie ha escrito la cuenta leyéndola del documento.");
+  if (!banco) throw new Error("La cuenta quedó sin banco: vuelve a confirmarla eligiendo el banco de la lista.");
   if (cert.aplicada) return;
 
   await c.query(
@@ -51,14 +58,14 @@ export async function aplicarCuentaCertificada(
        num_cuenta = EXCLUDED.num_cuenta, fuente = 'certificacion',
        certificacion_id = EXCLUDED.certificacion_id, certificada = TRUE,
        actualizado_en = now()`,
-    [nit, cert.banco, cert.tipo_cuenta, cuenta, cert.titular_doc, cert.id]);
+    [nit, banco, tipo, cuenta, cert.titular_doc, cert.id]);
   await c.query("UPDATE certificacion_bancaria SET aplicada = TRUE WHERE id = $1", [certId]);
 
   await registrarEvento(c, {
     cufe: null, tipo: cert.cuenta_anterior ? "cambia_cuenta_banco" : "aplica_cuenta_banco",
     campo: "num_cuenta",
     valorAnterior: cert.cuenta_anterior ? { nit: cert.nit, num_cuenta: cert.cuenta_anterior } : null,
-    valorNuevo: { nit: cert.nit, num_cuenta: cuenta, banco: cert.banco,
+    valorNuevo: { nit: cert.nit, num_cuenta: cuenta, banco, tipo_cuenta: tipo,
                   leida_por_ocr: cert.num_cuenta, certificacion_id: cert.id },
     actor: actor.email, actorRol: actor.rol, origen: "web",
   });

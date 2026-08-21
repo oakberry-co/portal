@@ -9,6 +9,7 @@ import { useActionState, useState, useTransition, type ReactNode } from "react";
 
 import { CLASES_DOC, etiquetaClase, type DocGuardado } from "@/lib/areas";
 import { cola, mismaCuenta, unaEsLaOtraConPrefijo, type CertEstado, type CuentaMaestro } from "@/lib/certificaciones";
+import { BANCOS } from "@/lib/bancos";
 import { confirmarCambioCuenta, mantenerCuentaDelMaestro, rechazarCambioCuenta,
          darClaveCertificacion, verificarCuenta } from "@/lib/certificacion-actions";
 import { ErrorAccion } from "./ErrorAccion";
@@ -90,13 +91,23 @@ export function CorreosIntake({ correos }: { correos: CorreoEnviado[] }) {
  *  decide quien tiene el documento delante. */
 function VerificarCuenta({ cert, docUrl }: { cert: CertEstado; docUrl?: string }) {
   const [valor, setValor] = useState("");
+  // El BANCO y el TIPO también los escribe el humano (21-ago-2026). Antes salían
+  // del OCR y, si leía mal el banco, la fila salía al archivo bancario con el
+  // código vacío y el banco la rechazaba — pasó con "BACOLOMBIA".
+  //
+  // Se PRECARGAN con lo leído porque acá el parecido no decide nada: son un
+  // desplegable y un par de botones que el revisor está mirando contra el papel,
+  // no una cifra que se acepta con un clic sin leerla.
+  const [banco, setBanco] = useState(cert.banco ?? "");
+  const [tipo, setTipo] = useState(cert.tipo_cuenta ?? "");
   const [choque, setChoque] = useState<{ leida: string; escrita: string } | null>(null);
   const [pend, start] = useTransition();
 
   if (cert.cuenta_verificada) {
     return (
       <div className="cc-verif ok">
-        ✓ <b>Cuenta verificada contra el documento</b> — {cola(cert.cuenta_verificada)}
+        ✓ <b>Cuenta confirmada contra el documento</b> — {cert.banco_verificado ?? cert.banco ?? ""}{" "}
+        {cert.tipo_verificado ?? cert.tipo_cuenta ?? ""} {cola(cert.cuenta_verificada)}
         {cert.verificada_por && <i> · la revisó {cert.verificada_por.split("@")[0]}</i>}
       </div>
     );
@@ -107,6 +118,8 @@ function VerificarCuenta({ cert, docUrl }: { cert: CertEstado; docUrl?: string }
       const fd = new FormData();
       fd.set("cert_id", String(cert.id));
       fd.set("cuenta", forzar ? (choque?.escrita ?? valor) : valor);
+      fd.set("banco", banco);
+      fd.set("tipo_cuenta", tipo);
       if (forzar) fd.set("forzar", "1");
       const r = await verificarCuenta(fd);
       if (r?.discrepa) setChoque({ leida: r.leida, escrita: r.escrita });
@@ -116,21 +129,36 @@ function VerificarCuenta({ cert, docUrl }: { cert: CertEstado; docUrl?: string }
 
   return (
     <div className="cc-verif">
-      <div className="cc-verif-tit">🔍 Falta el paso final: verifica la cuenta</div>
+      <div className="cc-verif-tit">🔍 Falta el paso final: la cuenta bancaria</div>
       <p>
         {docUrl
           ? <>Abre <a href={docUrl} target="_blank" rel="noopener noreferrer"><b>la certificación</b></a> y escribe
-             el número de cuenta que ves en el papel.</>
-          : <>Abre la certificación y escribe el número de cuenta que ves en el papel.</>}{" "}
+             los datos de la cuenta que ves en el papel.</>
+          : <>Abre la certificación y escribe los datos de la cuenta que ves en el papel.</>}{" "}
         No copiamos lo que leyó el sistema a propósito: <b>a esa cuenta se le manda plata</b>.
       </p>
 
       {!choque ? (
         <div className="cc-verif-form">
+          {/* El banco es LISTA CERRADA: se convierte en un código para el archivo
+              del banco y un nombre a mano no resuelve — la fila sale con el campo
+              vacío y el banco la rechaza ("BACOLOMBIA", "BANDO DE BOGOTA"). */}
+          <select value={banco} onChange={(e) => setBanco(e.target.value)} disabled={pend}
+                  aria-label="Banco">
+            <option value="">Banco…</option>
+            {BANCOS.map((b) => <option key={b.codigo} value={b.nombre}>{b.nombre}</option>)}
+          </select>
+          <select value={tipo} onChange={(e) => setTipo(e.target.value)} disabled={pend}
+                  aria-label="Tipo de cuenta">
+            <option value="">Tipo…</option>
+            <option value="ahorros">Ahorros</option>
+            <option value="corriente">Corriente</option>
+          </select>
           <input value={valor} onChange={(e) => setValor(e.target.value)} inputMode="numeric"
                  placeholder="Número de cuenta del documento" autoComplete="off" disabled={pend} />
-          <button type="button" className="cc-act" disabled={pend || valor.replace(/\D/g, "").length < 6}
-                  onClick={() => enviar(false)}>Verificar</button>
+          <button type="button" className="cc-act"
+                  disabled={pend || !banco || !tipo || valor.replace(/\D/g, "").length < 6}
+                  onClick={() => enviar(false)}>Confirmar cuenta</button>
         </div>
       ) : (
         <div className="cc-choque">

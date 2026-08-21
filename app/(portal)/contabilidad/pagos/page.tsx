@@ -45,7 +45,7 @@ const SQL_INTAKE = `
    WHERE ${LISTO_PARA_PAGOS("cc")}
   UNION ALL
   SELECT 'cotizacion', cot.id, coalesce(cot.codigo, 'COT-' || cot.id),
-         cot.razon_social, cot.nit, cot.concepto, cot.area,
+         cot.razon_social, cot.nit, cot.concepto, cot.destino,
          round(coalesce(cot.valor,0) * coalesce(cot.adelanto_pct,0) / 100)::float,
          cot.cuenta_pago, cot.fecha_pago_prog::text, cot.creado_en::text,
          cot.adelanto_pct::float, cot.valor::float,
@@ -54,6 +54,11 @@ const SQL_INTAKE = `
     LEFT JOIN cuentas_bancarias_proveedor cb ON cb.nit = cot.nit
    WHERE cot.estado IN ('aprobada','facturada') AND cot.pago_id IS NULL
      AND cot.requiere_adelanto
+     -- CLASIFICADA POR UN HUMANO. Aprobar no manda a Pagos: el area y el
+     -- concepto que escribió el proveedor en un formulario público son
+     -- referencia, no verdad contable. Sin destino, el gasto entra sin decir en
+     -- qué tienda cayó — y eso después no se llena solo.
+     AND cot.concepto IS NOT NULL AND cot.destino IS NOT NULL
   ORDER BY fecha_pago_prog NULLS FIRST, proveedor`;
 
 async function cargar(): Promise<{ pendientes: FilaPago[]; validacion: FilaPago[]; intake: FilaIntake[]; historial: PagoHecho[]; cuentas: CuentaPago[]; diaPago: number; adelantos: Adelanto[] }> {

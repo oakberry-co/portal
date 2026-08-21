@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Backtest de AJUSTAR y VERIFICAR el monto, contra la base REAL.
+"""Backtest de CORREGIR el monto, contra la base REAL.
 
 Corre las MISMAS sentencias que ejecuta `lib/valor-actions.ts` sobre filas de
 prueba que crea y borra dentro de UNA transacción con ROLLBACK: la base queda
@@ -17,8 +17,8 @@ que no pueden romperse pase lo que pase:
      tiene que decir el registro);
   3. ajustar una cuenta de cobro REABRE las retenciones — se calcularon sobre el
      valor viejo, y darlas por buenas sobre el nuevo es retener lo que no es;
-  4. la lectura del documento queda apuntando al monto de HOY, para que el
-     semáforo no siga opinando sobre una cifra que ya no existe.
+  4. la lectura del documento queda apuntando al monto de HOY, para que la
+     alarma no siga opinando sobre una cifra que ya no existe.
 
 Uso:  python3 scripts/test_valor_acciones.py
 """
@@ -123,15 +123,6 @@ def main() -> int:
         check(vap is None, "y el valor a pagar se limpia (se recalcula con el monto correcto)")
         check(int(val) == 300000, "el monto quedó ajustado", str(int(val)))
 
-        print("\n5) VERIFICAR solo deja constancia: no toca el monto")
-        cur.execute("""UPDATE lectura_valor SET valor_verificado = %s, verificado_por = 'x@y.co',
-                                                verificado_en = now() WHERE id = %s""", (149340, lec))
-        cur.execute("""SELECT lv.valor_verificado, c.valor FROM lectura_valor lv
-                         JOIN cotizaciones c ON c.id = lv.origen_id WHERE lv.id = %s""", (lec,))
-        verif, valor_cot = cur.fetchone()
-        check(int(verif) == 149340, "queda lo que leyó el humano")
-        check(int(valor_cot) == 200000, "y el monto de la solicitud NO cambió por verificar",
-              str(int(valor_cot)))
     finally:
         conn.rollback()
         cur.close()

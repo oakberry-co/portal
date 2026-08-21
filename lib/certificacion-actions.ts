@@ -18,6 +18,7 @@ import { registrarEvento } from "@/lib/eventos";
 import { exigirCap } from "@/lib/auth";
 import { aplicarCuentaCertificada } from "@/lib/cuenta-certificada";
 import { intentar, type Resultado } from "@/lib/resultado";
+import { esBancoConocido } from "@/lib/bancos";
 
 function refrescar() {
   revalidatePath("/contabilidad/cuentas-de-cobro");
@@ -159,16 +160,32 @@ export async function verificarCuenta(fd: FormData) {
   const user = await exigirCap("intake");
   const id = Number(fd.get("cert_id"));
   const escrita = String(fd.get("cuenta") ?? "").replace(/[^\d]/g, "");
+  const banco = String(fd.get("banco") ?? "").trim();
+  const tipo = String(fd.get("tipo_cuenta") ?? "").trim();
   const forzar = String(fd.get("forzar") ?? "") === "1";
   if (!id) throw new Error("Falta la certificación.");
   if (escrita.length < 6) throw new Error("Escribe el número de cuenta completo, como aparece en el documento.");
+  // LISTA CERRADA. El nombre del banco se convierte en un código numérico para
+  // el archivo del banco (lib/bancos.ts), y un nombre que no resuelve sale con
+  // el campo VACÍO y el banco rechaza la fila — pasó con "BACOLOMBIA" y con
+  // "BANDO DE BOGOTA". Por eso no es un campo de texto libre.
+  if (!esBancoConocido(banco)) {
+    throw new Error("Elige el banco de la lista: un nombre escrito a mano no resuelve "
+                  + "a ningún código y la fila sale al banco con el campo vacío.");
+  }
+  if (tipo !== "ahorros" && tipo !== "corriente") {
+    throw new Error("Di si la cuenta es de ahorros o corriente.");
+  }
 
   return withTx(async (c) => {
     const { rows } = await c.query<{ num_cuenta: string | null; estado: string }>(
       "SELECT num_cuenta, estado FROM certificacion_bancaria WHERE id = $1 FOR UPDATE", [id]);
     if (!rows.length) throw new Error("Certificación no encontrada.");
     const leida = (rows[0].num_cuenta ?? "").replace(/\D/g, "");
-    const coincide = leida.replace(/^0+/, "") === escrita.replace(/^0+/, "");
+    // Sin lectura no hay con qué comparar: el humano es la única fuente y su
+    // palabra pasa derecho. Antes eso trancaba la solicitud esperando a un OCR
+    // que nunca iba a poder con esa foto.
+    const coincide = !leida || leida.replace(/^0+/, "") === escrita.replace(/^0+/, "");
 
     if (!coincide && !forzar) {
       // No se decide por el humano: se le muestran los dos y él resuelve.
@@ -177,15 +194,16 @@ export async function verificarCuenta(fd: FormData) {
 
     await c.query(
       `UPDATE certificacion_bancaria
-          SET cuenta_verificada = $2, verificada_por = $3, verificada_en = now(),
-              verificacion_nota = $4
+          SET cuenta_verificada = $2, banco_verificado = $5, tipo_verificado = $6,
+              verificada_por = $3, verificada_en = now(), verificacion_nota = $4
         WHERE id = $1`,
       [id, escrita, user.email,
-       coincide ? "coincide con lo leído" : `el revisor corrigió lo leído (${leida || "sin lectura"})`]);
+       coincide ? "coincide con lo leído" : `el revisor corrigió lo leído (${leida || "sin lectura"})`,
+       banco, tipo]);
     await registrarEvento(c, {
       cufe: null, tipo: "verifica_cuenta", campo: "cuenta_verificada",
       valorAnterior: { leida_por_ocr: leida || null },
-      valorNuevo: { verificada: escrita, coincide, certificacion_id: id },
+      valorNuevo: { verificada: escrita, banco, tipo_cuenta: tipo, coincide, certificacion_id: id },
       actor: user.email, actorRol: user.rol, origen: "web",
     });
     refrescar();

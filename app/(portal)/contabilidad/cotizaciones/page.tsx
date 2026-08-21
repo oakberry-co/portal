@@ -11,11 +11,12 @@ export const dynamic = "force-dynamic";
 // Igual que en cuentas de cobro: la bandeja carga lo que decide la aprobación
 // (documentos + certificación + cuenta del maestro) para explicar el bloqueo en
 // la tarjeta, no al hacer clic.
-async function cargar(): Promise<{ cots: Cotizacion[]; candidatos: CandidataFactura[] }> {
+async function cargar(): Promise<{ cots: Cotizacion[]; candidatos: CandidataFactura[];
+                                   conceptos: string[]; destinos: string[] }> {
   const pool = getPool();
   const cots = await pool.query<Cotizacion>(`
     SELECT cot.id, cot.codigo, cot.razon_social, cot.nit, cot.contacto, cot.correo, cot.telefono,
-           cot.area, cot.concepto, cot.descripcion, cot.valor::float AS valor, cot.documentos,
+           cot.area, cot.concepto, cot.destino, cot.descripcion, cot.valor::float AS valor, cot.documentos,
            cot.numero_cotizacion, cot.requiere_adelanto, cot.adelanto_pct::float AS adelanto_pct,
            cot.recurrente,
            cot.plazo_dias, cot.estado, cot.cufe_factura, cot.nota_revision, cot.revisado_por,
@@ -45,7 +46,12 @@ async function cargar(): Promise<{ cots: Cotizacion[]; candidatos: CandidataFact
      WHERE f.nit_proveedor IN (SELECT DISTINCT nit FROM cotizaciones WHERE estado IN ('recibida','aprobada'))
        AND NOT EXISTS (SELECT 1 FROM cotizaciones c2 WHERE c2.cufe_factura = f.cufe)
      ORDER BY f.fecha_emision DESC LIMIT 800`);
-  return { cots: cots.rows, candidatos: cand.rows };
+  // LOS MISMOS maestros que usa Conciliación: un gasto no puede tener un
+  // concepto o un destino distinto según por dónde entró al portal.
+  const co = await pool.query<{ nombre: string }>("SELECT nombre FROM maestro_conceptos WHERE activo ORDER BY nombre");
+  const de = await pool.query<{ nombre: string }>("SELECT nombre FROM maestro_destinos WHERE activo ORDER BY nombre");
+  return { cots: cots.rows, candidatos: cand.rows,
+           conceptos: co.rows.map((r) => r.nombre), destinos: de.rows.map((r) => r.nombre) };
 }
 
 export default async function CotizacionesInboxPage() {
@@ -68,7 +74,8 @@ export default async function CotizacionesInboxPage() {
         <b> Pagos › Validación semana en curso</b> (bloque <i>sin factura DIAN</i>); cuando llegue la factura final,
         <b> enlázala</b> y Pagos le descuenta lo adelantado (nunca doble).
       </p>
-      <CotizacionesView cots={data.cots} candidatos={data.candidatos} operar={operar} />
+      <CotizacionesView cots={data.cots} candidatos={data.candidatos} operar={operar}
+                        conceptos={data.conceptos} destinos={data.destinos} />
     </div>
   );
 }
