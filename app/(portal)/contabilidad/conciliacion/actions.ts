@@ -9,24 +9,8 @@ import { clasificar } from "@/lib/documentos-no-dian";
 import { intentar, type Resultado } from "@/lib/resultado";
 import { limpiarTextoHumano } from "@/lib/texto";
 import { esBancoConocido } from "@/lib/bancos";
+import { asegurarConcepto, asegurarDestino } from "@/lib/maestros";
 import type { PoolClient } from "pg";
-
-// Si el valor no existe en el maestro, lo crea (autoridad humana) y lo registra.
-// Esto es lo que pediste: cada vez que ponemos un valor nuevo, alimenta el maestro.
-async function asegurarConcepto(c: PoolClient, nombre: string, actor: string) {
-  const r = await c.query("SELECT 1 FROM maestro_conceptos WHERE lower(btrim(nombre)) = lower(btrim($1))", [nombre]);
-  if (r.rowCount === 0) {
-    await c.query("INSERT INTO maestro_conceptos (nombre, creado_por) VALUES ($1,$2)", [nombre, actor]);
-    await registrarEvento(c, { cufe: null, tipo: "crea_maestro", campo: "concepto", valorNuevo: nombre, actor });
-  }
-}
-async function asegurarDestino(c: PoolClient, nombre: string, actor: string) {
-  const r = await c.query("SELECT 1 FROM maestro_destinos WHERE lower(btrim(nombre)) = lower(btrim($1))", [nombre]);
-  if (r.rowCount === 0) {
-    await c.query("INSERT INTO maestro_destinos (nombre, creado_por) VALUES ($1,$2)", [nombre, actor]);
-    await registrarEvento(c, { cufe: null, tipo: "crea_maestro", campo: "destino", valorNuevo: nombre, actor });
-  }
-}
 
 /** El "apartado" de extracción: registra una solicitud de sync manual. La VM
  *  —donde viven las credenciales BQ, como el resto de extracciones— la atiende

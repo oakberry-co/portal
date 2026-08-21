@@ -1,127 +1,34 @@
 "use server";
 
-// CAMBIO DE CUENTA — la decisión que no puede tomar una máquina.
+// LA CUENTA BANCARIA LA ESCRIBE UNA PERSONA. PUNTO.
 //
-// El lector (scripts/leer_certificaciones.py) NUNCA escribe la cuenta en el
-// maestro. Si el NIT ya tenía OTRA, deja la certificación 'valida' con la
-// `cuenta_anterior` guardada y el cambio pasa por un humano ANTES de que se
-// pueda aprobar la solicitud.
+// El lector (scripts/leer_certificaciones.py) sigue leyendo la certificación y
+// lo que saca se muestra como AYUDA para no teclear desde cero, pero no compara,
+// no reclama y no tranca nada. Quien revisa abre el documento, escribe banco,
+// tipo y número, y le da guardar: eso entra al maestro de cuentas.
 //
-// Por qué: el intake es público. Cualquiera puede mandar una cuenta de cobro con
-// el NIT de un proveedor grande y su propia certificación; si el sistema
-// sobrescribiera, el siguiente pago masivo se iría a la cuenta del atacante y
-// nadie lo notaría hasta que el proveedor real reclame.
+// Antes había tres pantallas encima de esto —el choque contra lo que leyó el
+// OCR, la confirmación de "cambió la cuenta" y las dos salidas de ese cambio— y
+// entre todas hacían que aprobar una cuenta de cobro fuera un trámite de cinco
+// pasos. Decisión de Daniel (21-ago-2026): la cuenta se escribe, no se valida.
+//
+// Lo que NO se perdió: cada guardado queda en la bitácora con la cuenta que
+// había antes, así que un cambio raro se ve — después, no antes.
 
 import { revalidatePath } from "next/cache";
 import { withTx } from "@/lib/db";
 import { registrarEvento } from "@/lib/eventos";
 import { exigirCap } from "@/lib/auth";
-import { aplicarCuentaCertificada } from "@/lib/cuenta-certificada";
-import { intentar, type Resultado } from "@/lib/resultado";
+import { nitCanonico } from "@/lib/nit";
 import { esBancoConocido } from "@/lib/bancos";
 
 function refrescar() {
   revalidatePath("/contabilidad/cuentas-de-cobro");
   revalidatePath("/contabilidad/cotizaciones");
+  revalidatePath("/contabilidad/pagos");
+  revalidatePath("/contabilidad/maestros");
 }
 
-/** Acepta la cuenta nueva: la escribe en el maestro y deja la certificación
- *  aplicada. A partir de aquí el proveedor entra al archivo del banco con ESA
- *  cuenta, y la anterior queda en la bitácora. */
-export async function confirmarCambioCuenta(_prev: Resultado | null, fd: FormData): Promise<Resultado> {
-  return intentar(async () => {
-    const user = await exigirCap("intake");
-    const id = Number(fd.get("cert_id"));
-    if (!id) throw new Error("Falta la certificación.");
-    await withTx(async (c) => aplicarCuentaCertificada(c, id, user));
-    refrescar();
-  });
-}
-
-/** LA OTRA SALIDA: la cuenta buena es la que YA está en el maestro.
- *
- *  Pasa de verdad y no es fraude: el banco certifica '0570006270388827' y el
- *  equipo tiene cargado '6270388827' — la misma cuenta con el prefijo del banco
- *  delante. Cuál de los dos formatos acepta el archivo del banco no lo decide
- *  este portal: lo sabe quien arma el pago.
- *
- *  Sin esta salida el revisor quedaba encerrado: "confirmar" pisaba el maestro
- *  con un formato que quizá el banco rechaza, y "no la reconozco" mataba la
- *  certificación de un proveedor honesto. Acá se da por resuelto el cambio SIN
- *  tocar el maestro: la certificación queda aplicada (ya no bloquea) y la cuenta
- *  que va al banco sigue siendo la de siempre. */
-export async function mantenerCuentaDelMaestro(_prev: Resultado | null, fd: FormData): Promise<Resultado> {
-  return intentar(async () => {
-    const user = await exigirCap("intake");
-    const id = Number(fd.get("cert_id"));
-    if (!id) throw new Error("Falta la certificación.");
-    await withTx(async (c) => {
-      const { rows } = await c.query<{ nit: string | null; num_cuenta: string | null;
-                                       cuenta_anterior: string | null; estado: string }>(
-        `SELECT nit, num_cuenta, cuenta_anterior, estado
-           FROM certificacion_bancaria WHERE id = $1 FOR UPDATE`, [id]);
-      const cert = rows[0];
-      if (!cert) throw new Error("Certificación no encontrada.");
-      if (cert.estado !== "valida") throw new Error("Solo aplica a una certificación válida.");
-      // Sin cuenta previa no hay "la del maestro" que mantener: sería dejar al
-      // proveedor aprobado y sin cuenta a la hora de pagar.
-      if (!(cert.cuenta_anterior ?? "").trim()) {
-        throw new Error("Este proveedor no tenía una cuenta anterior que mantener.");
-      }
-      const m = await c.query(
-        `SELECT num_cuenta FROM cuentas_bancarias_proveedor WHERE nit = $1`, [cert.nit]);
-      if (!(m.rows[0]?.num_cuenta ?? "").trim()) {
-        throw new Error("El maestro ya no tiene cuenta para este NIT: no hay cuál mantener.");
-      }
-      // 'aplicada' = el cambio quedó resuelto. El maestro NO se toca.
-      await c.query("UPDATE certificacion_bancaria SET aplicada = TRUE WHERE id = $1", [id]);
-      await registrarEvento(c, {
-        cufe: null, tipo: "mantiene_cuenta_banco", campo: "num_cuenta",
-        valorAnterior: { nit: cert.nit, num_cuenta: cert.cuenta_anterior },
-        valorNuevo: { nit: cert.nit, num_cuenta: cert.cuenta_anterior,
-                      descartada_del_certificado: cert.num_cuenta, certificacion_id: id },
-        actor: user.email, actorRol: user.rol, origen: "web",
-      });
-    });
-    refrescar();
-  });
-}
-
-/** Rechaza la cuenta nueva: la anterior queda intacta y el envío no se puede
- *  aprobar. Es la salida para un intento de suplantación. */
-export async function rechazarCambioCuenta(_prev: Resultado | null, fd: FormData): Promise<Resultado> {
-  return intentar(async () => {
-  const user = await exigirCap("intake");
-  const id = Number(fd.get("cert_id"));
-  if (!id) throw new Error("Falta la certificación.");
-  await withTx(async (c) => {
-    await c.query(
-      `UPDATE certificacion_bancaria
-          SET estado = 'no_coincide',
-              motivo = 'La cuenta certificada no corresponde a la que el proveedor tiene registrada; '
-                       || 'el cambio fue rechazado en la revisión.'
-        WHERE id = $1 AND estado = 'valida'`, [id]);
-    await registrarEvento(c, {
-      cufe: null, tipo: "rechaza_cuenta_banco", campo: "num_cuenta",
-      valorNuevo: { certificacion_id: id },
-      actor: user.email, actorRol: user.rol, origen: "web",
-    });
-  });
-  refrescar();
-  });
-}
-
-/** Guarda, SOLO de paso, la clave que el equipo consiguió para abrir un
- *  certificado protegido. El lector la usa y la borra en su próxima corrida
- *  (≤15 min), salga bien o mal.
- *
- *  Por qué no se pide en el formulario público: pedir una contraseña no
- *  autentica a nadie —no es un control de seguridad, es una comodidad— y mucha
- *  gente reusa claves. Recogerlas en internet abierto crea un riesgo que hoy no
- *  existe. Acá la teclea alguien del equipo, con una clave que el proveedor le
- *  dio por un canal que ya conoce, y no queda guardada.
- *
- *  En la bitácora queda QUE se intentó y quién — nunca la clave. */
 export async function darClaveCertificacion(fd: FormData) {
   const user = await exigirCap("intake");
   const id = Number(fd.get("cert_id"));
@@ -156,57 +63,69 @@ export async function darClaveCertificacion(fd: FormData) {
  *  `forzar` es esa resolución: el humano dice "lo que está en el papel es lo que
  *  yo escribí". Su número gana sobre el del OCR — tiene el documento a la vista
  *  y el OCR no. Queda en la bitácora con los dos valores. */
-export async function verificarCuenta(fd: FormData) {
+/** Guarda la cuenta del proveedor: banco, tipo y número, tal como los escribió
+ *  quien tiene el documento delante. Va DERECHO al maestro de cuentas — que es
+ *  de donde sale el archivo con el que el banco paga.
+ *
+ *  Se guarda al confirmar y no al aprobar: el paso 2 del flujo es "valida la
+ *  cuenta y escríbela", y esperar hasta la aprobación dejaba el maestro
+ *  desactualizado en medio de un trámite que puede durar días.
+ *
+ *  Lo único que se exige es que los tres campos estén: sin banco no hay código
+ *  para el archivo y la fila sale vacía; sin número no hay a dónde pagar. El
+ *  banco se elige de una lista porque su nombre se traduce a un código numérico
+ *  (lib/bancos.ts) — "BACOLOMBIA" escrito a mano no resuelve a ninguno y el
+ *  banco rechaza la fila, sin que nadie se entere hasta el día del pago. */
+export async function guardarCuenta(fd: FormData) {
   const user = await exigirCap("intake");
-  const id = Number(fd.get("cert_id"));
-  const escrita = String(fd.get("cuenta") ?? "").replace(/[^\d]/g, "");
+  const certId = Number(fd.get("cert_id")) || null;
+  const nitCrudo = String(fd.get("nit") ?? "").trim();
   const banco = String(fd.get("banco") ?? "").trim();
   const tipo = String(fd.get("tipo_cuenta") ?? "").trim();
-  const forzar = String(fd.get("forzar") ?? "") === "1";
-  if (!id) throw new Error("Falta la certificación.");
-  if (escrita.length < 6) throw new Error("Escribe el número de cuenta completo, como aparece en el documento.");
-  // LISTA CERRADA. El nombre del banco se convierte en un código numérico para
-  // el archivo del banco (lib/bancos.ts), y un nombre que no resuelve sale con
-  // el campo VACÍO y el banco rechaza la fila — pasó con "BACOLOMBIA" y con
-  // "BANDO DE BOGOTA". Por eso no es un campo de texto libre.
-  if (!esBancoConocido(banco)) {
-    throw new Error("Elige el banco de la lista: un nombre escrito a mano no resuelve "
-                  + "a ningún código y la fila sale al banco con el campo vacío.");
-  }
-  if (tipo !== "ahorros" && tipo !== "corriente") {
-    throw new Error("Di si la cuenta es de ahorros o corriente.");
-  }
+  const numero = String(fd.get("num_cuenta") ?? "").replace(/[^\d]/g, "");
 
-  return withTx(async (c) => {
-    const { rows } = await c.query<{ num_cuenta: string | null; estado: string }>(
-      "SELECT num_cuenta, estado FROM certificacion_bancaria WHERE id = $1 FOR UPDATE", [id]);
-    if (!rows.length) throw new Error("Certificación no encontrada.");
-    const leida = (rows[0].num_cuenta ?? "").replace(/\D/g, "");
-    // Sin lectura no hay con qué comparar: el humano es la única fuente y su
-    // palabra pasa derecho. Antes eso trancaba la solicitud esperando a un OCR
-    // que nunca iba a poder con esa foto.
-    const coincide = !leida || leida.replace(/^0+/, "") === escrita.replace(/^0+/, "");
+  if (!nitCrudo) throw new Error("Falta el NIT del proveedor.");
+  if (!esBancoConocido(banco)) throw new Error("Elige el banco de la lista.");
+  if (tipo !== "ahorros" && tipo !== "corriente") throw new Error("Di si es de ahorros o corriente.");
+  if (numero.length < 5) throw new Error("Escribe el número de cuenta.");
+  // El NIT puede llegar con el dígito de verificación pegado desde el formulario
+  // público. Si se guarda así, la cuenta no cruza con las facturas del mismo
+  // proveedor y el pago se cae del archivo del banco (ver lib/nit.ts).
+  const nit = nitCanonico(nitCrudo);
 
-    if (!coincide && !forzar) {
-      // No se decide por el humano: se le muestran los dos y él resuelve.
-      return { discrepa: true as const, leida: rows[0].num_cuenta ?? "", escrita };
-    }
+  await withTx(async (c) => {
+    const previa = await c.query<{ banco: string | null; tipo_cuenta: string | null; num_cuenta: string | null }>(
+      "SELECT banco, tipo_cuenta, num_cuenta FROM cuentas_bancarias_proveedor WHERE nit = $1", [nit]);
+    const antes = previa.rows[0] ?? null;
 
     await c.query(
-      `UPDATE certificacion_bancaria
-          SET cuenta_verificada = $2, banco_verificado = $5, tipo_verificado = $6,
-              verificada_por = $3, verificada_en = now(), verificacion_nota = $4
-        WHERE id = $1`,
-      [id, escrita, user.email,
-       coincide ? "coincide con lo leído" : `el revisor corrigió lo leído (${leida || "sin lectura"})`,
-       banco, tipo]);
+      `INSERT INTO cuentas_bancarias_proveedor
+         (nit, banco, tipo_cuenta, num_cuenta, fuente, certificacion_id, certificada, actualizado_en)
+       VALUES ($1,$2,$3,$4,'certificacion',$5,TRUE, now())
+       ON CONFLICT (nit) DO UPDATE SET
+         banco = EXCLUDED.banco, tipo_cuenta = EXCLUDED.tipo_cuenta,
+         num_cuenta = EXCLUDED.num_cuenta, fuente = 'certificacion',
+         certificacion_id = EXCLUDED.certificacion_id, certificada = TRUE,
+         actualizado_en = now()`,
+      [nit, banco, tipo, numero, certId]);
+
+    // La certificación de ESTE envío queda marcada con lo que escribió el
+    // humano: es lo que la bandeja muestra como "cuenta confirmada".
+    if (certId) {
+      await c.query(
+        `UPDATE certificacion_bancaria
+            SET cuenta_verificada = $2, banco_verificado = $3, tipo_verificado = $4,
+                verificada_por = $5, verificada_en = now(), aplicada = TRUE
+          WHERE id = $1`, [certId, numero, banco, tipo, user.email]);
+    }
+
     await registrarEvento(c, {
-      cufe: null, tipo: "verifica_cuenta", campo: "cuenta_verificada",
-      valorAnterior: { leida_por_ocr: leida || null },
-      valorNuevo: { verificada: escrita, banco, tipo_cuenta: tipo, coincide, certificacion_id: id },
+      cufe: null, tipo: "guarda_cuenta_banco", campo: "num_cuenta",
+      valorAnterior: antes ? { nit, ...antes } : null,
+      valorNuevo: { nit, banco, tipo_cuenta: tipo, num_cuenta: numero, certificacion_id: certId },
       actor: user.email, actorRol: user.rol, origen: "web",
     });
-    refrescar();
-    return { discrepa: false as const, coincide };
   });
+  refrescar();
+  return { ok: true as const };
 }

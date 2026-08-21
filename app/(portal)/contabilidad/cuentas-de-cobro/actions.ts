@@ -7,7 +7,6 @@ import { exigirCap } from "@/lib/auth";
 import { DOCS_CUENTA_COBRO, DOCS_RECURRENTE, docsFaltantes, type DocGuardado, PLAZO_CUENTA_COBRO_DIAS } from "@/lib/areas";
 import { bloqueoAprobacion, sqlCertificacion, type CertEstado, type CuentaMaestro } from "@/lib/certificaciones";
 import { sqlLecturaValor, type ValorEstado } from "@/lib/valor-documento";
-import { aplicarCuentaCertificada } from "@/lib/cuenta-certificada";
 import { encolarCorreo } from "@/lib/correos";
 import { intentar, type Resultado } from "@/lib/resultado";
 import type { PoolClient } from "pg";
@@ -56,13 +55,13 @@ async function exigirAprobable(c: PoolClient, id: number): Promise<Aprobable> {
     throw new Error("Falta confirmar las retenciones. Ábrelas y confírmalas —aunque sean cero— "
                   + "para que se pague el valor correcto.");
   }
-  return { ...r, certId: r.cert?.id ?? null };
+  return { ...r };
 }
 
 /** Lo que hace falta para aprobar Y para escribirle al proveedor. */
 type Aprobable = {
   razon_social: string; correo: string | null; valor: number | null;
-  retencion_ok: boolean; valor_a_pagar: number | null; certId: number | null;
+  retencion_ok: boolean; valor_a_pagar: number | null;
 };
 
 /** Revisa una cuenta de cobro: aprobar / rechazar / devolver a revisión.
@@ -88,7 +87,11 @@ export async function revisarCuentaCobro(_prev: Resultado | null, fd: FormData):
       const ap = await exigirAprobable(c, id);
       // El recurrente no trae certificación nueva: su cuenta ya está en el
       // maestro desde un envío anterior. No hay nada que aplicar.
-      if (ap.certId != null) await aplicarCuentaCertificada(c, ap.certId, user);
+      // La cuenta YA está en el maestro: entra cuando el revisor la escribe
+      // y le da guardar (lib/certificacion-actions.ts § guardarCuenta), que es
+      // el paso 2 del flujo. Aplicarla otra vez acá sería escribir dos veces lo
+      // mismo por caminos distintos — y ese es el patrón que ya rompió el
+      // candado de aprobación una vez.
       // El correo que le pide la factura. Va en esta misma transacción: si algo
       // falla no queda ni la aprobación ni el correo (y si SES está caído, el
       // correo se reintenta sin perder la aprobación).

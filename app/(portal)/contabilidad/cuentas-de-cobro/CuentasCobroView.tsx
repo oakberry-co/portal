@@ -7,6 +7,8 @@ import { bloqueoAprobacion, type CertEstado, type CuentaMaestro } from "@/lib/ce
 import { type ValorEstado } from "@/lib/valor-documento";
 import { CorreosIntake, DocsIntake, PanelCuenta, type CorreoEnviado, type DocIntake } from "../_intake/PanelCuenta";
 import { PanelMonto } from "../_intake/PanelMonto";
+import { PanelClasificar } from "../_intake/PanelClasificar";
+import { clasificarDocumento } from "../conciliacion/actions";
 import { RetencionesCuentaCobro, type ReglaConcepto } from "./RetencionesCuentaCobro";
 import { useFiltrosIntake } from "../_intake/FiltrosIntake";
 import { ErrorAccion } from "../_intake/ErrorAccion";
@@ -15,7 +17,7 @@ import type { Resultado } from "@/lib/resultado";
 export type CuentaCobro = {
   id: number; razon_social: string; tipo_doc: string | null; num_doc: string;
   contacto: string | null; correo: string | null; telefono: string | null; area: string | null;
-  concepto: string | null; descripcion: string | null; valor: number | null;
+  concepto: string | null; destino: string | null; descripcion: string | null; valor: number | null;
   documentos: DocIntake[];
   estado: string; nota_revision: string | null; revisado_por: string | null; creado_en: string;
   fecha_pago_prog: string | null; cuenta_pago: string | null; pago_id: number | null;
@@ -79,7 +81,9 @@ function Rechazo({ id }: { id: number }) {
   );
 }
 
-export function CuentasCobroView({ items, operar }: { items: CuentaCobro[]; operar: boolean }) {
+export function CuentasCobroView({ items, operar, conceptos, destinos }: {
+  items: CuentaCobro[]; operar: boolean; conceptos: string[]; destinos: string[];
+}) {
   const [tab, setTab] = useState<string>("recibida");
   const [retenDe, setRetenDe] = useState<CuentaCobro | null>(null);
   // Los mismos filtros de Conciliación. Las PESTAÑAS filtran por estado; esto
@@ -151,8 +155,16 @@ export function CuentasCobroView({ items, operar }: { items: CuentaCobro[]; oper
                 <PanelMonto origen="cuenta_cobro" id={c.id} val={c.val} declarado={c.valor}
                             operar={operar} pagada={!!c.pago_id}
                             docUrl={(c.documentos ?? []).find((d) => d.clase === "soporte")?.path} />
-                <PanelCuenta cert={c.cert} cuenta={c.cuenta} bloqueo={c.estado === "recibida" ? bloqueo : null} operar={operar}
+                <PanelCuenta cert={c.cert} cuenta={c.cuenta} nit={c.num_doc} bloqueo={c.estado === "recibida" ? bloqueo : null} operar={operar}
                              docUrl={(c.documentos ?? []).find((d) => d.clase === "certificacion_bancaria")?.path} />
+
+                {/* Paso 3: concepto y destino. El MISMO panel y la MISMA acción
+                    que Conciliación — que además alimenta los maestros. */}
+                {operar && ["recibida", "aprobada", "pagada"].includes(c.estado) && (
+                  <PanelClasificar id={c.id} concepto={c.concepto} destino={c.destino}
+                                   conceptos={conceptos} destinos={destinos}
+                                   accion={async (_p, fd) => clasificarDocumento(fd)} nota={c.area} />
+                )}
 
                 {/* RETENCIONES — mismo modelo que la factura. Sin esto la cuenta
                     de cobro se pagaba BRUTA, y a una persona natural casi siempre

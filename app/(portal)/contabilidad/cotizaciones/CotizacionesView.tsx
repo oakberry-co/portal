@@ -7,6 +7,7 @@ import { bloqueoAprobacion, type CertEstado, type CuentaMaestro } from "@/lib/ce
 import { type ValorEstado } from "@/lib/valor-documento";
 import { CorreosIntake, DocsIntake, PanelCuenta, type CorreoEnviado, type DocIntake } from "../_intake/PanelCuenta";
 import { PanelMonto } from "../_intake/PanelMonto";
+import { PanelClasificar } from "../_intake/PanelClasificar";
 import { useFiltrosIntake } from "../_intake/FiltrosIntake";
 import { ErrorAccion } from "../_intake/ErrorAccion";
 import type { Resultado } from "@/lib/resultado";
@@ -116,14 +117,16 @@ export function CotizacionesView({ cots, candidatos, operar, conceptos, destinos
                 <PanelMonto origen="cotizacion" id={c.id} val={c.val} declarado={c.valor}
                             operar={operar} pagada={!!c.pago_id}
                             docUrl={(c.documentos ?? []).find((d) => d.clase === "soporte")?.path} />
-                <PanelCuenta cert={c.cert} cuenta={c.cuenta} bloqueo={c.estado === "recibida" ? bloqueo : null} operar={operar}
+                <PanelCuenta cert={c.cert} cuenta={c.cuenta} nit={c.nit} bloqueo={c.estado === "recibida" ? bloqueo : null} operar={operar}
                              docUrl={(c.documentos ?? []).find((d) => d.clase === "certificacion_bancaria")?.path} />
 
                 {/* CLASIFICAR: concepto y destino, puestos por un humano contra los
                     maestros. Es lo que abre el paso a Pagos — aprobar ya no basta.
                     Lo que escribió el proveedor queda como referencia arriba. */}
                 {operar && ["recibida", "aprobada", "facturada"].includes(c.estado) && (
-                  <ClasificarCot cot={c} conceptos={conceptos} destinos={destinos} />
+                  <PanelClasificar id={c.id} concepto={c.concepto} destino={c.destino}
+                                   conceptos={conceptos} destinos={destinos}
+                                   accion={clasificarCotizacion} nota={c.area} />
                 )}
 
                 {/* Abonos */}
@@ -236,32 +239,3 @@ function Rechazo({ id }: { id: number }) {
   );
 }
 
-/** Concepto y destino de la cotización. Sin los dos, el adelanto NO entra al
- *  tablero de Pagos (ver la consulta de pagos/page.tsx). */
-function ClasificarCot({ cot, conceptos, destinos }: {
-  cot: Cotizacion; conceptos: string[]; destinos: string[];
-}) {
-  const [res, run, pend] = useActionState<Resultado | null, FormData>(clasificarCotizacion, null);
-  const listo = Boolean(cot.concepto && cot.destino);
-  return (
-    <div className={"cot-clasif" + (listo ? " ok" : "")}>
-      <form action={run}>
-        <input type="hidden" name="id" value={cot.id} />
-        <span className="cot-clasif-tit">
-          {listo ? "✓ Clasificada" : "Clasifica para que pase a Pagos"}
-        </span>
-        <select name="concepto" defaultValue={cot.concepto ?? ""} disabled={pend}>
-          <option value="">Concepto…</option>
-          {conceptos.map((x) => <option key={x} value={x}>{x}</option>)}
-        </select>
-        <select name="destino" defaultValue={cot.destino ?? ""} disabled={pend}>
-          <option value="">Destino…</option>
-          {destinos.map((x) => <option key={x} value={x}>{x}</option>)}
-        </select>
-        <button type="submit" className="cc-act" disabled={pend}>{pend ? "…" : "Guardar"}</button>
-        {cot.area && <i className="muted mini">el proveedor dijo: {cot.area}</i>}
-      </form>
-      {res?.error && <div className="cc-error">{res.error}</div>}
-    </div>
-  );
-}

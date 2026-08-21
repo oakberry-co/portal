@@ -8,9 +8,9 @@ import { DOCS_COTIZACION, DOCS_RECURRENTE, docsFaltantes, type DocGuardado } fro
 import { bloqueoAprobacion, sqlCertificacion, type CertEstado, type CuentaMaestro } from "@/lib/certificaciones";
 import { sqlLecturaValor, type ValorEstado } from "@/lib/valor-documento";
 import { syncAbono } from "@/lib/abonos";
-import { aplicarCuentaCertificada } from "@/lib/cuenta-certificada";
 import { encolarCorreo } from "@/lib/correos";
 import { intentar, type Resultado } from "@/lib/resultado";
+import { asegurarConcepto, asegurarDestino } from "@/lib/maestros";
 import type { PoolClient } from "pg";
 
 async function guard() {
@@ -55,7 +55,7 @@ async function exigirAprobable(c: PoolClient, id: number): Promise<Aprobable> {
     throw new Error("Esta cotización no tiene adelanto (valor y %) — no hay monto que pasar a Pagos. "
                   + "Sin anticipo el trámite es la factura del proveedor.");
   }
-  return { ...r, certId: r.cert!.id,
+  return { ...r,
            adelanto: Math.round(Number(r.valor) * Number(r.adelanto_pct) / 100) };
 }
 
@@ -63,7 +63,7 @@ async function exigirAprobable(c: PoolClient, id: number): Promise<Aprobable> {
 type Aprobable = {
   razon_social: string; correo: string | null; codigo: string | null;
   valor: string | null; adelanto_pct: string | null; plazo_dias: number | null;
-  certId: number; adelanto: number;
+  adelanto: number;
 };
 
 export async function revisarCotizacion(_prev: Resultado | null, fd: FormData): Promise<Resultado> {
@@ -79,7 +79,11 @@ export async function revisarCotizacion(_prev: Resultado | null, fd: FormData): 
       // Igual que en cuentas de cobro: aprobar escribe la cuenta certificada en
       // el maestro, en la misma transacción.
       const ap = await exigirAprobable(c, id);
-      await aplicarCuentaCertificada(c, ap.certId, user);
+      // La cuenta YA está en el maestro: entra cuando el revisor la escribe
+      // y le da guardar (lib/certificacion-actions.ts § guardarCuenta), que es
+      // el paso 2 del flujo. Aplicarla otra vez acá sería escribir dos veces lo
+      // mismo por caminos distintos — y ese es el patrón que ya rompió el
+      // candado de aprobación una vez.
       await encolarCorreo(c, {
         tipo: "aprobacion", origenTipo: "cotizacion", origenId: id,
         para: ap.correo, actor: user.email,
@@ -209,6 +213,11 @@ export async function clasificarCotizacion(_prev: Resultado | null, fd: FormData
             + "Lo que sí se puede es llenar lo que quedó vacío.");
         }
       }
+      // Un concepto o destino nuevo alimenta el maestro, igual que al clasificar
+      // una factura o una cuenta de cobro: si no, el maestro aprende solo por un
+      // lado y las listas de las pantallas se separan.
+      await asegurarConcepto(c, concepto, user.email);
+      await asegurarDestino(c, destino, user.email);
       await c.query(
         `UPDATE cotizaciones SET concepto = $2, destino = $3,
                                  clasificada_por = $4, clasificada_en = now()

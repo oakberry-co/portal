@@ -12,10 +12,11 @@ export const dynamic = "force-dynamic";
 // documentos, el veredicto del lector de certificaciones y la cuenta que hoy
 // tiene el proveedor en el maestro. Se cargan acá para que la tarjeta explique
 // el bloqueo en vez de mostrar un botón que falla al hacer clic.
-async function cargar(): Promise<CuentaCobro[]> {
-  const r = await getPool().query<CuentaCobro>(
+async function cargar(): Promise<{ items: CuentaCobro[]; conceptos: string[]; destinos: string[] }> {
+  const pool = getPool();
+  const r = await pool.query<CuentaCobro>(
     `SELECT cc.id, cc.razon_social, cc.tipo_doc, cc.num_doc, cc.contacto, cc.correo,
-            cc.telefono, cc.area, cc.concepto, cc.descripcion, cc.valor::float AS valor,
+            cc.telefono, cc.area, cc.concepto, cc.destino, cc.descripcion, cc.valor::float AS valor,
             cc.documentos, cc.estado, cc.nota_revision, cc.revisado_por,
             cc.creado_en::text AS creado_en, cc.fecha_pago_prog::text AS fecha_pago_prog,
             cc.cuenta_pago, cc.pago_id, cc.recurrente,
@@ -52,7 +53,11 @@ async function cargar(): Promise<CuentaCobro[]> {
                             ORDER BY id) AS lista
            FROM correo_saliente WHERE origen_tipo = 'cuenta_cobro' AND origen_id = cc.id) cor ON TRUE
       ORDER BY cc.creado_en DESC LIMIT 500`);
-  return r.rows;
+  // LOS MISMOS maestros que Conciliación y cotizaciones: un gasto no puede
+  // tener concepto o destino distinto según por dónde entró al portal.
+  const co = await pool.query<{ nombre: string }>("SELECT nombre FROM maestro_conceptos WHERE activo ORDER BY nombre");
+  const de = await pool.query<{ nombre: string }>("SELECT nombre FROM maestro_destinos WHERE activo ORDER BY nombre");
+  return { items: r.rows, conceptos: co.rows.map((x: { nombre: string }) => x.nombre), destinos: de.rows.map((x: { nombre: string }) => x.nombre) };
 }
 
 export default async function CuentasCobroInboxPage() {
@@ -61,7 +66,7 @@ export default async function CuentasCobroInboxPage() {
   // VER no es OPERAR: el contador entra a revisar y a poner retenciones,
   // pero aprobar —que es lo que manda la plata al banco— no es suyo.
   const operar = puede(rol, "intake");
-  let data: CuentaCobro[];
+  let data: { items: CuentaCobro[]; conceptos: string[]; destinos: string[] };
   try {
     data = await cargar();
   } catch (e) {
@@ -74,7 +79,8 @@ export default async function CuentasCobroInboxPage() {
         Envíos del formulario público <b>manelfoods.co/cuentas-de-cobro</b>. Revisa los documentos y aprueba:
         al aprobar pasa a <b>Pagos › Validación semana en curso</b> (bloque <i>sin factura DIAN</i>), a 30 días de su llegada.
       </p>
-      <CuentasCobroView items={data} operar={operar} />
+      <CuentasCobroView items={data.items} operar={operar}
+                        conceptos={data.conceptos} destinos={data.destinos} />
     </div>
   );
 }

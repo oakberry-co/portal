@@ -42,25 +42,7 @@ export type CertEstado = {
   verificada_por: string | null;
 };
 
-/** Dos números de cuenta, ¿son el mismo? Ceros a la izquierda y separadores no
- *  cuentan: el banco imprime '05314486074' y la gente escribe '5314486074'. */
-export function mismaCuenta(a: string | null | undefined, b: string | null | undefined): boolean {
-  const x = (a ?? "").replace(/\D/g, "").replace(/^0+/, "");
-  const y = (b ?? "").replace(/\D/g, "").replace(/^0+/, "");
-  return x.length > 0 && x === y;
-}
 
-/** ¿Una es la otra con el prefijo del banco delante? Davivienda certifica
- *  '0570006270388827' y en el maestro está '6270388827': la MISMA cuenta en el
- *  formato largo. No se puede dar por buena sola —el prefijo también podría
- *  esconder otra cuenta— pero sí hay que decirlo con esas palabras, porque
- *  "cambió la cuenta •••8827 por •••8827" se lee como que el portal delira. */
-export function unaEsLaOtraConPrefijo(a: string | null | undefined, b: string | null | undefined): boolean {
-  const x = (a ?? "").replace(/\D/g, "");
-  const y = (b ?? "").replace(/\D/g, "");
-  if (x.length < 8 || y.length < 8 || x === y) return false;
-  return x.endsWith(y) || y.endsWith(x);
-}
 
 /** La cuenta que hoy tiene el proveedor en el maestro (la que iría al banco). */
 export type CuentaMaestro = {
@@ -88,18 +70,7 @@ export function cola(num: string | null | undefined): string {
   return n ? "•••" + n.slice(-4) : "—";
 }
 
-/** ¿Por qué NO se puede aprobar este envío? `null` = se puede.
- *
- *  Devuelve el texto que ve el humano: tiene que decirle qué hacer, no solo que
- *  no puede (Regla 18 — un loop humano que no cierra quema la confianza).
- *
- *  Ojo con el orden: lo que habilita el pago es la CERTIFICACIÓN, no lo que haya
- *  hoy en el maestro. La cuenta se escribe en el maestro AL APROBAR (ver
- *  lib/cuenta-certificada.ts), así que exigirla antes sería pedirle al revisor
- *  el resultado de la acción que está a punto de hacer. */
-/** Todo lo que hace falta para decidir si un envío se puede aprobar. Objeto y no
- *  lista de parámetros para que agregar un candado no obligue a revisar el orden
- *  de los argumentos en los cuatro sitios que preguntan. */
+/** Lo que hace falta para decidir si un envío se puede aprobar. */
 export type Aprobacion = {
   docsFaltan: string[];
   cert: CertEstado | null;
@@ -107,74 +78,29 @@ export type Aprobacion = {
   recurrente?: boolean;
 };
 
+/** ¿Por qué NO se puede aprobar este envío? `null` = se puede.
+ *
+ *  DOS COSAS, no más (21-ago-2026). Antes eran seis peldaños —el estado del OCR,
+ *  el choque contra lo leído, el cambio de cuenta y sus dos salidas— y aprobar
+ *  una cuenta de cobro se había vuelto un trámite de cinco pasos. La cuenta se
+ *  ESCRIBE, no se valida: quien revisa tiene el documento delante y es mejor
+ *  fuente que cualquier lector.
+ *
+ *  Lo que queda no es validación, es "el campo está lleno":
+ *    1. los documentos que ese carril pide, subidos de verdad a Drive;
+ *    2. una cuenta en el maestro — sin ella el archivo del banco no tiene a
+ *       dónde mandar la plata y la fila desaparece sin un solo error.
+ *
+ *  El texto que devuelve es el que lee un humano: tiene que decirle qué hacer,
+ *  no solo que no puede (Regla 18). */
 export function bloqueoAprobacion(a: Aprobacion): string | null {
-  const { docsFaltan, cert, cuenta, recurrente = false } = a;
-  // SENTINELA. Si la consulta que trae `cert` no seleccionó `cuenta_verificada`,
-  // el campo llega `undefined` y este candado lo lee como "nadie la verificó":
-  // bloquea SIEMPRE, sin decir por qué. Pasó — el guard de aprobación tenía su
-  // propia copia del sub-select y se quedó atrás. `to_jsonb` incluye toda
-  // columna seleccionada (como null si está vacía), así que la AUSENCIA de la
-  // llave sólo puede ser un bug de código. Se grita, no se asume.
-  if (cert && !("cuenta_verificada" in cert)) {
-    throw new Error("Bug: la consulta de la certificación no trae 'cuenta_verificada'. "
-                  + "Ármala con sqlCertificacion() en vez de copiar el LEFT JOIN LATERAL.");
-  }
+  const { docsFaltan, cuenta } = a;
   if (docsFaltan.length) {
     return `Faltan documentos: ${docsFaltan.join(", ")}. Pídeselos al proveedor antes de aprobar.`;
   }
-  // EL MONTO, Y VA TEMPRANO. Si el valor está cien veces inflado, mandar al
-  // revisor a verificar cuentas bancarias primero es hacerle perder el trabajo:
-  // esa solicitud no se va a aprobar hasta que la cifra se arregle.
-  // PROVEEDOR RECURRENTE: no mandó certificación porque su cuenta ya vive en el
-  // maestro, certificada en un envío anterior y confirmada por un humano. Lo que
-  // se exige acá es que ESA cuenta siga estando: si alguien la borró, aprobar
-  // dejaría una cuenta de cobro lista para pagar y sin a dónde.
-  //
-  // No se abre un hueco: por este camino el proveedor NO puede cambiar la
-  // cuenta. Si quiere cambiarla tiene que entrar como nuevo, con certificación
-  // fresca, y esa sí pasa por el candado de cambio de cuenta.
-  if (recurrente && !cert) {
-    if (!(cuenta?.num_cuenta ?? "").trim()) {
-      return "Entró como proveedor recurrente, pero este NIT ya no tiene cuenta en el maestro. "
-           + "Pídele la certificación bancaria (que entre como proveedor nuevo) antes de aprobar.";
-    }
-    return null;
-  }
-  if (!cert) {
-    return "No hay certificación bancaria registrada para este envío: sin ella no sabemos a qué cuenta pagar. "
-         + "Pídele al proveedor que la vuelva a enviar por el portal.";
-  }
-  // EL ÚNICO REQUISITO ES EL HUMANO. Lo que el lector haya podido o no leer ya
-  // NO tranca nada (21-ago-2026): antes, una foto borrosa o un PDF con clave
-  // dejaban la solicitud esperando a una máquina que no iba a poder, mientras
-  // una persona tenía el documento abierto al lado. El lector propone; quien
-  // decide abre el papel y escribe banco, tipo y número.
-  if (!(cert.cuenta_verificada ?? "").trim()) {
-    return "Falta el paso final: abre la certificación y escribe los datos de la cuenta "
-         + "(banco, tipo y número). A esa cuenta se le manda plata.";
-  }
-  // El caso peligroso: el NIT ya tenía otra cuenta. No se aprueba hasta que
-  // alguien diga si el cambio es real (el intake es público). Se compara contra
-  // la cuenta VERIFICADA —la que un humano leyó—, no contra la del OCR: es la
-  // que de verdad va a viajar al banco.
-  const cuentaFinal = (cert.cuenta_verificada ?? "").trim();
-  if (cert.cuenta_anterior && !cert.aplicada && !mismaCuenta(cert.cuenta_anterior, cuentaFinal)) {
-    // Mismo final = casi seguro la misma cuenta con el prefijo del banco. Se
-    // sigue exigiendo confirmación humana, pero se muestran COMPLETAS: el
-    // revisor tiene el documento al lado y necesita comparar, no adivinar entre
-    // dos colas idénticas ("cambió •••8827 por •••8827" se lee como un error).
-    if (unaEsLaOtraConPrefijo(cert.cuenta_anterior, cuentaFinal)) {
-      return `El certificado trae ${cuentaFinal} y en el maestro está ${cert.cuenta_anterior}: `
-           + "terminan igual, o sea que casi seguro es la MISMA cuenta con el prefijo del banco delante. "
-           + "Confirma cuál es la que va al banco y sigue.";
-    }
-    return `Cambió la cuenta: este NIT ya tenía la cuenta ${cola(cert.cuenta_anterior)} y la certificación trae `
-         + `${cola(cuentaFinal)}. Confirma el cambio antes de aprobar.`;
-  }
-  // Estado raro (la aplicó alguien y el maestro quedó sin número): no se calla.
-  if (cert.aplicada && !(cuenta?.num_cuenta ?? "").trim()) {
-    return "La cuenta certificada figura como aplicada pero el proveedor no la tiene en el maestro. "
-         + "Revísalo en Maestros › Cuentas bancarias antes de aprobar.";
+  if (!(cuenta?.num_cuenta ?? "").trim()) {
+    return "Falta la cuenta bancaria: escribe banco, tipo y número leyéndolos de la certificación. "
+         + "Sin cuenta, el pago no tiene a dónde ir.";
   }
   return null;
 }
