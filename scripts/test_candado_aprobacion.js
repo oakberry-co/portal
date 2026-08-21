@@ -36,7 +36,8 @@ try {
                { cwd: RAIZ, stdio: "pipe" });
 } catch { /* solo se queja del alias de un `import type`; emite igual */ }
 const { bloqueoAprobacion } = require(path.join(tmp, "certificaciones.js"));
-const { docsFaltantes, CLASES_DOC } = require(path.join(tmp, "areas.js"));
+const { docsFaltantes, CLASES_DOC, DOCS_CUENTA_COBRO, DOCS_COTIZACION,
+        DOCS_RECURRENTE } = require(path.join(tmp, "areas.js"));
 
 const doc = (clase) => ({ clase, estado: "subido", path: "https://drive/x" });
 const LOS_4 = CLASES_DOC.map((c) => doc(c.clase));
@@ -75,24 +76,57 @@ check(bloqueoAprobacion(docsFaltantes(LOS_4), { ...CERT_OK, cuenta_anterior: "01
       "cero a la izquierda NO es un cambio de cuenta");
 
 console.log("\n3) Proveedor RECURRENTE (ya tenía cuenta certificada)");
-check(docsFaltantes(SOLO_SOPORTE, true).length === 0,
+check(docsFaltantes(SOLO_SOPORTE, DOCS_RECURRENTE).length === 0,
       "solo se le exige el soporte");
-check(docsFaltantes(SOLO_SOPORTE, false).length === 3,
+check(docsFaltantes(SOLO_SOPORTE, DOCS_CUENTA_COBRO).length === 3,
       "...pero a un proveedor nuevo se le siguen exigiendo los 4",
-      docsFaltantes(SOLO_SOPORTE, false).join(", "));
-check(bloqueoAprobacion(docsFaltantes(SOLO_SOPORTE, true), null, EN_MAESTRO, true) === null,
+      docsFaltantes(SOLO_SOPORTE, DOCS_CUENTA_COBRO).join(", "));
+check(bloqueoAprobacion(docsFaltantes(SOLO_SOPORTE, DOCS_RECURRENTE), null, EN_MAESTRO, true) === null,
       "con su cuenta en el maestro -> APRUEBA sin certificación nueva");
 
 console.log("\n4) Que 'recurrente' no sea una puerta trasera");
-check(bloqueoAprobacion(docsFaltantes(SOLO_SOPORTE, true), null, null, true) !== null,
+check(bloqueoAprobacion(docsFaltantes(SOLO_SOPORTE, DOCS_RECURRENTE), null, null, true) !== null,
       "recurrente SIN cuenta en el maestro -> BLOQUEA (no hay a dónde pagarle)");
-check(bloqueoAprobacion(docsFaltantes(SOLO_SOPORTE, true), null, { ...EN_MAESTRO, num_cuenta: "" }, true) !== null,
+check(bloqueoAprobacion(docsFaltantes(SOLO_SOPORTE, DOCS_RECURRENTE), null, { ...EN_MAESTRO, num_cuenta: "" }, true) !== null,
       "recurrente con la cuenta vacía en el maestro -> BLOQUEA");
-check(bloqueoAprobacion(docsFaltantes([], true), null, EN_MAESTRO, true) !== null,
+check(bloqueoAprobacion(docsFaltantes([], DOCS_RECURRENTE), null, EN_MAESTRO, true) !== null,
       "recurrente SIN soporte -> BLOQUEA (el soporte es lo único suyo de este cobro)");
 // Si además manda certificación, NO se salta el candado del cambio de cuenta.
-check(bloqueoAprobacion(docsFaltantes(LOS_4, true), CAMBIO, EN_MAESTRO, true) !== null,
+check(bloqueoAprobacion(docsFaltantes(LOS_4, DOCS_RECURRENTE), CAMBIO, EN_MAESTRO, true) !== null,
       "recurrente que SÍ manda certificación con otra cuenta -> sigue pasando por el candado del cambio");
 
-console.log(`\n${fallos.length ? "🔴 " + fallos.length + " fallo(s): " + fallos.join(", ") : "🟢 todo OK"}`);
+// ── CADA CARRIL PIDE LO SUYO (21-ago-2026) ─────────────────────────────────
+//
+// La cotización dejó de pedir la cédula. El riesgo de un cambio así no está en
+// la pantalla: está en que la lista de la PANTALLA y la de la BANDEJA se
+// separen. Si solo se quitara del formulario, la bandeja seguiría diciendo
+// "falta la cédula" y esa cotización no se podría aprobar nunca — el proveedor
+// mandó lo que le pidieron y aun así queda trabado (Regla 18).
+console.log("\n5) Cada carril exige su propio set de documentos");
+const SIN_CEDULA = CLASES_DOC.filter((c) => c.clase !== "cedula").map((c) => doc(c.clase));
+const SOLO_EL_SOPORTE = [doc("soporte")];
+
+check(docsFaltantes(SIN_CEDULA, DOCS_COTIZACION).length === 0,
+      "una cotización SIN cédula está completa");
+check(docsFaltantes(SIN_CEDULA, DOCS_CUENTA_COBRO).length === 1,
+      "pero a una cuenta de cobro sí le falta (la cobra una persona natural)",
+      docsFaltantes(SIN_CEDULA, DOCS_CUENTA_COBRO).join(", "));
+check(!DOCS_COTIZACION.some((c) => c.clase === "cedula"),
+      "la cédula NO está en la lista de la cotización");
+check(DOCS_COTIZACION.some((c) => c.clase === "certificacion_bancaria"),
+      "pero la certificación bancaria sigue: de ahí sale a qué cuenta se paga");
+check(docsFaltantes(SOLO_EL_SOPORTE, DOCS_RECURRENTE).length === 0,
+      "al recurrente le basta el soporte");
+check(docsFaltantes(SOLO_EL_SOPORTE, DOCS_COTIZACION).length === 2,
+      "y a un proveedor nuevo no", docsFaltantes(SOLO_EL_SOPORTE, DOCS_COTIZACION).join(", "));
+
+// Una cotización de recurrente se aprueba sin certificación, PERO solo si su
+// cuenta sigue en el maestro: si alguien la borró, aprobar dejaría un anticipo
+// listo para pagar y sin a dónde.
+check(bloqueoAprobacion(docsFaltantes(SOLO_EL_SOPORTE, DOCS_RECURRENTE), null, EN_MAESTRO, true) === null,
+      "cotización recurrente + cuenta en el maestro: se puede aprobar");
+check(bloqueoAprobacion(docsFaltantes(SOLO_EL_SOPORTE, DOCS_RECURRENTE), null, null, true) !== null,
+      "recurrente SIN cuenta en el maestro: NO se aprueba");
+
+console.log(fallos.length ? `\n❌ ${fallos.length} fallo(s): ${fallos.join(", ")}\n` : "\n🟢 todo OK\n");
 process.exit(fallos.length ? 1 : 0);

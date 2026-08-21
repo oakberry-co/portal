@@ -1,10 +1,10 @@
 "use client";
 
 import { useActionState, useRef, useState } from "react";
-import { enviarCotizacion, type Resultado } from "./actions";
+import { enviarCotizacion, reconocerProveedor, type Reconocido, type Resultado } from "./actions";
 import { CasillasDocumentos } from "../CasillasDocumentos";
 import { RevisarAntesDeEnviar, resumenDe, type FilaResumen } from "../RevisarAntesDeEnviar";
-import { AREAS, PLAZOS_NEGOCIADOS } from "@/lib/areas";
+import { AREAS, PLAZOS_NEGOCIADOS, DOCS_COTIZACION, DOCS_RECURRENTE } from "@/lib/areas";
 
 const CAMPOS = [
   { name: "razon_social", etiqueta: "Razón social" },
@@ -21,6 +21,12 @@ const CAMPOS = [
 
 export function FormCotizacion() {
   const [estado, action, pending] = useActionState<Resultado | null, FormData>(enviarCotizacion, null);
+  // Primero: ¿nos conoces? Quien ya nos cotizó (o cobró) no repite documentos.
+  const [modo, setModo] = useState<"nuevo" | "recurrente" | null>(null);
+  const [recon, setRecon] = useState<Reconocido | null>(null);
+  const [buscando, setBuscando] = useState(false);
+  const [docBusca, setDocBusca] = useState("");
+  const esRecurrente = modo === "recurrente" && !!recon?.ok;
   // Dos pasos: llenar -> revisar -> enviar. El formulario NUNCA se desmonta (se
   // oculta), porque desmontarlo perdería los archivos ya elegidos.
   const [paso, setPaso] = useState<"datos" | "revisar">("datos");
@@ -32,7 +38,9 @@ export function FormCotizacion() {
   function revisar() {
     const f = formRef.current;
     if (!f || !f.reportValidity()) return;   // validación nativa, antes de ocultar nada
-    setResumen(resumenDe(new FormData(f), CAMPOS));
+    setResumen(resumenDe(new FormData(f), esRecurrente
+      ? CAMPOS.filter((c) => !["razon_social", "contacto", "telefono"].includes(c.name))
+      : CAMPOS, esRecurrente ? DOCS_RECURRENTE : DOCS_COTIZACION));
     setPaso("revisar");
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
@@ -51,9 +59,79 @@ export function FormCotizacion() {
     );
   }
 
+  // Paso 0: elegir camino. Va ANTES del formulario y no dentro, porque en este
+  // punto todavía no hay archivos elegidos que se puedan perder al desmontar.
+  if (modo === null) {
+    return (
+      <div className="pub-elige">
+        <p className="pub-elige-tit">¿Ya habías trabajado con Oakberry?</p>
+        <button type="button" className="pub-opt" onClick={() => setModo("recurrente")}>
+          <b>Sí, ya les he cotizado o cobrado</b>
+          <i>Te pedimos solo la cotización y el valor. El anticipo va a la cuenta de siempre.</i>
+        </button>
+        <button type="button" className="pub-opt ghost" onClick={() => setModo("nuevo")}>
+          <b>Es mi primera vez</b>
+          <i>Te pedimos tus datos y tres documentos, una sola vez.</i>
+        </button>
+      </div>
+    );
+  }
+
+  // Paso 0b: reconocerte por tu NIT. Si no aparece, sigue como nuevo — un camino
+  // sin salida en un formulario público es un proveedor que no cotiza.
+  if (modo === "recurrente" && !recon?.ok) {
+    return (
+      <div className="pub-elige">
+        <p className="pub-elige-tit">Tu NIT</p>
+        <p className="pub-hint">El mismo con el que nos cotizaste o nos cobraste antes.</p>
+        <input className="pub-doc-busca" inputMode="numeric" autoFocus
+               placeholder="900123456" value={docBusca}
+               onChange={(e) => { setDocBusca(e.target.value); setRecon(null); }} />
+        <button type="button" className="pub-btn" disabled={buscando || docBusca.replace(/\D/g, "").length < 5}
+                onClick={async () => {
+                  setBuscando(true);
+                  setRecon(await reconocerProveedor(docBusca));
+                  setBuscando(false);
+                }}>
+          {buscando ? "Buscando…" : "Continuar"}
+        </button>
+        {recon && !recon.ok && (
+          <div className="pub-err">
+            No encontramos ese NIT entre nuestros proveedores. Puede ser que nos hayas cotizado con
+            otro número, o que sea tu primera vez.
+          </div>
+        )}
+        <button type="button" className="pub-link" onClick={() => { setModo("nuevo"); setRecon(null); }}>
+          Mejor lleno todo como proveedor nuevo →
+        </button>
+      </div>
+    );
+  }
+
   return (
     <form action={action} className="pub-form" ref={formRef}>
       <div className={"pub-campos" + (paso === "datos" ? "" : " pub-oculto")}>
+      {esRecurrente ? (
+        <>
+          <input type="hidden" name="recurrente" value="1" />
+          <input type="hidden" name="nit" value={docBusca} />
+          <div className="pub-reconocido">
+            ✓ <b>Te reconocimos, {recon!.nombre}.</b>
+            {recon!.cuenta && <> El anticipo va a tu cuenta {recon!.banco ? recon!.banco + " " : ""}<b>{recon!.cuenta}</b>, la de siempre.</>}
+            <br />
+            <span>No tienes que subir RUT ni certificación otra vez.{" "}
+              <button type="button" className="pub-link inline"
+                      onClick={() => { setModo("nuevo"); setRecon(null); }}>
+                ¿Cambiaste de cuenta? Entra como nuevo
+              </button>
+            </span>
+          </div>
+          <label className="pub-full">Correo electrónico *
+            <input name="correo" type="email" required placeholder="correo@dominio.com" />
+          </label>
+        </>
+      ) : (
+        <>
       <div className="pub-sec">Tus datos</div>
       <label className="pub-full">Razón social / Nombre *
         <input name="razon_social" required placeholder="Ej. Servicios XYZ S.A.S." />
@@ -67,6 +145,8 @@ export function FormCotizacion() {
         <label>Nombre de contacto *<input name="contacto" required placeholder="Quién responde" /></label>
         <label>Correo electrónico *<input name="correo" type="email" required placeholder="correo@dominio.com" /></label>
       </div>
+        </>
+      )}
 
       <div className="pub-sec">La cotización</div>
       <div className="pub-row">
@@ -107,13 +187,27 @@ export function FormCotizacion() {
         directamente la factura a <b>compras@manelfoods.com</b>.
       </p>
 
-      <div className="pub-sec">Documentos</div>
+      <div className="pub-sec">{esRecurrente ? "Tu cotización" : "Documentos"}</div>
       <p className="pub-hint">
-        Toca cada uno para adjuntarlo. PDF o foto.
-        <br /><b>Súbelos todos sin contraseña</b> — si tu banco te los entrega con clave,
-        ábrelos y vuelve a guardarlos, o mándanos una foto.
+        {esRecurrente ? (
+          <>Adjunta la cotización de este servicio. <b>En PDF o Word</b>, sin contraseña.</>
+        ) : (
+          <>
+            Toca cada uno para adjuntarlo. <b>Tu cuenta la tomamos de la certificación
+            bancaria</b>, así que no tienes que escribirla. La certificación y la cotización
+            van en <b>PDF o Word</b>; el RUT puede ser foto.
+            <br /><b>Ninguno con contraseña</b> — si tu banco te lo entrega con clave, ábrelo
+            y vuelve a guardarlo sin candado.
+          </>
+        )}
       </p>
-      <CasillasDocumentos documento={doc} />
+      {/* La CÉDULA no se pide acá (21-ago-2026): este formulario pide NIT, no
+          tipo de documento, porque quien cotiza es una empresa. La lista de
+          obligatorios vive en lib/areas.ts y la usan también la bandeja y la
+          página de "completar" — si solo se quitara de la pantalla, la bandeja
+          seguiría diciendo "falta la cédula" y nadie podría aprobar. */}
+      <CasillasDocumentos documento={esRecurrente ? docBusca : doc}
+                          clases={esRecurrente ? DOCS_RECURRENTE : DOCS_COTIZACION} />
 
       </div>
 

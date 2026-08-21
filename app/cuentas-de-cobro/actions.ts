@@ -9,6 +9,7 @@ import { AREAS, CLASES_DOC, PLAZO_CUENTA_COBRO_DIAS } from "@/lib/areas";
 import { revisarArchivos } from "@/lib/documentos";
 import { getPool } from "@/lib/db";
 import { nitCanonico } from "@/lib/nit";
+import { reconocer, datosDe } from "@/lib/proveedor-conocido";
 
 export type Resultado = { ok: boolean; error?: string; aviso?: string };
 
@@ -30,38 +31,13 @@ export type Resultado = { ok: boolean; error?: string; aviso?: string };
  *  para que la persona confirme que es ella; inútil para cualquier otra cosa.
  *  (Cualquiera puede probar números de documento acá — pero acertar uno no da
  *  acceso a nada ni desvía un peso: el pago sigue yendo a la cuenta de siempre.) */
-export type Reconocido = { ok: boolean; nombre?: string; cuenta?: string; banco?: string };
+export type { Reconocido } from "@/lib/proveedor-conocido";
 
-export async function reconocerProveedor(numDoc: string): Promise<Reconocido> {
-  const nit = String(numDoc ?? "").replace(/[^\dkK-]/g, "").trim();
-  if (nit.length < 5) return { ok: false };
-  try {
-    const r = await getPool().query<{ nombre: string | null; num_cuenta: string; banco: string | null }>(
-      `SELECT coalesce(mp.nombre, cb.titular_nombre, ult.razon_social) AS nombre,
-              cb.num_cuenta, cb.banco
-         FROM cuentas_bancarias_proveedor cb
-         LEFT JOIN maestro_proveedores mp ON mp.nit = cb.nit
-         LEFT JOIN LATERAL (
-           SELECT razon_social FROM cuentas_cobro
-            WHERE num_doc = cb.nit ORDER BY id DESC LIMIT 1) ult ON TRUE
-        WHERE cb.nit = $1 AND coalesce(cb.num_cuenta,'') <> ''
-        LIMIT 1`, [nit]);
-    const p = r.rows[0];
-    if (!p) return { ok: false };
-    const n = (p.num_cuenta ?? "").replace(/\D/g, "");
-    return { ok: true, nombre: abreviar(p.nombre), banco: p.banco ?? undefined,
-             cuenta: n ? "••••" + n.slice(-4) : undefined };
-  } catch {
-    return { ok: false };
-  }
-}
-
-/** "JAIME TORRES CHAUTA" -> "JAIME T. C." — reconocible por quien es, poco útil
- *  para quien no. */
-function abreviar(nombre: string | null): string {
-  const partes = (nombre ?? "").trim().split(/\s+/).filter(Boolean);
-  if (!partes.length) return "";
-  return [partes[0], ...partes.slice(1).map((x) => x[0].toUpperCase() + ".")].join(" ");
+/** Envoltura de servidor: el formulario (cliente) solo puede llamar acciones.
+ *  La consulta vive en lib/proveedor-conocido.ts, compartida con cotizaciones —
+ *  dos copias de la misma consulta es como se rompió el candado de aprobación. */
+export async function reconocerProveedor(numDoc: string) {
+  return reconocer(numDoc);
 }
 
 export async function enviarCuentaCobro(_prev: Resultado | null, formData: FormData): Promise<Resultado> {
@@ -112,7 +88,7 @@ export async function enviarCuentaCobro(_prev: Resultado | null, formData: FormD
   // recurrente=1 no significa nada — si el NIT no tiene cuenta en el maestro,
   // este envío entraría sin documentos de identidad y sin a dónde pagarle.
   if (recurrente) {
-    const r = await reconocerProveedorInterno(numDoc);
+    const r = await datosDe(numDoc);
     if (!r) {
       return { ok: false, error: "No encontramos ese número de documento entre nuestros proveedores. "
         + "Envíalo como proveedor nuevo, adjuntando tus documentos." };
@@ -198,24 +174,3 @@ export async function enviarCuentaCobro(_prev: Resultado | null, formData: FormD
 /** Como reconocerProveedor pero para uso interno del servidor: devuelve los datos
  *  completos (sin enmascarar) que hereda el envío recurrente. Nunca sale al
  *  navegador. */
-async function reconocerProveedorInterno(numDoc: string): Promise<
-  { razon_social: string; contacto: string | null; telefono: string | null; tipo_doc: string | null } | null> {
-  const nit = String(numDoc ?? "").replace(/[^\dkK-]/g, "").trim();
-  if (nit.length < 5) return null;
-  const r = await getPool().query<{
-    razon_social: string | null; contacto: string | null; telefono: string | null; tipo_doc: string | null;
-  }>(
-    `SELECT coalesce(ult.razon_social, mp.nombre, cb.titular_nombre) AS razon_social,
-            ult.contacto, ult.telefono, ult.tipo_doc
-       FROM cuentas_bancarias_proveedor cb
-       LEFT JOIN maestro_proveedores mp ON mp.nit = cb.nit
-       LEFT JOIN LATERAL (
-         SELECT razon_social, contacto, telefono, tipo_doc FROM cuentas_cobro
-          WHERE num_doc = cb.nit ORDER BY id DESC LIMIT 1) ult ON TRUE
-      WHERE cb.nit = $1 AND coalesce(cb.num_cuenta,'') <> ''
-      LIMIT 1`, [nit]);
-  const p = r.rows[0];
-  // Sin nombre no se puede registrar el envío: mejor que entre como nuevo.
-  if (!p || !(p.razon_social ?? "").trim()) return null;
-  return { razon_social: p.razon_social!, contacto: p.contacto, telefono: p.telefono, tipo_doc: p.tipo_doc };
-}

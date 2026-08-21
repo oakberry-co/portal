@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { withTx } from "@/lib/db";
 import { registrarEvento } from "@/lib/eventos";
 import { exigirCap } from "@/lib/auth";
-import { docsFaltantes, type DocGuardado } from "@/lib/areas";
+import { DOCS_COTIZACION, DOCS_RECURRENTE, docsFaltantes, type DocGuardado } from "@/lib/areas";
 import { bloqueoAprobacion, sqlCertificacion, type CertEstado, type CuentaMaestro } from "@/lib/certificaciones";
 import { syncAbono } from "@/lib/abonos";
 import { aplicarCuentaCertificada } from "@/lib/cuenta-certificada";
@@ -32,8 +32,9 @@ async function exigirAprobable(c: PoolClient, id: number): Promise<Aprobable> {
   const { rows } = await c.query<Aprobable & {
     documentos: DocGuardado[]; cert: CertEstado | null; cuenta: CuentaMaestro;
     valor: string | null; adelanto_pct: string | null; requiere_adelanto: boolean;
+    recurrente: boolean;
   }>(
-    `SELECT cot.documentos, cot.valor, cot.adelanto_pct, cot.requiere_adelanto,
+    `SELECT cot.documentos, cot.valor, cot.adelanto_pct, cot.requiere_adelanto, cot.recurrente,
             cot.razon_social, cot.correo, cot.codigo, cot.plazo_dias,
             to_jsonb(cert) AS cert, to_jsonb(cb) AS cuenta
        FROM cotizaciones cot
@@ -44,7 +45,7 @@ async function exigirAprobable(c: PoolClient, id: number): Promise<Aprobable> {
       WHERE cot.id = $1`, [id]);
   const r = rows[0];
   if (!r) throw new Error("Cotización no encontrada.");
-  const bloqueo = bloqueoAprobacion(docsFaltantes(r.documentos), r.cert, r.cuenta);
+  const bloqueo = bloqueoAprobacion(docsFaltantes(r.documentos, r.recurrente ? DOCS_RECURRENTE : DOCS_COTIZACION), r.cert, r.cuenta, r.recurrente);
   if (bloqueo) throw new Error(bloqueo);
   if (!r.requiere_adelanto || !Number(r.adelanto_pct ?? 0) || !Number(r.valor ?? 0)) {
     throw new Error("Esta cotización no tiene adelanto (valor y %) — no hay monto que pasar a Pagos. "

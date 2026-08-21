@@ -4,19 +4,41 @@
 // VM) y registra en `cotizaciones` (estado 'recibida') con un código COT-####.
 // Luego se le hacen abonos y se cruza con la factura final para no pagar doble.
 import { subirDocumentos, avisoDocs, archivosDelForm, registrarCertificacion, etiquetaEnvio } from "@/lib/intake";
-import { AREAS, CLASES_DOC } from "@/lib/areas";
+import { AREAS, CLASES_DOC, DOCS_COTIZACION } from "@/lib/areas";
 import { revisarArchivos } from "@/lib/documentos";
 import { getPool } from "@/lib/db";
 import { nitCanonico } from "@/lib/nit";
+import { reconocer, datosDe } from "@/lib/proveedor-conocido";
 
 export type Resultado = { ok: boolean; error?: string; codigo?: string; aviso?: string };
+export type { Reconocido } from "@/lib/proveedor-conocido";
+
+/** Envoltura de servidor: el formulario (cliente) solo puede llamar acciones.
+ *  La consulta vive en lib/proveedor-conocido.ts, compartida con cuentas de
+ *  cobro — dos copias de la misma consulta es como se rompió el candado de
+ *  aprobación el 19-ago. */
+export async function reconocerProveedor(numDoc: string) {
+  return reconocer(numDoc);
+}
 
 export async function enviarCotizacion(_prev: Resultado | null, formData: FormData): Promise<Resultado> {
   const s = (k: string) => String(formData.get(k) ?? "").trim();
 
   // Todas obligatorias, validadas también en el servidor: el `required` del
   // HTML se salta desde la consola (ver el comentario en cuentas-de-cobro).
-  const OBLIGATORIOS: [string, string][] = [
+  // PROVEEDOR RECURRENTE: ya nos cotizó o nos cobró antes, su cuenta está
+  // certificada en el maestro y confirmada por un humano. No repite razón
+  // social, contacto ni teléfono — eso lo hereda del último envío.
+  const recurrente = s("recurrente") === "1";
+  const OBLIGATORIOS: [string, string][] = recurrente ? [
+    ["nit", "el NIT"],
+    ["correo", "el correo electrónico"],
+    ["numero_cotizacion", "el número de tu cotización"],
+    ["area", "el área con la que trataste"],
+    ["valor", "el valor cotizado"],
+    ["concepto", "el concepto"],
+    ["descripcion", "la descripción / detalle"],
+  ] : [
     ["razon_social", "la razón social / nombre"],
     ["nit", "el NIT"],
     ["contacto", "el nombre de contacto"],
@@ -33,10 +55,26 @@ export async function enviarCotizacion(_prev: Resultado | null, formData: FormDa
     return { ok: false, error: "Falta " + (faltan.length === 1 ? faltan[0]
       : faltan.slice(0, -1).join(", ") + " y " + faltan[faltan.length - 1]) + "." };
   }
-  const razon = s("razon_social");
   // Mismo cuidado que en cuentas de cobro: el NIT con dígito de verificación
   // pegado deja la cotización sin cruzar con su proveedor (ver lib/nit.ts).
   const nit = nitCanonico(s("nit"));
+  let razon = s("razon_social");
+  let contacto = s("contacto") || null;
+  let telefono = s("telefono") || null;
+
+  // RECURRENTE: se vuelve a comprobar CONTRA LA BASE. Que el navegador mande
+  // recurrente=1 no significa nada — si el NIT no tiene cuenta en el maestro,
+  // este envío entraría sin documentos de identidad y sin a dónde pagarle.
+  if (recurrente) {
+    const p = await datosDe(nit);
+    if (!p) {
+      return { ok: false, error: "No encontramos ese NIT entre nuestros proveedores. "
+        + "Envíala como proveedor nuevo, adjuntando tus documentos." };
+    }
+    razon = p.razon_social;
+    contacto = contacto || p.contacto;
+    telefono = telefono || p.telefono;
+  }
 
   const areaRaw = s("area").toUpperCase();
   if (!(AREAS as readonly string[]).includes(areaRaw)) {
@@ -63,9 +101,20 @@ export async function enviarCotizacion(_prev: Resultado | null, formData: FormDa
   // se registra igual y lo que no subió queda marcado 'pendiente'.
   // Mismo filtro que en cuentas de cobro: el archivo malo no entra (ver
   // lib/documentos.ts). El navegador ya avisó; esto es lo que manda.
+  // `CLASES_DOC` acá es el mapa de FORMATOS (qué archivo se acepta en cada
+  // casilla), no la lista de obligatorios: esa es DOCS_COTIZACION, que no lleva
+  // cédula. Si el navegador manda una de todos modos, se valida igual.
   const archivos = archivosDelForm(formData, CLASES_DOC);
   const problemas = await revisarArchivos(archivos, CLASES_DOC);
   if (problemas.length) return { ok: false, error: problemas.join(" · ") };
+  // Lo único propio de ESTE envío. Sin soporte no hay qué cotizar, y sin
+  // certificación (cuando es nuevo) no sabríamos a qué cuenta pagar el anticipo.
+  const exigidos = recurrente ? ["soporte"] : DOCS_COTIZACION.map((c) => c.clase);
+  const faltanDocs = exigidos.filter((clase) => !archivos.some((a) => a.clase === clase));
+  if (faltanDocs.length) {
+    const nombres = DOCS_COTIZACION.filter((c) => faltanDocs.includes(c.clase)).map((c) => c.label);
+    return { ok: false, error: "Falta adjuntar: " + nombres.join(", ") + "." };
+  }
 
   const { docs, fallidos } = await subirDocumentos(
     archivos, "cotizaciones",
@@ -76,11 +125,12 @@ export async function enviarCotizacion(_prev: Resultado | null, formData: FormDa
     const r = await pool.query<{ id: number }>(
       `INSERT INTO cotizaciones
          (razon_social, nit, contacto, correo, telefono, area, concepto, descripcion,
-          valor, documentos, numero_cotizacion, requiere_adelanto, adelanto_pct, plazo_dias)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,TRUE,$12,$13) RETURNING id`,
-      [razon, nit, s("contacto") || null, s("correo") || null, s("telefono") || null,
+          valor, documentos, numero_cotizacion, requiere_adelanto, adelanto_pct, plazo_dias,
+          recurrente)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,TRUE,$12,$13,$14) RETURNING id`,
+      [razon, nit, contacto, s("correo") || null, telefono,
        area, s("concepto") || null, s("descripcion") || null, valor, JSON.stringify(docs),
-       s("numero_cotizacion") || null, adelantoPct, plazoDias]);
+       s("numero_cotizacion") || null, adelantoPct, plazoDias, recurrente]);
     const id = r.rows[0].id;
     const codigo = "COT-" + String(id).padStart(4, "0");
     await pool.query("UPDATE cotizaciones SET codigo = $2 WHERE id = $1", [id, codigo]);

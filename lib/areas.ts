@@ -74,14 +74,28 @@ export type DocGuardado = { clase?: string; estado?: string; path?: string };
  *  pueden evaluar por clase: se dan por completos si trajeron al menos tantos
  *  archivos como clases se piden hoy. No se le exige a un proveedor una casilla
  *  que no existía cuando llenó el formulario. */
+/** QUÉ DOCUMENTOS EXIGE CADA CARRIL. No es el mismo set para todos, y por eso es
+ *  una lista explícita y no un par de banderas: cada bandera nueva multiplica
+ *  los caminos y el día que no cuadran, el proveedor queda bloqueado sin poder
+ *  arreglarlo (Regla 18).
+ *
+ *  · CUENTA DE COBRO: los cuatro. La cobra a menudo una PERSONA natural, y la
+ *    cédula es lo que sustenta un pago a alguien sin factura electrónica.
+ *  · COTIZACIÓN: sin cédula. Este formulario pide NIT —no tipo de documento—
+ *    porque quien cotiza es una empresa; pedirle la cédula del representante
+ *    para un anticipo era un adjunto más desde el celular sin nada que sostenga.
+ *    (Decisión de Daniel, 21-ago-2026.)
+ *  · RECURRENTE: solo el soporte. Su cuenta ya está certificada de un envío
+ *    anterior y confirmada por un humano; repetir los otros tres es pedirle
+ *    cuatro adjuntos desde el celular para cobrar lo mismo de siempre. */
+export const DOCS_CUENTA_COBRO = CLASES_DOC;
+export const DOCS_COTIZACION = CLASES_DOC.filter((c) => c.clase !== "cedula");
+export const DOCS_RECURRENTE = CLASES_DOC.filter((c) => c.clase === "soporte");
+
 export function docsFaltantes(docs: DocGuardado[] | null | undefined,
-                              soloSoporte = false): string[] {
+                              requeridas: readonly { clase: string; label: string }[] = CLASES_DOC): string[] {
   const lista = docs ?? [];
-  // PROVEEDOR RECURRENTE: su cuenta ya está certificada en el maestro de una vez
-  // anterior. Volver a pedirle el RUT, la cédula y la certificación es pedirle
-  // que repita cuatro adjuntos desde el celular para cobrar lo mismo de siempre.
-  // Lo único propio de ESTE cobro es el soporte.
-  const clases = soloSoporte ? CLASES_DOC.filter((c) => c.clase === "soporte") : CLASES_DOC;
+  const clases = requeridas;
   const tipados = lista.filter((d) => d.clase && d.clase !== "otro");
   if (!tipados.length) {
     const subidos = lista.filter((d) => d.estado !== "pendiente" && (d.path ?? "") !== "");

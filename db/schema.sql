@@ -875,3 +875,17 @@ ALTER TABLE facturas
 
 -- Por acá se busca "¿esta factura tiene notas?" en cada carga del tablero.
 CREATE INDEX IF NOT EXISTS ix_facturas_ref_cufe ON facturas (ref_cufe) WHERE ref_cufe IS NOT NULL;
+
+-- -----------------------------------------------------------------------------
+-- 23) COTIZACIÓN DE PROVEEDOR RECURRENTE (2026-08-21)
+--
+-- Mismo trato que en cuentas de cobro: a quien ya nos cotizó (o ya nos cobró) no
+-- se le vuelven a pedir los documentos de identidad. Su cuenta ya está
+-- certificada de un envío anterior y confirmada por un humano; repetir tres
+-- adjuntos desde el celular es lo que hace que abandonen el formulario.
+--
+-- La bandera NO decide sola: el servidor vuelve a buscar el NIT en el maestro
+-- de cuentas. Que el navegador mande recurrente=1 no significa nada — por ese
+-- camino entraría un envío sin documentos y sin a dónde pagarle.
+ALTER TABLE cotizaciones
+  ADD COLUMN IF NOT EXISTS recurrente BOOLEAN NOT NULL DEFAULT FALSE;

@@ -41,7 +41,15 @@ function formatear(valor: string, formato?: "money" | "pct"): string {
 /** Saca del formulario lo que el proveedor va a confirmar. Lee el FormData real
  *  —no un estado paralelo— para que lo que se muestra sea exactamente lo que se
  *  va a enviar. */
-export function resumenDe(fd: FormData, campos: CampoResumen[]): {
+/** `clases` = los documentos que ESTE envío pide de verdad.
+ *
+ *  Sin este parámetro, la pantalla de revisión listaba como "falta" todo lo que
+ *  no estuviera adjunto según la lista GLOBAL — incluidos los papeles que el
+ *  formulario nunca mostró. Al proveedor recurrente, que solo sube el soporte,
+ *  le decía que le faltaban la certificación, el RUT y la cédula justo antes de
+ *  enviar: un aviso alarmante y falso, en el peor momento posible (Regla 18). */
+export function resumenDe(fd: FormData, campos: CampoResumen[],
+                          clases: readonly { name: string; label: string }[] = CLASES_DOC): {
   filas: FilaResumen[]; docs: { label: string; nombre: string | null }[];
 } {
   const filas = campos
@@ -50,7 +58,7 @@ export function resumenDe(fd: FormData, campos: CampoResumen[]): {
       return { etiqueta, valor: bruto === "" ? "" : formatear(bruto, formato) };
     })
     .filter((f) => f.valor !== "");
-  const docs = CLASES_DOC.map((c) => {
+  const docs = clases.map((c) => {
     const f = fd.get(c.name);
     return { label: c.label, nombre: f instanceof File && f.size > 0 ? f.name : null };
   });

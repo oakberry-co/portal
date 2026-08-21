@@ -1,6 +1,7 @@
 import { getPool } from "@/lib/db";
 import { notFound } from "next/navigation";
-import { CLASES_DOC, docsFaltantes, type DocGuardado } from "@/lib/areas";
+import { CLASES_DOC, DOCS_CUENTA_COBRO, DOCS_COTIZACION, DOCS_RECURRENTE,
+         docsFaltantes, type DocGuardado } from "@/lib/areas";
 import { FormCompletar } from "./FormCompletar";
 
 export const dynamic = "force-dynamic";
@@ -20,6 +21,7 @@ type Solicitud = {
   id: number; tipo: "cuenta_cobro" | "cotizacion"; ref: string; razon_social: string;
   valor: number | null; concepto: string | null; estado: string; nota_revision: string | null;
   documentos: DocGuardado[]; cert_estado: string | null; cert_motivo: string | null;
+  recurrente: boolean;
 };
 
 async function buscar(token: string): Promise<Solicitud | null> {
@@ -29,7 +31,7 @@ async function buscar(token: string): Promise<Solicitud | null> {
     `SELECT * FROM (
        SELECT 'cuenta_cobro'::text AS tipo, cc.id, 'CC-' || cc.id AS ref, cc.razon_social,
               cc.valor::float AS valor, cc.concepto, cc.estado, cc.nota_revision, cc.documentos,
-              cert.estado AS cert_estado, cert.motivo AS cert_motivo, cc.token
+              cert.estado AS cert_estado, cert.motivo AS cert_motivo, cc.token, cc.recurrente
          FROM cuentas_cobro cc
          LEFT JOIN LATERAL (SELECT x.estado, x.motivo FROM certificacion_bancaria x
                              WHERE x.origen_tipo='cuenta_cobro' AND x.origen_id=cc.id
@@ -37,7 +39,7 @@ async function buscar(token: string): Promise<Solicitud | null> {
        UNION ALL
        SELECT 'cotizacion', cot.id, coalesce(cot.codigo,'COT-'||cot.id), cot.razon_social,
               cot.valor::float, cot.concepto, cot.estado, cot.nota_revision, cot.documentos,
-              cert.estado, cert.motivo, cot.token
+              cert.estado, cert.motivo, cot.token, cot.recurrente
          FROM cotizaciones cot
          LEFT JOIN LATERAL (SELECT x.estado, x.motivo FROM certificacion_bancaria x
                              WHERE x.origen_tipo='cotizacion' AND x.origen_id=cot.id
@@ -53,7 +55,12 @@ export default async function CompletarPage({ params }: { params: Promise<{ toke
   const s = await buscar(token);
   if (!s) notFound();
 
-  const faltan = docsFaltantes(s.documentos);
+  // Qué documentos exige ESTE carril: a una cotización no se le pide cédula, y
+  // a un recurrente solo el soporte. Con un set único, esta página le pediría a
+  // alguien un papel que su formulario nunca le pidió — y se quedaría atascado
+  // sin manera de salir (Regla 18).
+  const faltan = docsFaltantes(s.documentos, s.recurrente ? DOCS_RECURRENTE
+    : s.tipo === "cotizacion" ? DOCS_COTIZACION : DOCS_CUENTA_COBRO);
   const certMala = s.cert_estado && !["valida", "pendiente"].includes(s.cert_estado);
   const yaPagada = s.estado === "pagada";
 

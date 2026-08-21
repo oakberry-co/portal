@@ -43,7 +43,7 @@ export function FormCuentaCobro({ conceptos }: { conceptos: string[] }) {
     if (!f || !f.reportValidity()) return;   // validación nativa, antes de ocultar nada
     setResumen(resumenDe(new FormData(f), esRecurrente
       ? CAMPOS.filter((c) => !["razon_social", "contacto", "telefono"].includes(c.name))
-      : CAMPOS));
+      : CAMPOS, esRecurrente ? SOLO_SOPORTE : CLASES_DOC));
     setPaso("revisar");
     window.scrollTo({ top: 0, behavior: "smooth" });
   }

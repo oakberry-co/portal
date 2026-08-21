@@ -2,7 +2,7 @@
 
 import { useActionState, useMemo, useState, type ReactNode } from "react";
 import { revisarCotizacion, agregarAbono, enlazarFactura, quitarEnlace } from "./actions";
-import { docsFaltantes } from "@/lib/areas";
+import { DOCS_COTIZACION, DOCS_RECURRENTE, docsFaltantes } from "@/lib/areas";
 import { bloqueoAprobacion, type CertEstado, type CuentaMaestro } from "@/lib/certificaciones";
 import { CorreosIntake, DocsIntake, PanelCuenta, type CorreoEnviado, type DocIntake } from "../_intake/PanelCuenta";
 import { useFiltrosIntake } from "../_intake/FiltrosIntake";
@@ -16,6 +16,8 @@ export type Cotizacion = {
   documentos: DocIntake[];
   numero_cotizacion: string | null;
   requiere_adelanto: boolean; adelanto_pct: number | null; plazo_dias: number | null;
+  /** Ya nos había cotizado o cobrado: no repite documentos de identidad. */
+  recurrente: boolean;
   estado: string; cufe_factura: string | null; nota_revision: string | null;
   revisado_por: string | null; creado_en: string;
   cuenta_pago: string | null; pago_id: number | null;
@@ -71,7 +73,7 @@ export function CotizacionesView({ cots, candidatos, operar }: { cots: Cotizacio
             const saldo = c.fact_total != null ? Math.max(0, c.fact_total - c.abono_total) : null;
             const cands = porNit.get(c.nit) ?? [];
             // El mismo cálculo que exige el servidor al aprobar (lib/certificaciones).
-            const bloqueo = bloqueoAprobacion(docsFaltantes(c.documentos), c.cert, c.cuenta);
+            const bloqueo = bloqueoAprobacion(docsFaltantes(c.documentos, c.recurrente ? DOCS_RECURRENTE : DOCS_COTIZACION), c.cert, c.cuenta, c.recurrente);
             const adelanto = c.valor != null && c.adelanto_pct != null
               ? Math.round((c.valor * Number(c.adelanto_pct)) / 100) : null;
             return (

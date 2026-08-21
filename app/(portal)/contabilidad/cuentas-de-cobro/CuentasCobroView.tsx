@@ -2,7 +2,7 @@
 
 import { useActionState, useState, type ReactNode } from "react";
 import { revisarCuentaCobro } from "./actions";
-import { docsFaltantes } from "@/lib/areas";
+import { DOCS_CUENTA_COBRO, DOCS_RECURRENTE, docsFaltantes } from "@/lib/areas";
 import { bloqueoAprobacion, type CertEstado, type CuentaMaestro } from "@/lib/certificaciones";
 import { CorreosIntake, DocsIntake, PanelCuenta, type CorreoEnviado, type DocIntake } from "../_intake/PanelCuenta";
 import { RetencionesCuentaCobro, type ReglaConcepto } from "./RetencionesCuentaCobro";
@@ -107,7 +107,7 @@ export function CuentasCobroView({ items, operar }: { items: CuentaCobro[]; oper
             // El MISMO cálculo que el servidor exige al aprobar (lib/certificaciones):
             // si la tarjeta dijera una cosa y el guard otra, el equipo aprendería a
             // pelearse con un botón que no explica nada.
-            const bloqueo = bloqueoAprobacion(docsFaltantes(c.documentos, c.recurrente), c.cert, c.cuenta, c.recurrente)
+            const bloqueo = bloqueoAprobacion(docsFaltantes(c.documentos, c.recurrente ? DOCS_RECURRENTE : DOCS_CUENTA_COBRO), c.cert, c.cuenta, c.recurrente)
               ?? (c.retencion_ok ? null
                   : "Falta confirmar las retenciones — aunque sean cero, para que se pague el valor correcto.");
             const reten = c.reten_total ?? 0;

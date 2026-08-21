@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { withTx } from "@/lib/db";
 import { registrarEvento } from "@/lib/eventos";
 import { exigirCap } from "@/lib/auth";
-import { docsFaltantes, type DocGuardado, PLAZO_CUENTA_COBRO_DIAS } from "@/lib/areas";
+import { DOCS_CUENTA_COBRO, DOCS_RECURRENTE, docsFaltantes, type DocGuardado, PLAZO_CUENTA_COBRO_DIAS } from "@/lib/areas";
 import { bloqueoAprobacion, sqlCertificacion, type CertEstado, type CuentaMaestro } from "@/lib/certificaciones";
 import { aplicarCuentaCertificada } from "@/lib/cuenta-certificada";
 import { encolarCorreo } from "@/lib/correos";
@@ -44,7 +44,7 @@ async function exigirAprobable(c: PoolClient, id: number): Promise<Aprobable> {
       WHERE cc.id = $1`, [id]);
   const r = rows[0];
   if (!r) throw new Error("Cuenta de cobro no encontrada.");
-  const bloqueo = bloqueoAprobacion(docsFaltantes(r.documentos, r.recurrente), r.cert, r.cuenta, r.recurrente);
+  const bloqueo = bloqueoAprobacion(docsFaltantes(r.documentos, r.recurrente ? DOCS_RECURRENTE : DOCS_CUENTA_COBRO), r.cert, r.cuenta, r.recurrente);
   if (bloqueo) throw new Error(bloqueo);
   // Igual que una factura no entra a Pagos hasta 'retenciones_ok': aprobar sin
   // definir la retención es aprobar un pago BRUTO, y eso se paga de más.
