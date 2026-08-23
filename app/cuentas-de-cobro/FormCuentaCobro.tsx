@@ -3,6 +3,8 @@
 import { useActionState, useRef, useState } from "react";
 import { enviarCuentaCobro, reconocerProveedor, type Reconocido, type Resultado } from "./actions";
 import { CasillasDocumentos } from "../CasillasDocumentos";
+import { CasillaDocumentoConDV } from "../CasillaDV";
+import { CasillaMonto } from "../CasillaMonto";
 import { RevisarAntesDeEnviar, resumenDe, type FilaResumen } from "../RevisarAntesDeEnviar";
 import { AREAS, CLASES_DOC } from "@/lib/areas";
 
@@ -12,7 +14,7 @@ const SOLO_SOPORTE = CLASES_DOC.filter((c) => c.clase === "soporte");
 
 const CAMPOS = [
   { name: "razon_social", etiqueta: "Razón social" },
-  { name: "num_doc", etiqueta: "Documento" },
+  { name: "num_doc", etiqueta: "Documento", formato: "doc" as const },
   { name: "contacto", etiqueta: "Contacto" },
   { name: "telefono", etiqueta: "Teléfono" },
   { name: "correo", etiqueta: "Correo" },
@@ -37,6 +39,8 @@ export function FormCuentaCobro({ conceptos }: { conceptos: string[] }) {
   const formRef = useRef<HTMLFormElement>(null);
   // Para que el aviso de "tiene clave" diga CUÁL documento probaríamos.
   const [doc, setDoc] = useState("");
+  // El dígito de verificación es cosa del NIT: una cédula no tiene.
+  const [tipoDoc, setTipoDoc] = useState("NIT");
 
   function revisar() {
     const f = formRef.current;
@@ -139,15 +143,13 @@ export function FormCuentaCobro({ conceptos }: { conceptos: string[] }) {
       </label>
       <div className="pub-row">
         <label>Tipo de documento
-          <select name="tipo_doc" defaultValue="NIT">
+          <select name="tipo_doc" value={tipoDoc} onChange={(e) => setTipoDoc(e.target.value)}>
             <option value="NIT">NIT</option><option value="CC">Cédula (CC)</option>
             <option value="CE">Cédula extranjería (CE)</option><option value="PPT">PPT</option>
           </select>
         </label>
-        <label>Número de documento *
-          <input name="num_doc" required inputMode="numeric" placeholder="900123456"
-                 onChange={(e) => setDoc(e.target.value)} />
-        </label>
+        <CasillaDocumentoConDV name="num_doc" etiqueta="Número de documento"
+                               valor={doc} onValor={setDoc} pedirDV={tipoDoc === "NIT"} />
       </div>
       <div className="pub-row">
         <label>Nombre de contacto *<input name="contacto" required placeholder="Quién responde" /></label>
@@ -167,7 +169,7 @@ export function FormCuentaCobro({ conceptos }: { conceptos: string[] }) {
             {AREAS.map((a) => <option key={a} value={a}>{a}</option>)}
           </select>
         </label>
-        <label>Valor a cobrar (COP) *<input name="valor" required inputMode="numeric" placeholder="$ 0" /></label>
+        <CasillaMonto etiqueta="Valor a cobrar (COP)" />
       </div>
       <label className="pub-full">Concepto *
         {conceptos.length ? (

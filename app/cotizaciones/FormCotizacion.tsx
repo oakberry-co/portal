@@ -3,12 +3,14 @@
 import { useActionState, useRef, useState } from "react";
 import { enviarCotizacion, reconocerProveedor, type Reconocido, type Resultado } from "./actions";
 import { CasillasDocumentos } from "../CasillasDocumentos";
+import { CasillaDocumentoConDV } from "../CasillaDV";
+import { CasillaMonto } from "../CasillaMonto";
 import { RevisarAntesDeEnviar, resumenDe, type FilaResumen } from "../RevisarAntesDeEnviar";
 import { AREAS, PLAZOS_NEGOCIADOS, DOCS_COTIZACION, DOCS_RECURRENTE } from "@/lib/areas";
 
 const CAMPOS = [
   { name: "razon_social", etiqueta: "Razón social" },
-  { name: "nit", etiqueta: "NIT" },
+  { name: "nit", etiqueta: "NIT", formato: "doc" as const },
   { name: "contacto", etiqueta: "Contacto" },
   { name: "telefono", etiqueta: "Teléfono" },
   { name: "correo", etiqueta: "Correo" },
@@ -137,8 +139,10 @@ export function FormCotizacion() {
         <input name="razon_social" required placeholder="Ej. Servicios XYZ S.A.S." />
       </label>
       <div className="pub-row">
-        <label>NIT *<input name="nit" required inputMode="numeric" placeholder="900123456"
-                 onChange={(e) => setDoc(e.target.value)} /></label>
+        {/* El NIT va SIN el dígito y el dígito en su propia casilla: la clave de
+            la casa es el NIT pelado (así llegan las facturas de la DIAN). Ver
+            app/CasillaDV.tsx. */}
+        <CasillaDocumentoConDV name="nit" etiqueta="NIT" valor={doc} onValor={setDoc} pedirDV />
         <label>Teléfono / WhatsApp *<input name="telefono" required inputMode="tel" placeholder="300 000 0000" /></label>
       </div>
       <div className="pub-row">
@@ -160,7 +164,7 @@ export function FormCotizacion() {
           </select>
         </label>
       </div>
-      <label className="pub-full">Valor cotizado (COP) *<input name="valor" required inputMode="numeric" placeholder="$ 0" /></label>
+      <CasillaMonto etiqueta="Valor cotizado (COP)" ancho />
       <label className="pub-full">Concepto *<input name="concepto" required placeholder="¿Qué cotizas?" /></label>
       <label className="pub-full">Descripción / detalle *
         <textarea name="descripcion" rows={2} required placeholder="Detalle de la propuesta" />

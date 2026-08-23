@@ -7,7 +7,8 @@ import { subirDocumentos, avisoDocs, archivosDelForm, registrarCertificacion, re
 import { AREAS, CLASES_DOC, DOCS_COTIZACION } from "@/lib/areas";
 import { revisarArchivos } from "@/lib/documentos";
 import { getPool } from "@/lib/db";
-import { nitCanonico } from "@/lib/nit";
+import { nitCanonico, digitoVerificacion, soloDigitos } from "@/lib/nit";
+import { pesos } from "@/lib/pesos";
 import { reconocer, datosDe } from "@/lib/proveedor-conocido";
 
 export type Resultado = { ok: boolean; error?: string; codigo?: string; aviso?: string };
@@ -58,6 +59,30 @@ export async function enviarCotizacion(_prev: Resultado | null, formData: FormDa
   // Mismo cuidado que en cuentas de cobro: el NIT con dígito de verificación
   // pegado deja la cotización sin cruzar con su proveedor (ver lib/nit.ts).
   const nit = nitCanonico(s("nit"));
+  // EL DÍGITO DE VERIFICACIÓN COMO SUMA DE CONTROL. Se comprueba también acá y
+  // no solo en el navegador: el `required` y el aviso del formulario se saltan
+  // desde la consola, y un NIT torcido no cruza con las facturas del proveedor
+  // ni con su cuenta — la fila desaparece del archivo del banco sin dar error.
+  //
+  // Al RECURRENTE no se le pide: su NIT no lo está tecleando ahora, salió de
+  // buscarlo en nuestra propia base. Pedírselo sería trancar a quien ya
+  // reconocimos por un dato que nosotros mismos le dimos.
+  if (!recurrente) {
+    // Un NIT de empresa tiene NUEVE dígitos. Esta regla sola habría cazado el
+    // '800165' de COT-0034, que el dígito de verificación NO cazó: por
+    // casualidad daba el mismo (1 en 11). Por eso van las dos.
+    const nitBase = soloDigitos(nit);
+    if (nitBase.length !== 9) {
+      return { ok: false, error: `Un NIT tiene 9 dígitos y llegaron ${nitBase.length}. `
+        + "Míralo en tu RUT y escríbelo sin el dígito que va después del guion." };
+    }
+    const dv = soloDigitos(s("dv")).slice(0, 1);
+    if (!dv) return { ok: false, error: "Falta el dígito de verificación del NIT (va después del guion en tu RUT)." };
+    if (digitoVerificacion(nit) !== dv) {
+      return { ok: false, error: `El NIT ${nit} y el dígito ${dv} no cuadran. Revísalos en tu RUT: `
+        + "el NIT va antes del guion y el dígito después." };
+    }
+  }
   let razon = s("razon_social");
   let contacto = s("contacto") || null;
   let telefono = s("telefono") || null;
@@ -82,7 +107,10 @@ export async function enviarCotizacion(_prev: Resultado | null, formData: FormDa
   }
   const area = areaRaw;
 
-  const valor = Number(s("valor").replace(/[^\d]/g, ""));
+  // SE INTERPRETA, NO SE LIMPIA. Borrar puntos y comas es lo que convirtió
+  // '149.340,24' en 14.934.024 (COT-0026). `pesos()` lee la plata como se
+  // escribe en Colombia — y como se escribe a la gringa, que también llega.
+  const valor = Math.round(pesos(s("valor")) ?? NaN);
   if (!Number.isFinite(valor) || valor <= 0) {
     return { ok: false, error: "El valor cotizado tiene que ser un número mayor que cero." };
   }

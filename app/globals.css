@@ -1481,3 +1481,14 @@ tr.desfasada td { background: #fff8e6; }
    facturas del proveedor y el pago desaparece del archivo del banco sin error. */
 .cc-verif-form input.corto { border-color: rgba(212,160,23,.75); background: #fffdf5; }
 .cc-ojo { color: #8a6100; }
+
+/* NIT + DV: el número ancho y el dígito angosto al lado, porque es UN solo dato
+   partido en dos. En celular NO se apilan — un dígito solo, en su propia fila,
+   se lee como otra pregunta distinta y ahí es donde la gente escribe cualquier
+   cosa. */
+.pub-doc-num { display: grid; grid-template-columns: 1fr 76px; gap: 8px; align-items: end; }
+.pub-doc-num > label { margin: 0; }
+.pub-doc-num .pub-dv input { text-align: center; font-family: var(--mono, monospace); }
+.pub-dv-mal { grid-column: 1 / -1; margin: 4px 0 0; font-size: 12.5px; line-height: 1.45;
+  color: #8a6100; background: #fff8e6; border: 1px solid rgba(212,160,23,.4);
+  border-radius: 9px; padding: 8px 11px; }

@@ -20,14 +20,14 @@ import { CLASES_DOC } from "@/lib/areas";
 import { enLetras } from "@/lib/letras";
 
 export type FilaResumen = { etiqueta: string; valor: string; letras?: string };
-export type CampoResumen = { name: string; etiqueta: string; formato?: "money" | "pct" };
+export type CampoResumen = { name: string; etiqueta: string; formato?: "money" | "pct" | "doc" };
 
 const cop = new Intl.NumberFormat("es-CO", { style: "currency", currency: "COP", maximumFractionDigits: 0 });
 
 /** El proveedor tiene que poder RECONOCER lo que escribió. "1500000" obliga a
  *  contar ceros con el dedo; "$1.500.000" se lee de un golpe, que es justo lo
  *  que se le está pidiendo hacer en este paso. */
-function formatear(valor: string, formato?: "money" | "pct"): string {
+function formatear(valor: string, formato?: "money" | "pct" | "doc"): string {
   if (formato === "money") {
     const n = Number(valor.replace(/[^\d]/g, ""));
     return Number.isFinite(n) && n > 0 ? cop.format(n) : valor;
@@ -57,6 +57,14 @@ export function resumenDe(fd: FormData, campos: CampoResumen[],
     .map(({ name, etiqueta, formato }) => {
       const bruto = String(fd.get(name) ?? "").trim();
       if (bruto === "") return { etiqueta, valor: "" };
+      // El documento se muestra COMPLETO, con su dígito: '830514578-2'. Es como
+      // el proveedor lo reconoce en su RUT, y es el único dato con el que se
+      // cruza todo lo demás — verlo partido en dos casillas no sirve para
+      // comprobarlo.
+      if (formato === "doc") {
+        const dv = String(fd.get("dv") ?? "").trim();
+        return { etiqueta, valor: dv ? `${bruto}-${dv}` : bruto };
+      }
       // EL VALOR, ADEMÁS, EN LETRAS. "14.934.024" y "149.340" se parecen cuando
       // uno va rápido con el pulgar; "CATORCE MILLONES..." y "CIENTO CUARENTA Y
       // NUEVE MIL..." no se parecen en nada. Es el truco que las facturas usan

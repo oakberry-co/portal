@@ -8,7 +8,8 @@ import { subirDocumentos, avisoDocs, archivosDelForm, registrarCertificacion, re
 import { AREAS, CLASES_DOC, PLAZO_CUENTA_COBRO_DIAS } from "@/lib/areas";
 import { revisarArchivos } from "@/lib/documentos";
 import { getPool } from "@/lib/db";
-import { nitCanonico } from "@/lib/nit";
+import { nitCanonico, digitoVerificacion, soloDigitos } from "@/lib/nit";
+import { pesos } from "@/lib/pesos";
 import { reconocer, datosDe } from "@/lib/proveedor-conocido";
 
 export type Resultado = { ok: boolean; error?: string; aviso?: string };
@@ -79,6 +80,25 @@ export async function enviarCuentaCobro(_prev: Resultado | null, formData: FormD
   // facturas del MISMO proveedor ni con su cuenta del maestro, y el pago se cae
   // del archivo del banco sin un solo error (ver lib/nit.ts).
   const numDoc = nitCanonico(s("num_doc"));
+  // El dígito de verificación es cosa del NIT (una cédula no tiene). Se
+  // comprueba acá además del navegador: el aviso del formulario se salta desde
+  // la consola, y un NIT torcido hace desaparecer al proveedor del archivo del
+  // banco sin dar un solo error.
+  // Al recurrente tampoco: su documento salió de nuestra base, no lo tecleó.
+  if (!recurrente && s("tipo_doc").toUpperCase() === "NIT") {
+    // Nueve dígitos, siempre. Solo cuando es NIT: una cédula no cumple esto.
+    const nitBase = soloDigitos(numDoc);
+    if (nitBase.length !== 9) {
+      return { ok: false, error: `Un NIT tiene 9 dígitos y llegaron ${nitBase.length}. `
+        + "Míralo en tu RUT y escríbelo sin el dígito que va después del guion." };
+    }
+    const dv = soloDigitos(s("dv")).slice(0, 1);
+    if (!dv) return { ok: false, error: "Falta el dígito de verificación del NIT (va después del guion en tu RUT)." };
+    if (digitoVerificacion(numDoc) !== dv) {
+      return { ok: false, error: `El NIT ${numDoc} y el dígito ${dv} no cuadran. Revísalos en tu RUT: `
+        + "el NIT va antes del guion y el dígito después." };
+    }
+  }
   let razon = s("razon_social");
   let contacto = s("contacto") || null;
   let telefono = s("telefono") || null;
@@ -128,7 +148,10 @@ export async function enviarCuentaCobro(_prev: Resultado | null, formData: FormD
   }
 
   // Sin monto no hay nada que programar; un 0 tampoco es un cobro.
-  const valor = Number(s("valor").replace(/[^\d]/g, ""));
+  // SE INTERPRETA, NO SE LIMPIA. Borrar puntos y comas es lo que convirtió
+  // '149.340,24' en 14.934.024 (COT-0026). `pesos()` lee la plata como se
+  // escribe en Colombia — y como se escribe a la gringa, que también llega.
+  const valor = Math.round(pesos(s("valor")) ?? NaN);
   if (!Number.isFinite(valor) || valor <= 0) {
     return { ok: false, error: "El valor a cobrar tiene que ser un número mayor que cero." };
   }
