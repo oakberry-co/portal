@@ -19,27 +19,17 @@
 // `TOTAL A PAGAR $ 149.340,24` y el proveedor tecleó `$ 14.934.024` — el mismo
 // número sin la coma, cien veces más, con 100% de adelanto.
 
-import { useActionState } from "react";
 import { montosLegibles, veredicto, type ValorEstado } from "@/lib/valor-documento";
-import { ajustarMonto } from "@/lib/valor-actions";
-import { ErrorAccion } from "./ErrorAccion";
-import type { Resultado } from "@/lib/resultado";
 
 const $ = (n: number | null | undefined) =>
   n == null ? "—" : "$ " + new Intl.NumberFormat("es-CO", { maximumFractionDigits: 0 }).format(n);
 
-export function PanelMonto({ origen, id, val, declarado, docUrl, operar = true, pagada = false }: {
-  origen: "cuenta_cobro" | "cotizacion";
-  id: number;
+export function PanelMonto({ val, declarado, docUrl }: {
   val: ValorEstado | null;
   /** El monto que la solicitud tiene HOY. */
   declarado: number | null;
   /** El documento soporte, para abrirlo sin buscarlo. */
   docUrl?: string;
-  /** false = solo lectura (el contador ve el estado, no decide). */
-  operar?: boolean;
-  /** Ya pagada: el monto no se toca más (lo que salió del banco manda). */
-  pagada?: boolean;
 }) {
   const candidatos = val?.candidatos ?? [];
   // Sin lectura, o leída y cuadra, o ilegible: SILENCIO. Solo se habla cuando el
@@ -63,42 +53,6 @@ export function PanelMonto({ origen, id, val, declarado, docUrl, operar = true, 
         </p>
       )}
 
-      {!operar ? null : pagada ? (
-        <div className="muted mini">
-          Ya está pagada: el monto no se cambia. Lo que salió del banco es lo que tiene que decir
-          el registro; si hay que corregir, es con un ajuste aparte.
-        </div>
-      ) : (
-        <FormAjustar origen={origen} id={id} />
-      )}
     </div>
-  );
-}
-
-/** Cambiar el monto que se va a pagar.
- *
- *  La casilla arranca VACÍA: no se precarga con lo que adivinó el lector
- *  (Regla 3 — el parecido sugiere, jamás afirma). Un número que la máquina puso
- *  en la casilla que mueve plata se acepta con un clic sin leerlo, y el monto
- *  mayor de un documento suele ser un subtotal, no el total. Los candidatos se
- *  MUESTRAN arriba, que es donde informan sin decidir. */
-function FormAjustar({ origen, id }: { origen: string; id: number }) {
-  const [res, action, pend] = useActionState<Resultado | null, FormData>(ajustarMonto, null);
-  return (
-    <>
-      <form action={action} className="cc-monto-form ajuste">
-        <input type="hidden" name="origen" value={origen} />
-        <input type="hidden" name="id" value={id} />
-        <label>Corregir el monto a
-          <input name="valor" inputMode="numeric" autoComplete="off" placeholder="$ 0" />
-        </label>
-        <label>¿Por qué lo cambias? (queda en la bitácora)
-          <input name="motivo" autoComplete="off" maxLength={200}
-                 placeholder="Ej. el proveedor escribió los centavos como pesos" />
-        </label>
-        <button type="submit" className="cc-act" disabled={pend}>{pend ? "…" : "Corregir monto"}</button>
-      </form>
-      {res?.error && <ErrorAccion msg={res.error} />}
-    </>
   );
 }

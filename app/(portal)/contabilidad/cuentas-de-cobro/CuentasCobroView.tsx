@@ -8,6 +8,7 @@ import { type ValorEstado } from "@/lib/valor-documento";
 import { CorreosIntake, DocsIntake, PanelCuenta, type CorreoEnviado, type DocIntake } from "../_intake/PanelCuenta";
 import { PanelMonto } from "../_intake/PanelMonto";
 import { PanelClasificar } from "../_intake/PanelClasificar";
+import { CorregirMonto } from "../_intake/CorregirMonto";
 import { clasificarDocumento } from "../conciliacion/actions";
 import { RetencionesCuentaCobro, type ReglaConcepto } from "./RetencionesCuentaCobro";
 import { useFiltrosIntake } from "../_intake/FiltrosIntake";
@@ -137,6 +138,9 @@ export function CuentasCobroView({ items, operar, conceptos, destinos }: {
                     {c.retencion_ok && (reten + otros) > 0 && (
                       <span className="cc-neto">de {$(c.valor)} · −{$(reten + otros)} retenido</span>
                     )}
+                    {/* Pegado a la cifra y siempre disponible: la mayoría de las
+                        correcciones son de montos que SÍ cuadran con el papel. */}
+                    {operar && <CorregirMonto origen="cuenta_cobro" id={c.id} pagada={!!c.pago_id} />}
                   </div>
                 </div>
 
@@ -152,8 +156,7 @@ export function CuentasCobroView({ items, operar, conceptos, destinos }: {
                 {/* El monto contra el documento. Va PEGADO a los documentos porque
                     es de lo que habla, y ARRIBA de la cuenta porque si la cifra está
                     mal no tiene sentido ponerse a verificar cuentas primero. */}
-                <PanelMonto origen="cuenta_cobro" id={c.id} val={c.val} declarado={c.valor}
-                            operar={operar} pagada={!!c.pago_id}
+                <PanelMonto val={c.val} declarado={c.valor}
                             docUrl={(c.documentos ?? []).find((d) => d.clase === "soporte")?.path} />
                 <PanelCuenta cert={c.cert} cuenta={c.cuenta} nit={c.num_doc} origen="cuenta_cobro" origenId={c.id} bloqueo={c.estado === "recibida" ? bloqueo : null} operar={operar}
                              docUrl={(c.documentos ?? []).find((d) => d.clase === "certificacion_bancaria")?.path} />

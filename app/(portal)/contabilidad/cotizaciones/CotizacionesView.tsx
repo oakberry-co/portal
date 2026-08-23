@@ -8,6 +8,7 @@ import { type ValorEstado } from "@/lib/valor-documento";
 import { CorreosIntake, DocsIntake, PanelCuenta, type CorreoEnviado, type DocIntake } from "../_intake/PanelCuenta";
 import { PanelMonto } from "../_intake/PanelMonto";
 import { PanelClasificar } from "../_intake/PanelClasificar";
+import { CorregirMonto } from "../_intake/CorregirMonto";
 import { useFiltrosIntake } from "../_intake/FiltrosIntake";
 import { ErrorAccion } from "../_intake/ErrorAccion";
 import type { Resultado } from "@/lib/resultado";
@@ -96,7 +97,15 @@ export function CotizacionesView({ cots, candidatos, operar, conceptos, destinos
                       {c.numero_cotizacion ? ` · su n° ${c.numero_cotizacion}` : ""}
                     </div>
                   </div>
-                  <div className="cc-valor">{$(c.valor)}<span className="muted mini" style={{ display: "block", fontWeight: 400 }}>cotizado</span></div>
+                  <div className="cc-valor">
+                    {$(c.valor)}
+                    <span className="muted mini" style={{ display: "block", fontWeight: 400 }}>cotizado</span>
+                    {/* Corregir el monto va ACÁ, pegado a la cifra, y siempre —
+                        no escondido dentro de la alarma: la mayoría de las
+                        correcciones reales son de montos que SÍ cuadran con el
+                        papel y aun así están mal. */}
+                    {operar && <CorregirMonto origen="cotizacion" id={c.id} pagada={!!c.pago_id} />}
+                  </div>
                 </div>
 
                 {/* El adelanto es LO QUE SE VA A PAGAR al aprobar: se ve en pesos,
@@ -113,8 +122,7 @@ export function CotizacionesView({ cots, candidatos, operar, conceptos, destinos
                 {/* El monto contra el documento. Va PEGADO a los documentos porque
                     es de lo que habla, y ARRIBA de la cuenta porque si la cifra está
                     mal no tiene sentido ponerse a verificar cuentas primero. */}
-                <PanelMonto origen="cotizacion" id={c.id} val={c.val} declarado={c.valor}
-                            operar={operar} pagada={!!c.pago_id}
+                <PanelMonto val={c.val} declarado={c.valor}
                             docUrl={(c.documentos ?? []).find((d) => d.clase === "soporte")?.path} />
                 <PanelCuenta cert={c.cert} cuenta={c.cuenta} nit={c.nit} origen="cotizacion" origenId={c.id} bloqueo={c.estado === "recibida" ? bloqueo : null} operar={operar}
                              docUrl={(c.documentos ?? []).find((d) => d.clase === "certificacion_bancaria")?.path} />
