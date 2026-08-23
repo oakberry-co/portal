@@ -94,9 +94,17 @@ export function CorreosIntake({ correos }: { correos: CorreoEnviado[] }) {
  *  ahorra teclear y quien revisa lo está mirando contra el papel de todos modos.
  *  Antes esto eran tres pantallas —el choque contra el OCR, la alarma de "cambió
  *  la cuenta" y sus dos salidas— y aprobar era un trámite de cinco pasos. */
-function EscribirCuenta({ cert, nit, cuenta, docUrl }: {
+function EscribirCuenta({ cert, nit, cuenta, docUrl, origen, origenId }: {
   cert: CertEstado | null; nit: string; cuenta: CuentaMaestro; docUrl?: string;
+  origen: "cuenta_cobro" | "cotizacion"; origenId: number;
 }) {
+  // EL NIT ES LA LLAVE Y SE PUEDE CORREGIR ACÁ. Lo teclea el proveedor en un
+  // formulario público y llega incompleto: COT-0034 vino con '800165' cuando el
+  // NIT de ese mismo GRUPO DECOR es '800165377'. Con el NIT torcido, la cuenta
+  // no cruza con sus facturas DIAN y el pago desaparece del archivo del banco
+  // sin dar un error. Va en ESTE panel porque es el panel de "a quién y a dónde
+  // se le paga" — el NIT identifica al quién.
+  const [nitEd, setNitEd] = useState(nit ?? "");
   const [banco, setBanco] = useState(cuenta?.banco ?? cert?.banco ?? "");
   const [tipo, setTipo] = useState(cuenta?.tipo_cuenta ?? cert?.tipo_cuenta ?? "");
   const [num, setNum] = useState(cuenta?.num_cuenta ?? cert?.num_cuenta ?? "");
@@ -109,7 +117,9 @@ function EscribirCuenta({ cert, nit, cuenta, docUrl }: {
     try {
       const fd = new FormData();
       if (cert?.id) fd.set("cert_id", String(cert.id));
-      fd.set("nit", nit);
+      fd.set("nit", nitEd);
+      fd.set("origen", origen);
+      fd.set("origen_id", String(origenId));
       fd.set("banco", banco);
       fd.set("tipo_cuenta", tipo);
       fd.set("num_cuenta", num);
@@ -129,8 +139,17 @@ function EscribirCuenta({ cert, nit, cuenta, docUrl }: {
              lo que ves en el papel.</>
           : <>Escribe la cuenta como aparece en la certificación.</>}{" "}
         Se guarda en el maestro: <b>a esa cuenta se le manda plata</b>.
+        {nitEd.replace(/\D/g, "").length < 8 && (
+          <> <b className="cc-ojo">Ojo con el NIT</b> — se ve corto. El proveedor lo escribe a mano
+          y con él se cruza el pago; si está incompleto, corrígelo aquí.</>
+        )}
       </p>
       <div className="cc-verif-form">
+        <input value={nitEd} onChange={(e) => { setNitEd(e.target.value); setListo(false); }}
+               inputMode="numeric" placeholder="NIT o cédula" autoComplete="off"
+               disabled={pend} aria-label="NIT o cédula del proveedor"
+               className={nitEd.replace(/\D/g, "").length < 8 ? "corto" : undefined}
+               title="Como aparece en el RUT. Con esto se cruza el pago." />
         {/* Lista cerrada porque el nombre se traduce a un código para el archivo
             del banco; uno escrito a mano no resuelve y la fila sale vacía. */}
         <select value={banco} onChange={(e) => setBanco(e.target.value)} disabled={pend} aria-label="Banco">
@@ -145,7 +164,8 @@ function EscribirCuenta({ cert, nit, cuenta, docUrl }: {
         <input value={num} onChange={(e) => { setNum(e.target.value); setListo(false); }}
                inputMode="numeric" placeholder="Número de cuenta" autoComplete="off" disabled={pend} />
         <button type="button" className="cc-act"
-                disabled={pend || !banco || !tipo || num.replace(/\D/g, "").length < 5}
+                disabled={pend || !banco || !tipo || nitEd.replace(/\D/g, "").length < 6
+                          || num.replace(/\D/g, "").length < 5}
                 onClick={guardar}>
           {pend ? "…" : listo ? "Guardada ✓" : "Guardar cuenta"}
         </button>
@@ -177,8 +197,9 @@ function BotonCert({ certId, accion, ghost, children }: {
 }
 
 /** La cuenta a la que se pagaría + por qué no se puede aprobar todavía. */
-export function PanelCuenta({ cert, cuenta, nit, bloqueo, docUrl, operar = true }: {
+export function PanelCuenta({ cert, cuenta, nit, origen, origenId, bloqueo, docUrl, operar = true }: {
   cert: CertEstado | null; cuenta: CuentaMaestro; nit: string;
+  origen: "cuenta_cobro" | "cotizacion"; origenId: number;
   bloqueo: string | null; docUrl?: string;
   /** false = solo lectura (el contador): ve la cuenta, no la escribe. */
   operar?: boolean;
@@ -196,7 +217,8 @@ export function PanelCuenta({ cert, cuenta, nit, bloqueo, docUrl, operar = true 
       </div>
 
       {operar
-        ? <EscribirCuenta cert={cert} nit={nit} cuenta={cuenta} docUrl={docUrl} />
+        ? <EscribirCuenta cert={cert} nit={nit} cuenta={cuenta} docUrl={docUrl}
+                          origen={origen} origenId={origenId} />
         : <div className="cc-verif esperando">Esperando que compras escriba la cuenta del proveedor.</div>}
 
       {/* El motivo se pinta solo si NO es la cuenta. Cuando lo que falta es la

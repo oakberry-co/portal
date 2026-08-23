@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState, useMemo, useState, type ReactNode } from "react";
-import { revisarCotizacion, agregarAbono, enlazarFactura, quitarEnlace, clasificarCotizacion } from "./actions";
+import { revisarCotizacion, enlazarFactura, quitarEnlace, clasificarCotizacion } from "./actions";
 import { DOCS_COTIZACION, DOCS_RECURRENTE, docsFaltantes } from "@/lib/areas";
 import { bloqueoAprobacion, type CertEstado, type CuentaMaestro } from "@/lib/certificaciones";
 import { type ValorEstado } from "@/lib/valor-documento";
@@ -35,7 +35,6 @@ export type CandidataFactura = { cufe: string; numero: string; nit: string; tota
 
 const cop = new Intl.NumberFormat("es-CO", { style: "currency", currency: "COP", maximumFractionDigits: 0 });
 const $ = (n: number | null) => (n == null ? "—" : cop.format(Math.round(n)));
-const hoy = new Date().toISOString().slice(0, 10);
 
 const TABS = [
   { key: "recibida", label: "Por revisar" },
@@ -117,7 +116,7 @@ export function CotizacionesView({ cots, candidatos, operar, conceptos, destinos
                 <PanelMonto origen="cotizacion" id={c.id} val={c.val} declarado={c.valor}
                             operar={operar} pagada={!!c.pago_id}
                             docUrl={(c.documentos ?? []).find((d) => d.clase === "soporte")?.path} />
-                <PanelCuenta cert={c.cert} cuenta={c.cuenta} nit={c.nit} bloqueo={c.estado === "recibida" ? bloqueo : null} operar={operar}
+                <PanelCuenta cert={c.cert} cuenta={c.cuenta} nit={c.nit} origen="cotizacion" origenId={c.id} bloqueo={c.estado === "recibida" ? bloqueo : null} operar={operar}
                              docUrl={(c.documentos ?? []).find((d) => d.clase === "certificacion_bancaria")?.path} />
 
                 {/* CLASIFICAR: concepto y destino, puestos por un humano contra los
@@ -130,44 +129,43 @@ export function CotizacionesView({ cots, candidatos, operar, conceptos, destinos
                 )}
 
                 {/* Abonos */}
-                <div className="cot-abonos">
-                  <div className="cot-abonos-head">
-                    <span>Abonos <b>{$(c.abono_total)}</b>{c.abonos.length ? ` · ${c.abonos.length}` : ""}</span>
+                {/* ABONOS y CRUCE CON LA FACTURA: solo cuando HAY algo.
+                    El "+ Abono" a mano y el "sin factura DIAN aún para enlazar"
+                    eran dos cajas que no hacían nada en el 100% de las tarjetas
+                    normales — el adelanto se registra solo cuando se paga
+                    (lib/abonos.ts), no lo teclea nadie.
+                    Lo que SÍ se muestra, porque es plata: los abonos que ya
+                    existen y el enlace con la factura final, que es el cruce
+                    anti-doble-pago (si no se enlaza, la factura del proveedor se
+                    paga completa y el anticipo se paga dos veces). */}
+                {c.abonos.length > 0 && (
+                  <div className="cot-abonos">
+                    <div className="cot-abonos-head">
+                      <span>Abonos <b>{$(c.abono_total)}</b> · {c.abonos.length}</span>
+                    </div>
+                    <div className="cot-abono-list">
+                      {c.abonos.map((a, i) => (
+                        <span key={i}>{$(a.monto)} <i className="muted">{a.fecha}{a.cuenta ? ` · ${a.cuenta}` : ""}</i></span>
+                      ))}
+                    </div>
                   </div>
-                  {c.abonos.length > 0 && (
-                    <div className="cot-abono-list">{c.abonos.map((a, i) => <span key={i}>{$(a.monto)} <i className="muted">{a.fecha}{a.cuenta ? ` · ${a.cuenta}` : ""}</i></span>)}</div>
-                  )}
-                  {operar && ["aprobada", "facturada", "recibida"].includes(c.estado) && (
-                    <form action={agregarAbono} className="cot-abono-form">
-                      <input type="hidden" name="cotizacion_id" value={c.id} />
-                      <input name="monto" inputMode="numeric" placeholder="$ abono" />
-                      <input type="date" name="fecha" defaultValue={hoy} />
-                      <input name="cuenta_pago" placeholder="cuenta (opc)" />
-                      <button type="submit" className="cc-act">+ Abono</button>
-                    </form>
-                  )}
-                </div>
+                )}
 
-                {/* Cruce con la factura final */}
                 {c.cufe_factura ? (
                   <div className="cot-cruce ok">
                     <span>🔗 Enlazada a factura <b>{c.fact_numero}</b> · total {$(c.fact_total)} · abonos {$(c.abono_total)} → <b>saldo a pagar {$(saldo)}</b></span>
                     {operar && <form action={quitarEnlace} style={{ display: "inline" }}><input type="hidden" name="cotizacion_id" value={c.id} /><button className="cc-act ghost" type="submit">Quitar</button></form>}
                   </div>
-                ) : operar && (c.estado === "aprobada" || c.estado === "recibida") ? (
-                  cands.length ? (
-                    <form action={enlazarFactura} className="cot-cruce">
-                      <input type="hidden" name="cotizacion_id" value={c.id} />
-                      <span>🔗 Enlazar factura DIAN:</span>
-                      <select name="cufe" defaultValue="" required>
-                        <option value="" disabled>Factura del NIT {c.nit}…</option>
-                        {cands.map((f) => <option key={f.cufe} value={f.cufe}>{f.numero} · {$(f.total)}</option>)}
-                      </select>
-                      <button className="cc-act" type="submit">Enlazar</button>
-                    </form>
-                  ) : (
-                    <div className="cot-cruce"><span className="muted">Sin factura DIAN de este NIT aún para enlazar.</span></div>
-                  )
+                ) : operar && cands.length && ["aprobada", "recibida"].includes(c.estado) ? (
+                  <form action={enlazarFactura} className="cot-cruce">
+                    <input type="hidden" name="cotizacion_id" value={c.id} />
+                    <span>🔗 Enlazar factura DIAN:</span>
+                    <select name="cufe" defaultValue="" required>
+                      <option value="" disabled>Factura del NIT {c.nit}…</option>
+                      {cands.map((f) => <option key={f.cufe} value={f.cufe}>{f.numero} · {$(f.total)}</option>)}
+                    </select>
+                    <button className="cc-act" type="submit">Enlazar</button>
+                  </form>
                 ) : null}
 
                 <CorreosIntake correos={c.correos} />

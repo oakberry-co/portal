@@ -46,6 +46,13 @@ export async function guardarCuenta(fd: FormData) {
   const user = await exigirCap("intake");
   const certId = Number(fd.get("cert_id")) || null;
   const nitCrudo = String(fd.get("nit") ?? "").trim();
+  // De qué solicitud viene, para poder CORREGIRLE el NIT si el proveedor lo
+  // tecleó incompleto. Pasa: COT-0034 llegó con '800165' y el NIT de ese mismo
+  // GRUPO DECOR es '800165377'. Un NIT torcido no cruza con la cuenta ni con las
+  // facturas DIAN del proveedor, y la fila desaparece del archivo del banco sin
+  // dar un solo error — es la familia de los $37M de MODAL TRACK.
+  const origen = String(fd.get("origen") ?? "");
+  const origenId = Number(fd.get("origen_id")) || null;
   const banco = String(fd.get("banco") ?? "").trim();
   const tipo = String(fd.get("tipo_cuenta") ?? "").trim();
   const numero = String(fd.get("num_cuenta") ?? "").replace(/[^\d]/g, "");
@@ -54,12 +61,41 @@ export async function guardarCuenta(fd: FormData) {
   if (!esBancoConocido(banco)) throw new Error("Elige el banco de la lista.");
   if (tipo !== "ahorros" && tipo !== "corriente") throw new Error("Di si es de ahorros o corriente.");
   if (numero.length < 5) throw new Error("Escribe el número de cuenta.");
+  // El NIT es la llave de todo: sin un mínimo razonable no cruza con nada. Seis
+  // dígitos es el piso de una cédula colombiana antigua; por debajo está roto.
+  if (nitCanonico(nitCrudo).length < 6) {
+    throw new Error("El NIT o la cédula quedó incompleto. Escríbelo completo, "
+                  + "como aparece en el RUT o en la certificación: es con eso que "
+                  + "se cruza el pago.");
+  }
   // El NIT puede llegar con el dígito de verificación pegado desde el formulario
   // público. Si se guarda así, la cuenta no cruza con las facturas del mismo
   // proveedor y el pago se cae del archivo del banco (ver lib/nit.ts).
   const nit = nitCanonico(nitCrudo);
 
   await withTx(async (c) => {
+    // Si el NIT cambió, se corrige EN LA SOLICITUD antes de escribir el maestro:
+    // si no, la cuenta quedaría bajo el NIT bueno y la solicitud seguiría con el
+    // torcido, y al pagar no se encontrarían.
+    if ((origen === "cotizacion" || origen === "cuenta_cobro") && origenId) {
+      const tabla = origen === "cotizacion" ? "cotizaciones" : "cuentas_cobro";
+      const col = origen === "cotizacion" ? "nit" : "num_doc";
+      const antes = await c.query<{ v: string | null }>(
+        `SELECT ${col} AS v FROM ${tabla} WHERE id = $1 FOR UPDATE`, [origenId]);
+      const viejo = nitCanonico(antes.rows[0]?.v ?? "");
+      if (viejo && viejo !== nit) {
+        await c.query(`UPDATE ${tabla} SET ${col} = $2 WHERE id = $1`, [origenId, nit]);
+        await c.query(
+          `UPDATE certificacion_bancaria SET nit = $3
+            WHERE origen_tipo = $1 AND origen_id = $2`, [origen, origenId, nit]);
+        await registrarEvento(c, {
+          cufe: null, tipo: "corrige_nit", campo: col,
+          valorAnterior: { origen, id: origenId, nit: viejo },
+          valorNuevo: { origen, id: origenId, nit },
+          actor: user.email, actorRol: user.rol, origen: "web",
+        });
+      }
+    }
     const previa = await c.query<{ banco: string | null; tipo_cuenta: string | null; num_cuenta: string | null }>(
       "SELECT banco, tipo_cuenta, num_cuenta FROM cuentas_bancarias_proveedor WHERE nit = $1", [nit]);
     const antes = previa.rows[0] ?? null;

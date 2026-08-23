@@ -1474,3 +1474,10 @@ tr.desfasada td { background: #fff8e6; }
   .cot-clasif form { flex-direction: column; align-items: stretch; }
   .cot-clasif select, .cot-clasif .cc-act { width: 100%; }
 }
+
+/* El NIT en el panel de la cuenta. Cuando se ve corto se marca en ámbar: lo
+   teclea el proveedor en un formulario público y llega incompleto (COT-0034 vino
+   con 6 dígitos cuando el NIT real tiene 9). Un NIT torcido no cruza con las
+   facturas del proveedor y el pago desaparece del archivo del banco sin error. */
+.cc-verif-form input.corto { border-color: rgba(212,160,23,.75); background: #fffdf5; }
+.cc-ojo { color: #8a6100; }

@@ -155,7 +155,7 @@ export function CuentasCobroView({ items, operar, conceptos, destinos }: {
                 <PanelMonto origen="cuenta_cobro" id={c.id} val={c.val} declarado={c.valor}
                             operar={operar} pagada={!!c.pago_id}
                             docUrl={(c.documentos ?? []).find((d) => d.clase === "soporte")?.path} />
-                <PanelCuenta cert={c.cert} cuenta={c.cuenta} nit={c.num_doc} bloqueo={c.estado === "recibida" ? bloqueo : null} operar={operar}
+                <PanelCuenta cert={c.cert} cuenta={c.cuenta} nit={c.num_doc} origen="cuenta_cobro" origenId={c.id} bloqueo={c.estado === "recibida" ? bloqueo : null} operar={operar}
                              docUrl={(c.documentos ?? []).find((d) => d.clase === "certificacion_bancaria")?.path} />
 
                 {/* Paso 3: concepto y destino. El MISMO panel y la MISMA acción
