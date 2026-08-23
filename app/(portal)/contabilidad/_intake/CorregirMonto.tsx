@@ -3,7 +3,7 @@
 // CORREGIR EL MONTO — siempre a la mano, no escondido detrás de una alarma.
 //
 // Vivía dentro del aviso de "el monto no aparece en el documento", y cuando ese
-// aviso se calló (21-ago-2026) el botón se fue con él: quedaban sin poder
+// aviso se calló (23-ago-2026) el botón se fue con él: quedaban sin poder
 // corregir justo los casos en que la cifra CUADRA con el papel y aun así está
 // mal — el proveedor cotizó de más, se acordó otro precio, o el documento
 // mismo trae el error. Eso es la mayoría de las correcciones reales.

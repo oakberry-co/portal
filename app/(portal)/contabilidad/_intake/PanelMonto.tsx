@@ -7,7 +7,7 @@
 // que el revisor lo compruebe en vez de creérselo. En cualquier otro caso NO
 // PINTA NADA: ni "coincide", ni "todavía no lo he leído", ni "no pude leerlo".
 //
-// Eso último es deliberado (21-ago-2026). El proceso es manual: la máquina
+// Eso último es deliberado (23-ago-2026). El proceso es manual: la máquina
 // contando lo que le pasó al OCR es ruido en una tarjeta donde alguien está
 // trabajando, y una tarjeta que siempre tiene cajas de colores es una tarjeta
 // que se lee en diagonal — justo el día que la caja dice algo importante.
