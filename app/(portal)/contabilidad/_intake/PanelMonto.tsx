@@ -1,13 +1,19 @@
 "use client";
 
-// LA ALARMA DEL MONTO.
+// LA ALARMA DEL MONTO — Y SOLO CUANDO HAY ALGO QUE DECIR.
 //
 // El portal lee el documento soporte y saca todos los montos que trae. Si el
-// valor registrado no está entre ellos, LO DICE — y muestra los que sí están,
-// para que el revisor pueda comprobarlo en vez de creérselo. No bloquea nada:
-// una cotización la arma cada proveedor a su manera y un aviso que se equivoca
-// seguido es un aviso que el equipo aprende a saltarse. Quien decide es el
-// humano, con el botón de ajustar el monto justo al lado.
+// valor registrado no está entre ellos, lo dice y muestra los que sí están, para
+// que el revisor lo compruebe en vez de creérselo. En cualquier otro caso NO
+// PINTA NADA: ni "coincide", ni "todavía no lo he leído", ni "no pude leerlo".
+//
+// Eso último es deliberado (21-ago-2026). El proceso es manual: la máquina
+// contando lo que le pasó al OCR es ruido en una tarjeta donde alguien está
+// trabajando, y una tarjeta que siempre tiene cajas de colores es una tarjeta
+// que se lee en diagonal — justo el día que la caja dice algo importante.
+//
+// Tampoco bloquea: una cotización la arma cada proveedor a su manera y el lector
+// se equivoca. Quien decide es el humano, con el botón de corregir al lado.
 //
 // El caso que lo justifica (COT-0026, 21-ago-2026): el papel decía
 // `TOTAL A PAGAR $ 149.340,24` y el proveedor tecleó `$ 14.934.024` — el mismo
@@ -36,45 +42,20 @@ export function PanelMonto({ origen, id, val, declarado, docUrl, operar = true, 
   pagada?: boolean;
 }) {
   const candidatos = val?.candidatos ?? [];
-  const v = !val || val.estado === "pendiente"
-    ? { estado: "pendiente" as const, motivo: null }
-    : veredicto(declarado, candidatos);
-
-  // Cuadra: una línea verde y a otra cosa. Si el panel gritara siempre, el
-  // equipo aprendería a saltárselo y el día que grite de verdad no lo va a leer.
-  if (v.estado === "cuadra") {
-    return (
-      <div className="cc-monto ok">
-        ✓ <b>El monto coincide con el documento</b> — {$(declarado)}
-        {val?.metodo === "ocr" && <i className="muted"> · leído por OCR</i>}
-      </div>
-    );
-  }
-
-  // Todavía sin leer: ni alarma ni visto bueno. Se dice y ya.
-  if (v.estado === "pendiente") {
-    return (
-      <div className="cc-monto esperando">
-        ⏳ El monto aún no se ha cotejado con el documento (el lector corre cada 15 minutos).
-      </div>
-    );
-  }
+  // Sin lectura, o leída y cuadra, o ilegible: SILENCIO. Solo se habla cuando el
+  // valor registrado no aparece en el papel, que es lo único accionable.
+  if (!val || val.estado === "pendiente") return null;
+  const v = veredicto(declarado, candidatos);
+  if (v.estado !== "no_cuadra") return null;
 
   return (
     <div className="cc-monto malo">
-      {v.estado === "ilegible" ? (
-        <div>
-          ❔ <b>No se pudo leer ningún monto del documento</b> (foto borrosa o formato raro).
-          Revisa a ojo que <b>{$(declarado)}</b> sea lo que dice el papel.
+      <div>
+        ⚠️ <b>Ojo con el monto: no aparece en el documento.</b> {v.motivo}
+        <div className="cc-monto-cands">
+          Registrado <b>{$(declarado)}</b> · en el documento: {montosLegibles(candidatos)}
         </div>
-      ) : (
-        <div>
-          ⚠️ <b>Ojo con el monto: no aparece en el documento.</b> {v.motivo}
-          <div className="cc-monto-cands">
-            Registrado <b>{$(declarado)}</b> · en el documento: {montosLegibles(candidatos)}
-          </div>
-        </div>
-      )}
+      </div>
 
       {docUrl && (
         <p className="cc-monto-abrir">

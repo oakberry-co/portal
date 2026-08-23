@@ -70,6 +70,15 @@ export function cola(num: string | null | undefined): string {
   return n ? "•••" + n.slice(-4) : "—";
 }
 
+/** El único motivo de bloqueo que la bandeja NO repite en rojo: el formulario de
+ *  la cuenta está justo encima pidiéndola, y decirlo dos veces es lo que hacía
+ *  ver el trámite trancado cuando en realidad espera diez segundos de alguien.
+ *  Se exporta como constante para compararlo por identidad — no por texto, que
+ *  es como estas cosas se desincronizan al cambiar una coma. */
+export const FALTA_CUENTA =
+  "Falta la cuenta bancaria: escribe banco, tipo y número leyéndolos de la certificación. "
+  + "Sin cuenta, el pago no tiene a dónde ir.";
+
 /** Lo que hace falta para decidir si un envío se puede aprobar. */
 export type Aprobacion = {
   docsFaltan: string[];
@@ -98,9 +107,6 @@ export function bloqueoAprobacion(a: Aprobacion): string | null {
   if (docsFaltan.length) {
     return `Faltan documentos: ${docsFaltan.join(", ")}. Pídeselos al proveedor antes de aprobar.`;
   }
-  if (!(cuenta?.num_cuenta ?? "").trim()) {
-    return "Falta la cuenta bancaria: escribe banco, tipo y número leyéndolos de la certificación. "
-         + "Sin cuenta, el pago no tiene a dónde ir.";
-  }
+  if (!(cuenta?.num_cuenta ?? "").trim()) return FALTA_CUENTA;
   return null;
 }
