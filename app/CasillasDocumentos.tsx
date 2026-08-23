@@ -6,8 +6,8 @@ import type { Formatos } from "@/lib/documentos";
 import { motivoRechazo, motivoPorPesoTotal, tieneClave } from "@/lib/documentos";
 import { comprimirFoto } from "@/lib/imagen";
 
-// Las 4 casillas de documentos de los portales públicos: certificación bancaria,
-// RUT, cédula y documento soporte. Una casilla por documento (y no un "sube todo
+// Las casillas de documentos de los portales públicos: certificación bancaria,
+// RUT y documento soporte. Una casilla por documento (y no un "sube todo
 // acá") por dos razones: el proveedor sabe qué le falta, y contabilidad recibe el
 // archivo ya clasificado en vez de cuatro PDFs con nombres inventados.
 //
@@ -104,7 +104,7 @@ export function CasillasDocumentos({ documento, clases, obligatorios = true, onC
                 setPreparando((p) => ({ ...p, [c.name]: true }));
                 try {
                   // La foto se aliviana ANTES de juzgarla por el peso: rechazar
-                  // una cédula de 5 MB que iba a quedar en 400 KB sería mandar al
+                  // un RUT fotografiado de 5 MB que iba a quedar en 400 KB sería mandar al
                   // proveedor a resolver un problema que ya resolvimos nosotros.
                   let f = original;
                   if (c.formatos !== "documento") {

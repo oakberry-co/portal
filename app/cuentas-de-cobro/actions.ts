@@ -17,7 +17,7 @@ export type Resultado = { ok: boolean; error?: string; aviso?: string };
 /** ¿Ya le cobraste a Oakberry antes? — el camino corto.
  *
  *  A un proveedor que ya está registrado se le pedían otra vez los cuatro
- *  documentos (certificación, RUT, cédula, soporte) para cobrar lo mismo del mes
+ *  documentos (certificación, RUT, soporte) para cobrar lo mismo del mes
  *  pasado. Desde el celular, que es de donde llega la mayoría, eso son cuatro
  *  adjuntos y la mitad abandona.
  *

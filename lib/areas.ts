@@ -27,15 +27,13 @@ export type Area = (typeof AREAS)[number];
  *  `formatos` decide qué archivo se acepta (ver lib/documentos.ts):
  *    'documento' = PDF o Word. La certificación (la lee un OCR y de ahí sale la
  *                  cuenta) y el soporte (es el papel que sustenta el pago).
- *    'libre'     = además foto. Cédula y RUT llegan del celular y se leen a ojo;
- *                  exigirles PDF es mandarlos a buscar un computador. */
+ *    'libre'     = además foto. El RUT llega del celular y se lee a ojo;
+ *                  exigirle PDF es mandar al proveedor a buscar un computador. */
 export const CLASES_DOC = [
   { name: "doc_certificacion", clase: "certificacion_bancaria", label: "Certificación bancaria",
     ayuda: "La que emite tu banco. De ahí tomamos tu cuenta", formatos: "documento" as const },
   { name: "doc_rut", clase: "rut", label: "RUT",
     ayuda: "Actualizado (DIAN)", formatos: "libre" as const },
-  { name: "doc_cedula", clase: "cedula", label: "Cédula",
-    ayuda: "Del titular de la cuenta", formatos: "libre" as const },
   { name: "doc_soporte", clase: "soporte", label: "Documento soporte",
     ayuda: "Tu cuenta de cobro, cotización, contrato…", formatos: "documento" as const },
 ] as const;
@@ -54,9 +52,20 @@ export const PLAZOS_NEGOCIADOS = [
   { valor: 60, label: "60 días" },
 ] as const;
 
+/** Clases que YA NO se piden pero que traen los envíos viejos. Sin esto, una
+ *  cédula guardada en marzo aparecería en la bandeja como "Documento" y nadie
+ *  sabría qué está abriendo. Se muestran; no se exigen. */
+const CLASES_HISTORICAS: Record<string, string> = {
+  // Se dejó de pedir el 23-ago-2026: no sustentaba nada y era un adjunto más
+  // desde el celular. Los envíos anteriores la siguen trayendo.
+  cedula: "Cédula",
+};
+
 /** Etiqueta legible de una clase guardada (para las bandejas). */
 export function etiquetaClase(clase: string | undefined): string {
-  return CLASES_DOC.find((c) => c.clase === clase)?.label ?? "Documento";
+  return CLASES_DOC.find((c) => c.clase === clase)?.label
+      ?? CLASES_HISTORICAS[clase ?? ""]
+      ?? "Documento";
 }
 
 /** Documento tal como quedó en `documentos` (JSONB) — lo mínimo para saber si
@@ -79,17 +88,17 @@ export type DocGuardado = { clase?: string; estado?: string; path?: string };
  *  los caminos y el día que no cuadran, el proveedor queda bloqueado sin poder
  *  arreglarlo (Regla 18).
  *
- *  · CUENTA DE COBRO: los cuatro. La cobra a menudo una PERSONA natural, y la
- *    cédula es lo que sustenta un pago a alguien sin factura electrónica.
- *  · COTIZACIÓN: sin cédula. Este formulario pide NIT —no tipo de documento—
- *    porque quien cotiza es una empresa; pedirle la cédula del representante
- *    para un anticipo era un adjunto más desde el celular sin nada que sostenga.
- *    (Decisión de Daniel, 21-ago-2026.)
- *  · RECURRENTE: solo el soporte. Su cuenta ya está certificada de un envío
- *    anterior y confirmada por un humano; repetir los otros tres es pedirle
- *    cuatro adjuntos desde el celular para cobrar lo mismo de siempre. */
+ *  · CUENTA DE COBRO y COTIZACIÓN: los tres — certificación, RUT y soporte.
+ *    LA CÉDULA SE DEJÓ DE PEDIR el 23-ago-2026 (decisión de Daniel): no
+ *    sustentaba nada que no sustentaran ya el RUT y la certificación, y era un
+ *    cuarto adjunto que el proveedor tenía que conseguir desde el celular. Los
+ *    envíos viejos que la traen la siguen mostrando (CLASES_HISTORICAS), pero a
+ *    nadie se le exige ya.
+ *  · RECURRENTE: solo el soporte. Su cuenta ya está en el maestro de un envío
+ *    anterior; repetir los otros dos es pedirle adjuntos desde el celular para
+ *    cobrar lo mismo de siempre. */
 export const DOCS_CUENTA_COBRO = CLASES_DOC;
-export const DOCS_COTIZACION = CLASES_DOC.filter((c) => c.clase !== "cedula");
+export const DOCS_COTIZACION = CLASES_DOC;
 export const DOCS_RECURRENTE = CLASES_DOC.filter((c) => c.clase === "soporte");
 
 export function docsFaltantes(docs: DocGuardado[] | null | undefined,

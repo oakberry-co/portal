@@ -42,7 +42,7 @@ try {
                { cwd: RAIZ, stdio: "pipe" });
 } catch { /* solo se queja del alias de un `import type`; emite igual */ }
 const { bloqueoAprobacion } = require(path.join(tmp, "certificaciones.js"));
-const { docsFaltantes, CLASES_DOC, DOCS_CUENTA_COBRO, DOCS_COTIZACION,
+const { docsFaltantes, etiquetaClase, CLASES_DOC, DOCS_CUENTA_COBRO, DOCS_COTIZACION,
         DOCS_RECURRENTE } = require(path.join(tmp, "areas.js"));
 
 const doc = (clase) => ({ clase, estado: "subido", path: "https://drive/x" });
@@ -88,13 +88,23 @@ console.log("\n3) Que la cuenta cambie ya NO es un candado (queda en la bitácor
 check(bloqueo(docsFaltantes(LOS_4), { ...CERT, cuenta_anterior: "99999999", aplicada: false }, CON_CUENTA) === null,
       "una cuenta distinta a la anterior -> APRUEBA; el cambio se lee en la bitácora");
 
-console.log("\n4) Cada carril exige su propio set de documentos");
-check(docsFaltantes(LOS_4, DOCS_COTIZACION).length === 0, "una cotización SIN cédula está completa");
-check(docsFaltantes(CLASES_DOC.filter((c) => c.clase !== "cedula").map((c) => doc(c.clase)),
-                    DOCS_CUENTA_COBRO).join(",") === "Cédula",
-      "pero a una cuenta de cobro sí le falta (la cobra una persona natural)");
+console.log("\n4) Qué documentos se piden — y cuáles YA NO");
+// LA CÉDULA SE DEJÓ DE PEDIR el 23-ago-2026: no sustentaba nada que el RUT y la
+// certificación no sustentaran ya, y era un cuarto adjunto que el proveedor
+// tenía que conseguir desde el celular. Se prueba explícitamente porque el día
+// que vuelva a la lista, todos los envíos abiertos se bloquean de golpe.
+check(!CLASES_DOC.some((c) => c.clase === "cedula"), "la cédula NO está entre las casillas");
+check(!DOCS_CUENTA_COBRO.some((c) => c.clase === "cedula"), "ni entre las que exige una cuenta de cobro");
+check(!DOCS_COTIZACION.some((c) => c.clase === "cedula"), "ni entre las de una cotización");
+check(DOCS_CUENTA_COBRO.length === 3 && DOCS_COTIZACION.length === 3,
+      "los dos carriles piden TRES: certificación, RUT y soporte");
+// Un envío VIEJO que la trae no se rompe: se sigue mostrando con su nombre.
+check(etiquetaClase("cedula") === "Cédula",
+      "una cédula guardada antes se sigue viendo como 'Cédula', no como 'Documento'");
+check(docsFaltantes(LOS_4, DOCS_COTIZACION).length === 0, "con los tres, no falta nada");
 check(docsFaltantes(SOLO_SOPORTE, DOCS_RECURRENTE).length === 0, "al recurrente le basta el soporte");
-check(docsFaltantes(SOLO_SOPORTE, DOCS_COTIZACION).length > 0, "y a un proveedor nuevo no");
+check(docsFaltantes(SOLO_SOPORTE, DOCS_COTIZACION).join(",") === "Certificación bancaria,RUT",
+      "y a un proveedor nuevo le faltan los otros dos");
 check(docsFaltantes([], DOCS_RECURRENTE).length > 0,
       "recurrente SIN soporte -> falta (es lo único suyo de este cobro)");
 

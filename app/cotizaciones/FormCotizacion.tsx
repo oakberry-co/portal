@@ -201,11 +201,10 @@ export function FormCotizacion() {
           </>
         )}
       </p>
-      {/* La CÉDULA no se pide acá (21-ago-2026): este formulario pide NIT, no
-          tipo de documento, porque quien cotiza es una empresa. La lista de
-          obligatorios vive en lib/areas.ts y la usan también la bandeja y la
-          página de "completar" — si solo se quitara de la pantalla, la bandeja
-          seguiría diciendo "falta la cédula" y nadie podría aprobar. */}
+      {/* Qué documentos se piden vive en lib/areas.ts, no acá: la misma lista la
+          usan la bandeja y la página de "completar". Si un documento se quitara
+          solo de esta pantalla, la bandeja seguiría diciendo que falta y nadie
+          podría aprobar. */}
       <CasillasDocumentos documento={esRecurrente ? docBusca : doc}
                           clases={esRecurrente ? DOCS_RECURRENTE : DOCS_COTIZACION} />
 

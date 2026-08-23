@@ -47,7 +47,7 @@ function formatear(valor: string, formato?: "money" | "pct"): string {
  *  Sin este parámetro, la pantalla de revisión listaba como "falta" todo lo que
  *  no estuviera adjunto según la lista GLOBAL — incluidos los papeles que el
  *  formulario nunca mostró. Al proveedor recurrente, que solo sube el soporte,
- *  le decía que le faltaban la certificación, el RUT y la cédula justo antes de
+ *  le decía que le faltaban la certificación y el RUT justo antes de
  *  enviar: un aviso alarmante y falso, en el peor momento posible (Regla 18). */
 export function resumenDe(fd: FormData, campos: CampoResumen[],
                           clases: readonly { name: string; label: string }[] = CLASES_DOC): {

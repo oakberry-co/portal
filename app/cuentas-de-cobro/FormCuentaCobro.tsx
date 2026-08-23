@@ -120,7 +120,7 @@ export function FormCuentaCobro({ conceptos }: { conceptos: string[] }) {
             ✓ <b>Te reconocimos, {recon!.nombre}.</b>
             {recon!.cuenta && <> Te pagamos a tu cuenta {recon!.banco ? recon!.banco + " " : ""}<b>{recon!.cuenta}</b>, la de siempre.</>}
             <br />
-            <span>No tienes que subir cédula, RUT ni certificación otra vez.{" "}
+            <span>No tienes que subir el RUT ni la certificación otra vez.{" "}
               <button type="button" className="pub-link inline"
                       onClick={() => { setModo("nuevo"); setRecon(null); }}>
                 ¿Cambiaste de cuenta? Entra como nuevo
@@ -203,7 +203,7 @@ export function FormCuentaCobro({ conceptos }: { conceptos: string[] }) {
           <>
             Toca cada uno para adjuntarlo. <b>Tu cuenta la tomamos de la certificación
             bancaria</b>, así que no tienes que escribirla. La certificación y el soporte
-            van en <b>PDF o Word</b>; la cédula y el RUT pueden ser foto.
+            van en <b>PDF o Word</b>; el RUT puede ser foto.
             <br /><b>Ninguno con contraseña</b> — si tu banco te lo entrega con clave, ábrelo
             y vuelve a guardarlo sin candado.
           </>
