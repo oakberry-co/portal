@@ -5,7 +5,7 @@ import { SyncPanel } from "./SyncPanel";
 import { getCurrentUser } from "@/lib/auth";
 import { puede } from "@/lib/permisos";
 import type { FacturaRow } from "./FacturaCard";
-import { DocsNoDian, type DocNoDianUI } from "./DocsNoDian";
+import { type DocNoDianUI } from "./DocsNoDian";
 import { porClasificar } from "@/lib/documentos-no-dian";
 import { NC_APLICADA } from "@/lib/notas-credito";
 
@@ -137,10 +137,9 @@ export default async function ConciliacionPage() {
     <div className="container">
       <h1>🧾 Conciliación de pagos</h1>
       <SyncPanel ultima={sync.ultima} nuevas={sync.nuevas} pendiente={sync.pendiente} />
-      {/* Va ARRIBA de la grilla a propósito: son pocos y son los que frenan un
-          pago. Si quedaran al final de 4.000 facturas, nadie los vería. */}
-      <DocsNoDian docs={docsNoDian} conceptos={conceptos} destinos={destinos} puedeClasificar={puedeClasificar} />
-      <ConciliacionView filas={filas} conceptos={conceptos} destinos={destinos} puedeClasificar={puedeClasificar} puedeExport={puede(rol, "retenciones")} puedeRetenciones={puedeRetenciones} />
+      <ConciliacionView filas={filas} conceptos={conceptos} destinos={destinos} noDian={docsNoDian}
+                        puedeClasificar={puedeClasificar} puedeExport={puede(rol, "retenciones")}
+                        puedeRetenciones={puedeRetenciones} />
 
       <p className="chain-note">
         🔒 Cada guardado escribe el cambio <em>y</em> su evento en la misma transacción; la bitácora

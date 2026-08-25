@@ -7,14 +7,23 @@
 // pagarlos. Antes se aprobaban y saltaban directo a Pagos: se pagaban bien, pero
 // quedaban sin concepto ni destino, y el destino vacío no se llena solo.
 //
-// Van en un bloque APARTE y no mezclados con las facturas, por la misma razón
-// que en Pagos: no tienen CUFE. La grilla de facturas se ordena, se filtra y se
-// exporta a Excel usando el CUFE como llave; una fila sin CUFE ahí adentro es
-// una fila que el Excel de retenciones no puede devolver. Acá se ve que es otra
-// cosa —lo dice la referencia CC-46 / SP-51, que no se parece a un CUFE— y aun
-// así se trabaja igual.
+// VAN EN LA MISMA TABLA que las facturas (23-ago-2026). Estaban en un bloque
+// aparte arriba, y era un cajón distinto para el mismo trabajo: el equipo tiene
+// que clasificar, retener y pagar exactamente igual. En la columna de la factura
+// dicen SIN FACTURA, que es toda la diferencia que hay que ver.
+//
+// LO QUE SÍ SIGUE SIENDO DISTINTO, y hay que saberlo: **no tienen CUFE**, y el
+// Excel de retenciones usa el CUFE como llave para volver (Regla 15: lo que sale
+// tiene que poder volver). Por eso estas filas NO viajan en ese Excel — sus
+// retenciones se hacen con el botón de la fila, que abre el modal. Meterlas al
+// Excel sin darles una llave de round-trip sería mandar filas que no pueden
+// regresar, que es peor que no mandarlas.
+//
+// Se pintan ARRIBA de las facturas y no se ordenan con ellas: son pocas y son
+// las que se quedan sin hacer si se pierden entre 4.000 filas.
 
 import { useState, useTransition } from "react";
+import { semanaISO } from "@/lib/orden-facturas";
 import { Combobox } from "./Combobox";
 import { RetencionesCuentaCobro, type ReglaConcepto } from "../cuentas-de-cobro/RetencionesCuentaCobro";
 import { clasificarDocumento } from "./actions";
@@ -52,24 +61,14 @@ const ETIQUETA_TIPO: Record<string, string> = {
 export function DocsNoDian({ docs, conceptos, destinos, puedeClasificar }: {
   docs: DocNoDianUI[]; conceptos: string[]; destinos: string[]; puedeClasificar: boolean;
 }) {
-  const [abierto, setAbierto] = useState(true);
   if (!docs.length) return null;
 
-  const total = docs.reduce((s, d) => s + d.valor, 0);
   return (
-    <div className="nodian">
-      <div className="nodian-head" onClick={() => setAbierto((v) => !v)}>
-        <span className="nodian-caret">{abierto ? "▾" : "▸"}</span>
-        <b>🧾 Sin factura DIAN</b>
-        <span className="nodian-n">{docs.length}</span>
-        <span className="nodian-sub">
-          cuentas de cobro y gastos sin factura electrónica · <b>{$(total)}</b> — clasifícalos y pasan a Pagos
-        </span>
-      </div>
-      {abierto && docs.map((d) => (
+    <>
+      {docs.map((d) => (
         <FilaDoc key={d.id} d={d} conceptos={conceptos} destinos={destinos} puedeClasificar={puedeClasificar} />
       ))}
-    </div>
+    </>
   );
 }
 
@@ -102,53 +101,82 @@ function FilaDoc({ d, conceptos, destinos, puedeClasificar }: {
     });
   }
 
+  const aPagar = d.valor_a_pagar ?? d.valor;
+
   return (
-    <div className="nodian-fila">
-      <div className="nodian-quien">
-        <span className="nodian-ref" title={`${ETIQUETA_TIPO[d.tipo] ?? d.tipo}${d.tipo_detalle ? " · " + d.tipo_detalle : ""}${d.origen === "interno" ? " · cargado por el equipo" : " · lo envió el proveedor"}`}>
-          {d.ref}
-        </span>
-        <div>
-          <b>{d.razon_social}</b>
-          <div className="muted mini">
-            NIT {d.num_doc}
-            {d.numero ? ` · ${d.numero}` : ""}
-            {d.tipo_detalle ? ` · ${d.tipo_detalle}` : ""}
-            {d.area ? ` · área ${d.area}` : ""}
-          </div>
-          {d.descripcion && <div className="muted mini nodian-desc" title={d.descripcion}>{d.descripcion}</div>}
+    <div className={"fila" + (falta.length ? " pend" : "")}>
+      <div className="c-prov">
+        <div className="prov" title={d.descripcion ?? d.razon_social}>{d.razon_social}</div>
+        <div className="muted mini">
+          NIT {d.num_doc}
+          {d.numero ? ` · ${d.numero}` : ""}
+          {d.area ? ` · área ${d.area}` : ""}
         </div>
       </div>
-      <div className="nodian-fch">{ddmm(d.fecha)}</div>
-      <div className="nodian-val num">{$(d.valor)}</div>
 
-      <form onSubmit={guardar} className="nodian-form">
+      {/* Toda la diferencia que hay que ver está acá: no hay número de factura
+          porque no hay factura. La referencia (CC-46 / SP-51) va debajo, que es
+          con la que el equipo la nombra. */}
+      <div className="c-num mono" title={`${ETIQUETA_TIPO[d.tipo] ?? d.tipo}${d.tipo_detalle ? " · " + d.tipo_detalle : ""}${d.origen === "interno" ? " · lo cargó el equipo" : " · lo envió el proveedor"}`}>
+        <span className="c-sinfac">SIN FACTURA</span>
+        <span className="muted mini nodian-ref2">{d.ref}</span>
+      </div>
+
+      <div className="c-fecha"><span title="Fecha del documento">{ddmm(d.fecha)}</span></div>
+      <div className="c-sem">{semanaISO(d.fecha)}</div>
+      <div className="c-valor num">{$(d.valor)}</div>
+
+      <form onSubmit={guardar} style={{ display: "contents" }}>
         <input type="hidden" name="id" value={d.id} />
-        <Combobox name="concepto" label="concepto" options={conceptos} defaultValue={d.concepto ?? ""} placeholder="Concepto" />
-        <Combobox name="destino" label="destino" options={destinos} defaultValue={d.destino ?? ""} placeholder="Destino" />
-        <input name="plazo_dias" type="number" min={0} defaultValue={d.plazo_dias ?? ""} placeholder="días" className="nodian-plazo" title="Plazo (días) desde la fecha del documento" />
+        <div className="c-field">
+          <Combobox name="concepto" label="concepto" options={conceptos} defaultValue={d.concepto ?? ""} placeholder="Concepto" />
+        </div>
+        <div className="c-field">
+          <Combobox name="destino" label="destino" options={destinos} defaultValue={d.destino ?? ""} placeholder="Destino" />
+        </div>
+        <div className="c-plazo">
+          <input name="plazo_dias" type="number" min={0} defaultValue={d.plazo_dias ?? ""} placeholder="días"
+                 title="Plazo (días) desde la fecha del documento" />
+        </div>
         <button type="submit" className="c-btn" disabled={pending || !puedeClasificar}
-                title={puedeClasificar ? "Guardar clasificación" : "Solo lectura para tu rol"}>
+                title={puedeClasificar ? "Confirmar clasificación" : "Solo lectura para tu rol (contador)"}>
           {pending ? "…" : "Clasif."}
         </button>
       </form>
 
-      <div className="nodian-pagar">
-        <div className="num accent">{$(d.valor_a_pagar ?? d.valor)}</div>
+      <div className="c-pagar">
+        <div className="num accent">{$(aPagar)}</div>
         <div className="muted mini">ret {$(d.reten_total ?? 0)}{d.retencion_ok ? " ✓" : ""}</div>
       </div>
-      <button type="button" className="c-btn ghost" onClick={() => setModal(true)} disabled={!puedeClasificar}>Reten.</button>
 
-      <div className="nodian-docs">
+      {/* El Excel de retenciones va por CUFE y estas filas no tienen: sus
+          retenciones se hacen por acá. Lo dice el title, para que quien baje el
+          Excel y no las vea sepa por qué. */}
+      <button type="button" className="c-btn ghost" onClick={() => setModal(true)} disabled={!puedeClasificar}
+              title="Retenciones de este documento (no viaja en el Excel: no tiene CUFE)">Reten.</button>
+      {/* Sin equivalente al desvío de cuenta por factura: se deja el hueco para
+          que las columnas de las dos clases de fila sigan alineadas. */}
+      <span />
+
+      <div className="c-docs">
         {d.soporte_url
-          ? <a href={d.soporte_url} target="_blank" rel="noreferrer" className="chip" title="Documento soporte">📎</a>
-          : <span className="chip off" title="Sin documento soporte adjunto">📎</span>}
+          ? <a href={d.soporte_url} target="_blank" rel="noreferrer" className="chip" title="Documento soporte">PDF</a>
+          : <span className="chip off" title="Sin documento soporte adjunto">PDF</span>}
       </div>
 
-      <div className="nodian-estado">
-        {falta.length
-          ? <span className="nodian-falta" title={`Para pasar a Pagos falta: ${falta.join(", ")}`}>falta {falta.join(" · ")}</span>
-          : <span className="nodian-listo" title="Clasificado: ya está en el tablero de Pagos">✓ a Pagos</span>}
+      {/* LOS MISMOS TRES SEMÁFOROS que una factura, y no un texto propio: es el
+          mismo estado (clasificado · retenido · pagado) y verlo escrito distinto
+          obliga a leer dos idiomas en la misma columna. */}
+      <div className="c-sems">
+        <span className="sem" title={d.concepto && d.destino ? "Clasificado" : "Falta clasificar (concepto y destino)"}>
+          <i className={"luz " + (d.concepto && d.destino ? "ok" : "no")} />Clasif
+        </span>
+        <span className="sem" title={d.retencion_ok ? "Retenciones confirmadas" : "Faltan retenciones (aunque sean cero)"}>
+          <i className={"luz " + (d.retencion_ok ? "ok" : "no")} />Reten
+        </span>
+        <span className="sem" title={falta.length ? `Aún no pasa a Pagos: falta ${falta.join(", ")}` : "En el tablero de Pagos"}>
+          <i className={"luz " + (falta.length ? "no" : "ok")} />Pago
+        </span>
         {!d.tiene_banco && (
           <span className="nodian-sinbanco" title="Sin cuenta bancaria en Maestros: no va a entrar al archivo del banco aunque se clasifique.">
             ⚠ sin cuenta

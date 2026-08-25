@@ -1347,41 +1347,16 @@ tr.desfasada td { background: #fff8e6; }
    Cuentas de cobro aprobadas y gastos internos (servicios públicos y otros).
    Van en bloque aparte y con un fondo distinto: no tienen CUFE y quien mira la
    pantalla tiene que poder decir "esto no lo certificó la DIAN". */
-.nodian { border: 1px solid var(--border-lav); border-radius: 12px; background: #fffdf5;
-  margin: 0 0 14px; overflow: hidden; }
-.nodian-head { display: flex; align-items: center; gap: 8px; padding: 9px 12px;
-  background: var(--cream-2); cursor: pointer; font-size: 12.5px; }
-.nodian-caret { color: var(--lav); font-size: 10px; }
-.nodian-n { background: var(--purple); color: #fff; border-radius: 999px;
-  padding: 1px 7px; font-size: 10.5px; font-weight: 700; }
-.nodian-sub { color: var(--lav); font-size: 11.5px; }
-.nodian-fila { display: grid; align-items: center; gap: 8px; padding: 8px 12px;
-  border-top: 1px dashed var(--border-lav);
-  grid-template-columns: minmax(180px, 1.4fr) 58px 92px minmax(280px, 2fr) 96px 52px 34px 108px; }
-.nodian-quien { display: flex; align-items: flex-start; gap: 8px; min-width: 0; }
-.nodian-ref { font-family: var(--mono); font-size: 10px; font-weight: 700;
-  background: var(--lav-soft); color: var(--purple-deep); border-radius: 5px;
-  padding: 2px 6px; white-space: nowrap; }
-.nodian-desc { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.nodian-fch { font-size: 11px; color: var(--lav); }
-.nodian-val { font-weight: 700; font-size: 12.5px; text-align: right; }
-.nodian-form { display: flex; align-items: center; gap: 6px; min-width: 0; }
-.nodian-form > *:first-child, .nodian-form > *:nth-child(2) { flex: 1; min-width: 0; }
-.nodian-plazo { width: 52px; }
-.nodian-pagar { text-align: right; }
-.nodian-docs { text-align: center; }
-.nodian-estado { display: flex; flex-direction: column; gap: 2px; align-items: flex-start; }
-/* Lo que falta se dice con nombre propio: un "no se puede" sin motivo es lo que
-   hace que la gente deje de usar la pantalla (Regla 18). */
-.nodian-falta { font-size: 10px; color: var(--warn); font-weight: 700; }
-.nodian-listo { font-size: 10px; color: var(--ok); font-weight: 700; }
-.nodian-sinbanco { font-size: 9.5px; color: var(--coral); font-weight: 700; }
+/* DOCUMENTOS SIN FACTURA DIAN — van en LA MISMA tabla que las facturas y usan
+   sus mismas celdas (.fila, .c-prov, .c-num…). Lo único propio es el sello de la
+   columna de la factura y el estado del pie: el resto tiene que verse idéntico,
+   porque es el mismo trabajo. */
+.c-sinfac { display: inline-block; font-family: var(--mono); font-size: 9px; font-weight: 800;
+  letter-spacing: .04em; background: #fff1d9; color: #8a6100;
+  border: 1px solid rgba(212,160,23,.45); border-radius: 5px; padding: 1px 5px; }
+.nodian-ref2 { display: block; margin-top: 2px; }
+.nodian-sinbanco { display: block; font-size: 9.5px; color: var(--coral); font-weight: 700; }
 .nodian-err { grid-column: 1 / -1; color: var(--coral); font-size: 11.5px; padding-top: 4px; }
-@media (max-width: 900px) {
-  .nodian-fila { grid-template-columns: 1fr 1fr; }
-  .nodian-quien, .nodian-form { grid-column: 1 / -1; }
-  .nodian-form { flex-wrap: wrap; }
-}
 
 /* ── CARGAR UN GASTO SIN FACTURA (página privada del equipo) ───────────────── */
 .gasto-form { max-width: 860px; }

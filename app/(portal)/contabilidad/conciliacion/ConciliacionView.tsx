@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { SubirRetenciones } from "./SubirRetenciones";
 import { FacturaCard, type FacturaRow, type FilaPatch } from "./FacturaCard";
+import { DocsNoDian, type DocNoDianUI } from "./DocsNoDian";
 import { comparar, isoWeek, type Orden } from "@/lib/orden-facturas";
 
 const MESES = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
@@ -29,8 +30,11 @@ function Th({ col, clase, orden, on, children }: {
 }
 
 export function ConciliacionView({
-  filas, conceptos, destinos, puedeClasificar, puedeExport, puedeRetenciones,
+  filas, conceptos, destinos, noDian, puedeClasificar, puedeExport, puedeRetenciones,
 }: { filas: FacturaRow[]; conceptos: string[]; destinos: string[];
+     /** Cuentas de cobro y gastos sin factura electrónica: van EN la misma tabla
+      *  (ver DocsNoDian.tsx), con SIN FACTURA donde iría el número. */
+     noDian: DocNoDianUI[];
      puedeClasificar: boolean; puedeExport: boolean; puedeRetenciones: boolean }) {
   const [q, setQ] = useState("");
   const [anio, setAnio] = useState("");
@@ -130,6 +134,26 @@ export function ConciliacionView({
 
   const porClasificar = rows.filter((f) => f.estado === "capturada").length;
   const activos = !!(q || anio || mes || sem || concepto || destino || prov || soloPend);
+
+  // Los documentos sin factura obedecen la BÚSQUEDA y "solo pendientes" —si no,
+  // filtrar por un proveedor seguiría mostrando los de otro y eso se lee como un
+  // error de la pantalla—. No se ordenan ni se paginan con las facturas: son
+  // pocos, y son los que se quedan sin hacer si caen en la página 7 de 4.000.
+  const noDianVisibles = useMemo(() => {
+    const qq = q.trim().toLowerCase();
+    return noDian.filter((d) => {
+      if (soloPend && d.concepto && d.destino && d.retencion_ok) return false;
+      if (concepto && d.concepto !== concepto) return false;
+      if (destino && d.destino !== destino) return false;
+      if (prov && d.razon_social !== prov) return false;
+      if (qq) {
+        const hay = [d.razon_social, d.num_doc, d.numero, d.ref, d.descripcion]
+          .filter(Boolean).join(" ").toLowerCase();
+        if (!hay.includes(qq)) return false;
+      }
+      return true;
+    });
+  }, [noDian, q, concepto, destino, prov, soloPend]);
   const limpiar = () => { setQ(""); setAnio(""); setMes(""); setSem(""); setConcepto(""); setDestino(""); setProv(""); setSoloPend(false); };
 
   return (
@@ -192,7 +216,9 @@ export function ConciliacionView({
 
 
       <p className="sub">
-        {activos ? <><strong>{filtradas.length}</strong> de {rows.length} facturas</> : <>{rows.length} facturas</>}
+        {activos ? <><strong>{filtradas.length + noDianVisibles.length}</strong> de {rows.length + noDian.length} documentos</>
+                 : <>{rows.length + noDian.length} documentos</>}
+        {noDian.length > 0 && <span className="muted"> ({noDian.length} sin factura DIAN)</span>}
         {" · "}<strong>{porClasificar}</strong> por clasificar. Revisa la sugerencia de la máquina, ajusta y confirma; cada cambio queda en la bitácora.
       </p>
 
@@ -214,8 +240,11 @@ export function ConciliacionView({
           <Th col="estado"   clase="c-sems"  orden={orden} on={ordenarPor}>Estado</Th>
         </div>
 
-        {visible.length === 0 ? (
-          <div className="tabla-vacia muted">Ninguna factura coincide con los filtros.</div>
+        <DocsNoDian docs={noDianVisibles} conceptos={conceptos} destinos={destinos}
+                    puedeClasificar={puedeClasificar} />
+
+        {visible.length === 0 && noDianVisibles.length === 0 ? (
+          <div className="tabla-vacia muted">Nada coincide con los filtros.</div>
         ) : (
           visible.map((f) => <FacturaCard key={f.cufe} f={f} conceptos={conceptos} destinos={destinos} onSaved={onSaved} puedeClasificar={puedeClasificar} />)
         )}

@@ -3,6 +3,7 @@
 import { memo, useState, useTransition } from "react";
 import { type Estado } from "@/lib/estados";
 import { Combobox } from "./Combobox";
+import { semanaISO } from "@/lib/orden-facturas";
 import { CuentaDestinoModal } from "./CuentaDestinoModal";
 import { guardarClasificacion, marcarTipoPago } from "./actions";
 import { RetencionesModal } from "./RetencionesModal";
@@ -81,15 +82,6 @@ function ddmm(d: string | Date | null): string {
   if (!d) return "—";
   const x = new Date(d);
   return `${String(x.getDate()).padStart(2, "0")}/${String(x.getMonth() + 1).padStart(2, "0")}`;
-}
-function semanaISO(d: string | Date | null): string {
-  if (!d) return "—";
-  const x = new Date(d);
-  const t = new Date(Date.UTC(x.getFullYear(), x.getMonth(), x.getDate()));
-  const day = t.getUTCDay() || 7;
-  t.setUTCDate(t.getUTCDate() + 4 - day);
-  const ys = new Date(Date.UTC(t.getUTCFullYear(), 0, 1));
-  return "S" + Math.ceil(((t.getTime() - ys.getTime()) / 86400000 + 1) / 7);
 }
 
 export const FacturaCard = memo(function FacturaCard({

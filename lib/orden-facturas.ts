@@ -70,3 +70,17 @@ export function comparar(a: FilaOrdenable, b: FilaOrdenable, o: NonNullable<Orde
     : String(va).localeCompare(String(vb), "es", { numeric: true, sensitivity: "base" });
   return c * o.dir;
 }
+
+/** La semana ISO de una fecha ("S35"). Vive acá porque la usan LAS DOS clases de
+ *  fila de la grilla —facturas DIAN y documentos sin factura— y dos copias de un
+ *  cálculo de calendario es como terminan diciendo semanas distintas para el
+ *  mismo día. */
+export function semanaISO(d: string | Date | null): string {
+  if (!d) return "—";
+  const x = new Date(d);
+  const t = new Date(Date.UTC(x.getFullYear(), x.getMonth(), x.getDate()));
+  const day = t.getUTCDay() || 7;
+  t.setUTCDate(t.getUTCDate() + 4 - day);
+  const ys = new Date(Date.UTC(t.getUTCFullYear(), 0, 1));
+  return "S" + Math.ceil(((t.getTime() - ys.getTime()) / 86400000 + 1) / 7);
+}
