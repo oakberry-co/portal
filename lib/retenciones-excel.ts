@@ -37,7 +37,7 @@ export type Problema = { fila: number; quien: string; detalle: string };
 /** Encabezados que se aceptan para cada columna. Se comparan sin tildes ni
  *  mayúsculas, porque el archivo pasa por manos y por Excel. */
 const COLUMNAS: Record<string, string[]> = {
-  cufe: ["cufe"],
+  cufe: ["cufe", "cufe ref", "cufe referencia", "referencia"],
   rf: ["retefuente", "rete fuente", "retencion en la fuente", "rte fuente"],
   ri: ["reteiva", "rete iva", "rte iva"],
   ric: ["reteica", "rete ica", "rte ica"],
@@ -70,12 +70,17 @@ export async function leerExcel(buf: ArrayBuffer): Promise<Lectura> {
   let filaEnc = 0;
   for (let i = 1; i <= Math.min(ws.rowCount, 20); i++) {
     const vals = (ws.getRow(i).values as unknown[]) ?? [];
-    if (vals.some((v) => norm(v) === "cufe")) { filaEnc = i; break; }
+    // La fila del encabezado se reconoce por la columna de la LLAVE, y esa
+    // columna tiene varios nombres aceptados (ver COLUMNAS.cufe): desde que el
+    // archivo lleva también lo que no tiene factura DIAN se llama "CUFE / Ref".
+    // Buscar el literal "cufe" aquí dejaba el archivo nuevo sin encabezado
+    // reconocible y el error decía "no encontré la columna CUFE" — teniéndola.
+    if (vals.some((v) => COLUMNAS.cufe.includes(norm(v)))) { filaEnc = i; break; }
   }
   if (!filaEnc) {
-    throw new Error("No encontré la columna CUFE. Sube el mismo Excel que bajaste "
-      + "de Conciliación — el CUFE es lo que identifica cada factura, y sin él no "
-      + "se puede saber a cuál corresponde cada retención.");
+    throw new Error("No encontré la columna «CUFE / Ref». Sube el mismo Excel que bajaste "
+      + "de Conciliación — esa columna es la que identifica cada documento, y sin ella "
+      + "no se puede saber a cuál corresponde cada retención.");
   }
 
   const enc = (ws.getRow(filaEnc).values as unknown[]) ?? [];

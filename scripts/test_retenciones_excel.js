@@ -141,6 +141,23 @@ const ORIGEN = process.argv[2] || path.join(RAIZ, "scripts", "fixtures", "concil
   try { await leerExcel(await wb3.xlsx.writeBuffer()); } catch (e) { msg = e.message; }
   check(/CUFE/.test(msg), "sin columna CUFE: se explica por qué no sirve", msg.slice(0, 60) + "…");
 
+    console.log("\n8) EL ARCHIVO SOBREVIVE AL SEGUNDO PASO");
+  // React 19 RESETEA el formulario cuando una acción termina. Después de
+  // "Revisar", el <input type=file> queda VACÍO: "Aplicar" viajaba sin archivo,
+  // la acción respondía "elige el Excel", el plan se borraba y NO SE ESCRIBÍA
+  // NADA — se veía como que el botón no hacía nada. Comprobado en navegador el
+  // 23-ago-2026 (`files.length: 0` justo antes de aplicar).
+  const sub = fs.readFileSync(path.join(RAIZ, "app", "(portal)", "contabilidad",
+                                        "conciliacion", "SubirRetenciones.tsx"), "utf8");
+  check(/useState<File \| null>/.test(sub),
+        "el File se guarda en memoria, no se relee del <input>");
+  check(/fd\.set\("archivo", archivo, archivo\.name\)/.test(sub),
+        "y los dos pasos lo mandan explícitamente en el FormData");
+  check(!/<button type="submit"[^>]*value="aplicar"/.test(sub),
+        "aplicar NO depende del submit nativo del formulario (que es lo que se resetea)");
+  check(/fd\.set\("accion", que\)/.test(sub),
+        "la acción (revisar/aplicar) viaja por el mismo camino, no por el submitter");
+
   console.log(`\n${fallos.length ? "🔴 " + fallos.length + " fallo(s): " + fallos.join(", ") : "🟢 todo OK"}`);
   process.exit(fallos.length ? 1 : 0);
 })().catch((e) => { console.error(e); process.exit(1); });

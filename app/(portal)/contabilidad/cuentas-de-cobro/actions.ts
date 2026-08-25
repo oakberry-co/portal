@@ -9,6 +9,7 @@ import { bloqueoAprobacion, sqlCertificacion, type CertEstado, type CuentaMaestr
 import { sqlLecturaValor, type ValorEstado } from "@/lib/valor-documento";
 import { encolarCorreo } from "@/lib/correos";
 import { intentar, type Resultado } from "@/lib/resultado";
+import { guardarRetencionesNoDian } from "@/lib/retenciones-no-dian";
 import type { PoolClient } from "pg";
 
 async function guard() {
@@ -180,42 +181,15 @@ export async function confirmarRetencionesCuentaCobro(fd: FormData) {
   const reteica = monto("reteica");
   const ivaIncluido = monto("iva_incluido");
   const otros = monto("otros_valor");
-  const retenTotal = retefuente + reteiva + reteica;
   const otrosConcepto = String(fd.get("otros_concepto") ?? "").trim() || null;
   const observaciones = String(fd.get("observaciones") ?? "").trim() || null;
 
+  // Escribe por el MISMO camino que el Excel de retenciones (lib/retenciones-no-dian.ts).
   await withTx(async (c) => {
-    const { rows } = await c.query<{ valor: string | null; estado: string; pago_id: number | null }>(
-      "SELECT valor, estado, pago_id FROM cuentas_cobro WHERE id = $1 FOR UPDATE", [id]);
-    const cc = rows[0];
-    if (!cc) throw new Error("Cuenta de cobro no encontrada.");
-    if (cc.pago_id) throw new Error("Ya está pagada: las retenciones no se pueden cambiar.");
-    const valor = Number(cc.valor ?? 0);
-    if (valor <= 0) throw new Error("La cuenta de cobro no tiene valor.");
-    if (ivaIncluido > valor) throw new Error("El IVA incluido no puede ser mayor que el valor.");
-
-    const valorAPagar = valor - retenTotal - otros;
-    // Retener más de lo que vale el cobro es siempre un error de digitación.
-    if (valorAPagar <= 0) {
-      throw new Error("Las retenciones y descuentos se comen todo el valor. Revisa las tarifas.");
-    }
-
-    await c.query(
-      `UPDATE cuentas_cobro
-          SET iva_incluido = $2, retefuente = $3, reteiva = $4, reteica = $5,
-              reten_total = $6, otros_valor = $7, otros_concepto = $8,
-              valor_a_pagar = $9, observaciones = $10, retencion_ok = TRUE,
-              retenciones_por = $11, retenciones_en = now()
-        WHERE id = $1`,
-      [id, ivaIncluido, retefuente, reteiva, reteica, retenTotal, otros, otrosConcepto,
-       valorAPagar, observaciones, user.email]);
-
-    await registrarEvento(c, {
-      cufe: null, tipo: "retenciones_cuenta_cobro", campo: "valor_a_pagar",
-      valorAnterior: { valor },
-      valorNuevo: { id, retefuente, reteiva, reteica, otros, valor_a_pagar: valorAPagar },
-      actor: user.email, actorRol: user.rol, origen: "web",
-    });
+    await guardarRetencionesNoDian(c, id, {
+      retefuente, reteiva, reteica, ivaIncluido,
+      otrosValor: otros, otrosConcepto, observaciones,
+    }, user, "web");
   });
   revalidatePath("/contabilidad/cuentas-de-cobro");
   revalidatePath("/contabilidad/pagos");

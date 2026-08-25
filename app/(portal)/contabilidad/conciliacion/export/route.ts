@@ -2,6 +2,7 @@
 // Ruta protegida por el middleware (solo sesión válida). Params: ?desde=YYYY-MM-DD&hasta=YYYY-MM-DD
 import ExcelJS from "exceljs";
 import { getPool } from "@/lib/db";
+import { refDe } from "@/lib/ref-documento";
 import { exigirCap } from "@/lib/auth";
 import { ETIQUETA, type Estado } from "@/lib/estados";
 
@@ -24,7 +25,8 @@ export async function GET(req: Request) {
   if (hasta) { params.push(hasta); conds.push(`f.fecha_emision <= $${params.length}`); }
   const where = conds.length ? "WHERE " + conds.join(" AND ") : "";
 
-  const { rows } = await getPool().query(
+  const pool = getPool();
+  const { rows } = await pool.query(
     `SELECT f.fecha_emision, f.nit_proveedor, f.nombre_proveedor, f.numero, f.responsabilidad_dian,
             f.subtotal, f.iva, f.total,
             e.estado, e.concepto, e.destino, e.plazo_dias, e.fecha_vencimiento,
@@ -62,7 +64,11 @@ export async function GET(req: Request) {
     { header: "Observaciones", key: "obs", width: 26 },
     { header: "Total retención", key: "ret", width: 14, style: money },
     { header: "Valor a pagar", key: "pagar", width: 15, style: money },
-    { header: "CUFE", key: "cufe", width: 42 },
+    // La llave del viaje de vuelta. Las facturas traen su CUFE; lo que no tiene
+    // factura DIAN trae su referencia (CC-46 / SP-51), que es su llave — lo que
+    // sale tiene que poder volver (Regla 15). Se distinguen por la FORMA, no
+    // adivinando: un CUFE son 96 hexadecimales.
+    { header: "CUFE / Ref", key: "cufe", width: 42 },
   ];
   const head = ws.getRow(1);
   head.font = { bold: true };
@@ -86,6 +92,49 @@ export async function GET(req: Request) {
       otros: n(r.otros_valor), otrosc: r.otros_concepto ?? "", obs: r.observaciones ?? "",
       ret: n(r.reten_total), pagar: n(r.valor_a_pagar),
       cufe: r.cufe,
+    });
+  }
+
+  // LO QUE NO TIENE FACTURA DIAN VA EN EL MISMO ARCHIVO. Es el mismo trabajo
+  // para el contador —les pone su retención, aunque sea cero— y es lo que
+  // permite pagar todo en UNA sola tanda en vez de dejarlos por fuera y tener
+  // que acordarse de ellos aparte.
+  // Params propios: reusar los de la consulta de facturas por posición se rompe
+  // el día que una de las dos fechas no venga.
+  const pnd: string[] = [];
+  const cnd: string[] = [];
+  const fechaND = "coalesce(cc.fecha_documento, cc.creado_en::date)";
+  if (desde) { pnd.push(desde); cnd.push(`${fechaND} >= $${pnd.length}`); }
+  if (hasta) { pnd.push(hasta); cnd.push(`${fechaND} <= $${pnd.length}`); }
+  const nd = await pool.query(
+    `SELECT cc.id, cc.tipo, cc.fecha_documento, cc.creado_en, cc.num_doc, cc.razon_social,
+            cc.numero, cc.valor, cc.iva_incluido, cc.estado, cc.pago_id,
+            cc.concepto, cc.destino, cc.plazo_dias, cc.fecha_vencimiento,
+            cc.retefuente, cc.reteiva, cc.reteica, cc.reten_total, cc.valor_a_pagar,
+            cc.otros_valor, cc.otros_concepto, cc.observaciones
+       FROM cuentas_cobro cc
+      WHERE cc.estado IN ('aprobada','pagada')
+        ${cnd.length ? "AND " + cnd.join(" AND ") : ""}
+      ORDER BY ${fechaND}, cc.razon_social`,
+    pnd);
+  for (const r of nd.rows) {
+    ws.addRow({
+      fecha: ymd(r.fecha_documento ?? r.creado_en),
+      nit: r.num_doc,
+      prov: r.razon_social ?? "",
+      num: "SIN FACTURA",
+      resp: "",
+      subtotal: null, iva: n(r.iva_incluido), total: n(r.valor),
+      estado: r.pago_id ? "Pagada" : "Sin factura DIAN",
+      concepto: r.concepto ?? "", destino: r.destino ?? "",
+      plazo: r.plazo_dias ?? "",
+      venc: ymd(r.fecha_vencimiento),
+      rf: n(r.retefuente), ri: n(r.reteiva), ric: n(r.reteica),
+      otros: n(r.otros_valor), otrosc: r.otros_concepto ?? "", obs: r.observaciones ?? "",
+      ret: n(r.reten_total), pagar: n(r.valor_a_pagar),
+      // La MISMA función que arma la referencia en la bandeja: una sola forma
+      // de nombrar el documento, o el Excel diría CC-46 donde la pantalla dice SP-46.
+      cufe: refDe(String(r.tipo), Number(r.id)),
     });
   }
 

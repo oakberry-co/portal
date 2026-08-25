@@ -22,6 +22,7 @@
 import type { PoolClient } from "pg";
 import { getPool } from "@/lib/db";
 import { registrarEvento } from "@/lib/eventos";
+import { refDe } from "@/lib/ref-documento";
 
 /** LA REGLA, EN UN SOLO LUGAR: ¿este documento ya puede entrar al tablero de
  *  Pagos? Tiene que estar aprobado, sin pago asociado, y CLASIFICADO —
@@ -109,10 +110,9 @@ const CAMPOS = `
 /** La referencia visible. Lleva prefijo por tipo para que en la grilla se lea de
  *  un golpe qué es, y NUNCA se parezca a un CUFE (96 hex): quien mira la
  *  pantalla tiene que poder decir "esto no lo certificó la DIAN". */
-export function refDe(tipo: string, id: number): string {
-  const p = tipo === "servicio_publico" ? "SP" : tipo === "otro" ? "OT" : "CC";
-  return `${p}-${id}`;
-}
+// La referencia (CC-46 / SP-51) la arma un módulo PURO, que es también el que
+// la sabe leer de vuelta cuando el Excel de retenciones la devuelve.
+export { refDe };
 
 /** Los documentos sin factura DIAN que están esperando clasificación. */
 export async function porClasificar(): Promise<DocNoDian[]> {

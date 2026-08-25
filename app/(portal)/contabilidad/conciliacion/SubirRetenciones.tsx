@@ -6,8 +6,15 @@
 // saben trabajar— y vuelve a subir el archivo. Acá se muestra QUÉ va a cambiar
 // antes de tocar nada: un botón que escribe 40 facturas sin enseñar qué escribe
 // es un botón que nadie se atreve a apretar dos veces.
+//
+// EL ARCHIVO SE GUARDA EN MEMORIA, no se lee del <input> en el segundo paso.
+// React 19 RESETEA el formulario cuando una acción termina, así que después de
+// "Revisar" el campo del archivo queda VACÍO — y "Aplicar" viajaba sin archivo,
+// la acción respondía "elige el Excel", el plan se borraba y no se escribía
+// nada. Se veía como que el botón no hacía nada. Los dos pasos mandan el MISMO
+// File que la persona eligió una vez (23-ago-2026).
 
-import { useActionState, useRef, useState } from "react";
+import { useActionState, useRef, useState, useTransition } from "react";
 import { procesarRetencionesExcel, type Plan } from "./retenciones-excel";
 
 const cop = new Intl.NumberFormat("es-CO", { style: "currency", currency: "COP", maximumFractionDigits: 0 });
@@ -16,8 +23,21 @@ const $ = (n: number) => cop.format(Math.round(n || 0));
 export function SubirRetenciones() {
   const [abierto, setAbierto] = useState(false);
   const [plan, accion, pend] = useActionState<Plan | null, FormData>(procesarRetencionesExcel, null);
-  const [archivo, setArchivo] = useState("");
-  const inputRef = useRef<HTMLInputElement>(null);
+  const [archivo, setArchivo] = useState<File | null>(null);
+  const formRef = useRef<HTMLFormElement>(null);
+  const [enviando, empezar] = useTransition();
+
+  // Un solo camino para los dos pasos: se arma el FormData a mano con el File
+  // que está en memoria. Nada depende de lo que el <input> conserve.
+  function enviar(que: "revisar" | "aplicar") {
+    if (!archivo) return;
+    const fd = new FormData();
+    fd.set("archivo", archivo, archivo.name);
+    fd.set("accion", que);
+    const pisar = formRef.current?.querySelector<HTMLInputElement>('input[name="pisar"]');
+    if (pisar?.checked) fd.set("pisar", "1");
+    empezar(() => accion(fd));
+  }
 
   if (!abierto) {
     return (
@@ -31,7 +51,7 @@ export function SubirRetenciones() {
   const pisables = (plan?.cambios ?? []).filter((c) => c.pisa).length;
 
   return (
-    <form action={accion} className="ret-subir">
+    <form ref={formRef} className="ret-subir" onSubmit={(e) => e.preventDefault()}>
       <div className="ret-subir-head">
         <b>⬆ Subir el Excel con las retenciones</b>
         <button type="button" className="modal-x" onClick={() => setAbierto(false)} aria-label="Cerrar">×</button>
@@ -43,10 +63,11 @@ export function SubirRetenciones() {
       </p>
 
       <div className="ret-subir-file">
-        <input ref={inputRef} type="file" name="archivo" accept=".xlsx,.xlsm"
-               onChange={(e) => setArchivo(e.target.files?.[0]?.name ?? "")} />
-        <button type="submit" name="accion" value="revisar" className="cc-act" disabled={pend || !archivo}>
-          {pend ? "Leyendo…" : "Revisar qué cambiaría"}
+        <input type="file" name="archivo" accept=".xlsx,.xlsm"
+               onChange={(e) => setArchivo(e.target.files?.[0] ?? null)} />
+        <button type="button" className="cc-act" disabled={pend || enviando || !archivo}
+                onClick={() => enviar("revisar")}>
+          {pend || enviando ? "Leyendo…" : "Revisar qué cambiaría"}
         </button>
       </div>
 
@@ -115,8 +136,9 @@ export function SubirRetenciones() {
                   Sobrescribir las {pisables} que ya estaban confirmadas
                 </label>
               )}
-              <button type="submit" name="accion" value="aplicar" className="cc-act" disabled={pend}>
-                {pend ? "Guardando…" : `✓ Aplicar ${plan.cambios.length - (pisables ? pisables : 0) || plan.cambios.length}`}
+              <button type="button" className="cc-act" disabled={pend || enviando}
+                      onClick={() => enviar("aplicar")}>
+                {pend || enviando ? "Guardando…" : `✓ Aplicar ${plan.cambios.length - (pisables ? pisables : 0) || plan.cambios.length}`}
               </button>
             </div>
           )}
