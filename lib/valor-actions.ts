@@ -8,7 +8,7 @@
 // bitácora y no se puede usar después de pagar.
 
 import { revalidatePath } from "next/cache";
-import { withTx } from "@/lib/db";
+import { getPool, withTx } from "@/lib/db";
 import { registrarEvento } from "@/lib/eventos";
 import { exigirCap } from "@/lib/auth";
 import { pesos } from "@/lib/pesos";
@@ -24,6 +24,9 @@ const TABLA: Record<Origen, string> = {
 };
 
 function refrescar() {
+  // Conciliación también: es donde se le pone el valor del mes a un gasto
+  // periódico, que es el caso más frecuente de esta acción.
+  revalidatePath("/contabilidad/conciliacion");
   revalidatePath("/contabilidad/cuentas-de-cobro");
   revalidatePath("/contabilidad/cotizaciones");
   revalidatePath("/contabilidad/pagos");
@@ -54,18 +57,32 @@ function leerOrigen(fd: FormData): { origen: Origen; id: number } {
  *  retención que no corresponde. */
 export async function ajustarMonto(_prev: Resultado | null, fd: FormData): Promise<Resultado> {
   return intentar(async () => {
-    const user = await exigirCap("intake");
     const { origen, id } = leerOrigen(fd);
     const nuevo = pesos(String(fd.get("valor") ?? ""));
     const motivo = String(fd.get("motivo") ?? "").trim();
     if (nuevo == null || !Number.isFinite(nuevo) || nuevo <= 0) {
       throw new Error("Escribe el monto correcto, en pesos.");
     }
-    if (motivo.length < 5) {
+    const tabla = TABLA[origen];
+    // Quién puede, y qué se le exige, dependen de si esto LLENA o CAMBIA — y eso
+    // no se sabe hasta mirar la base. Se lee antes de abrir la transacción solo
+    // para resolver el permiso; el valor que manda es el que se relee adentro
+    // con FOR UPDATE.
+    const previo = await getPool().query<{ valor: string | null }>(
+      `SELECT valor FROM ${tabla} WHERE id = $1`, [id]);
+    if (!previo.rowCount) throw new Error("Solicitud no encontrada.");
+    // LLENAR NO ES CAMBIAR. Un gasto periódico nace SIN valor a propósito: la
+    // obligación existe antes que el recibo. Ponerle el monto del mes es el
+    // trabajo normal de quien concilia —no lleva motivo, porque no hay nada que
+    // justificar— mientras que corregir una cifra ya registrada sigue siendo un
+    // acto de la bandeja, con motivo obligatorio. Es la misma distinción que
+    // permite clasificar un documento ya pagado sin poder re-clasificarlo.
+    const llena = previo.rows[0].valor == null;
+    const user = await exigirCap(llena ? "clasificar" : "intake");
+    if (!llena && motivo.length < 5) {
       throw new Error("Escribe por qué lo cambias: quien lea esto el mes entrante "
                     + "necesita saber si fue un arreglo o un error.");
     }
-    const tabla = TABLA[origen];
     await withTx(async (c) => {
       const { rows } = await c.query<{ valor: string | null; valor_original: string | null;
                                        pago_id: number | null; estado: string }>(
@@ -102,9 +119,13 @@ export async function ajustarMonto(_prev: Resultado | null, fd: FormData): Promi
         `UPDATE lectura_valor SET valor_declarado = $3
           WHERE origen_tipo = $1 AND origen_id = $2`, [origen, id, nuevo]);
       await registrarEvento(c, {
-        cufe: null, tipo: "ajusta_monto", campo: "valor",
+        // Dos hechos distintos, dos nombres: llenar el valor de un mes es
+        // rutina; cambiar uno ya registrado es lo que alguien va a querer
+        // auditar. Con un solo nombre habría que leer el detalle para
+        // distinguirlos, y nadie audita lo que no puede filtrar.
+        cufe: null, tipo: anterior == null ? "pone_valor_mes" : "ajusta_monto", campo: "valor",
         valorAnterior: { origen, id, valor: anterior },
-        valorNuevo: { origen, id, valor: nuevo, motivo },
+        valorNuevo: { origen, id, valor: nuevo, motivo: motivo || null },
         actor: user.email, actorRol: user.rol, origen: "web",
       });
     });

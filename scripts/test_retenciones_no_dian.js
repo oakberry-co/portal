@@ -60,7 +60,10 @@ console.log("\n3) IDA Y VUELTA: la referencia vuelve al mismo documento (Regla 1
 // dos, el Excel diría CC-46 donde la pantalla dice SP-46 y la retención se
 // escribiría sobre otro documento.
 const dnd = fs.readFileSync(path.join(RAIZ, "lib", "documentos-no-dian.ts"), "utf8");
-check(/from "@\/lib\/ref-documento"/.test(dnd),
+// El path puede ser "@/lib/ref-documento" o "./ref-documento" (los módulos que
+// compilan los centinelas usan relativo, porque tsc no reescribe los alias). Lo
+// que se vigila es que venga del módulo puro, no el estilo del import.
+check(/from "(@\/lib|\.)\/ref-documento"/.test(dnd),
       "la bandeja toma refDe del módulo puro (no tiene su propia copia)");
 for (const [tipo, id] of [["cuenta_cobro", 46], ["servicio_publico", 94], ["otro", 3], ["cuenta_cobro", 100000]]) {
   const ref = refDe(tipo, id);

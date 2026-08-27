@@ -35,9 +35,16 @@ const SQL_INTAKE = `
          coalesce(cc.valor_a_pagar, cc.valor, 0)::float AS monto, cc.cuenta_pago,
          cc.fecha_pago_prog::text AS fecha_pago_prog, cc.creado_en::text AS creado_en,
          NULL::float AS pct, coalesce(cc.valor,0)::float AS base,
-         (cb.num_cuenta IS NOT NULL) AS tiene_banco, cb.banco, cb.certificada
+         (cb.num_cuenta IS NOT NULL) AS tiene_banco, cb.banco, cb.certificada,
+         -- CÓMO se paga. Un servicio público no se transfiere: alguien entra a la
+         -- página del proveedor y teclea la referencia. Si quien paga no la ve
+         -- acá, la va a buscar a otro lado — o la teclea de memoria, que es como
+         -- se le abona la plata a otro cliente del mismo proveedor.
+         coalesce(cc.forma_pago, 'transferencia') AS forma_pago,
+         cc.referencia_pago, cc.periodo::text AS periodo, g.sitio_pago
     FROM cuentas_cobro cc
     LEFT JOIN cuentas_bancarias_proveedor cb ON cb.nit = cc.num_doc
+    LEFT JOIN gasto_periodico g ON g.id = cc.plantilla_id
    -- Aprobada ya NO alcanza: entra a Pagos cuando está CLASIFICADA (concepto,
    -- destino y retenciones), igual que una factura. Mientras tanto vive en
    -- Conciliación. La condición es una sola en todo el sistema — si se copia,
@@ -49,7 +56,10 @@ const SQL_INTAKE = `
          round(coalesce(cot.valor,0) * coalesce(cot.adelanto_pct,0) / 100)::float,
          cot.cuenta_pago, cot.fecha_pago_prog::text, cot.creado_en::text,
          cot.adelanto_pct::float, cot.valor::float,
-         (cb.num_cuenta IS NOT NULL), cb.banco, cb.certificada
+         (cb.num_cuenta IS NOT NULL), cb.banco, cb.certificada,
+         -- Un adelanto de cotización siempre se transfiere: el módulo existe
+         -- para eso. No hereda forma de pago porque no viene de una plantilla.
+         'transferencia', NULL::text, NULL::text, NULL::text
     FROM cotizaciones cot
     LEFT JOIN cuentas_bancarias_proveedor cb ON cb.nit = cot.nit
    WHERE cot.estado IN ('aprobada','facturada') AND cot.pago_id IS NULL

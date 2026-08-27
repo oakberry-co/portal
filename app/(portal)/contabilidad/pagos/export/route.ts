@@ -5,6 +5,7 @@ import { puede } from "@/lib/permisos";
 import { codigoBanco, codigoBancoDavivienda, CODIGOS_DAVIVIENDA, TIPO_DOC_FULL, TIPO_CUENTA_FULL } from "@/lib/bancos";
 import { codigoTipoId, codigoProducto, textoBanco, revisarFila, type Aviso } from "@/lib/davivienda";
 import { LISTO_PARA_PAGOS } from "@/lib/documentos-no-dian";
+import { SQL_VA_AL_BANCO } from "@/lib/gastos-periodicos";
 import { SALDO_NETO, NO_ES_NOTA } from "@/lib/notas-credito";
 import ExcelJS from "exceljs";
 
@@ -77,6 +78,11 @@ export async function GET(req: NextRequest) {
               NULL::text, NULL::text, NULL::text, NULL::text, NULL::text, NULL::text
          FROM cuentas_cobro cc
         WHERE ${LISTO_PARA_PAGOS("cc")} AND cc.cuenta_pago = $1
+          -- LO QUE NO SE TRANSFIERE NO ENTRA AL ARCHIVO. Un servicio público se
+          -- paga entrando a la página del proveedor con su referencia; si además
+          -- saliera acá, el banco lo transferiría y el proveedor cobraría dos
+          -- veces. No daría ningún error: saldría la plata dos veces y ya.
+          AND ${SQL_VA_AL_BANCO("cc")}
        UNION ALL
        SELECT nit, razon_social, 1, round(coalesce(valor,0) * coalesce(adelanto_pct,0) / 100),
               NULL::text, NULL::text, NULL::text, NULL::text, NULL::text, NULL::text

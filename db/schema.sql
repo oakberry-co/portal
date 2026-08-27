@@ -996,3 +996,145 @@ ALTER TABLE certificacion_bancaria ADD COLUMN IF NOT EXISTS tipo_verificado  TEX
 ALTER TABLE cotizaciones ADD COLUMN IF NOT EXISTS destino         TEXT;
 ALTER TABLE cotizaciones ADD COLUMN IF NOT EXISTS clasificada_por TEXT;
 ALTER TABLE cotizaciones ADD COLUMN IF NOT EXISTS clasificada_en  TIMESTAMPTZ;
+
+-- -----------------------------------------------------------------------------
+-- §21  GASTOS PERIÓDICOS — LO QUE HAY QUE PAGAR TODOS LOS MESES (2026-08-27)
+--
+-- Hay plata que sale siempre: la luz, el agua, el internet de una tienda, el
+-- arriendo. Nadie nos la factura electrónicamente —el local está a nombre del
+-- arrendador y el recibo llega a su nombre— así que no existe en la DIAN y hasta
+-- hoy solo entraba si alguien se acordaba de cargarla a mano, mes a mes.
+--
+-- El giro: el gasto se PARAMETRIZA una vez y a partir de ahí la obligación
+-- aparece sola en Conciliación, antes de que llegue el recibo. Deja de ser una
+-- forma de registrar lo que ya pasó y pasa a ser LA LISTA DE LO QUE LA EMPRESA
+-- DEBE ESTE MES. Hoy nadie sabe que el internet de Pereira no se pagó hasta que
+-- lo cortan.
+--
+-- Lo único que cambia cada mes es EL VALOR. Proveedor, referencia de pago,
+-- concepto, destino y forma de pago quedan fijos en la plantilla.
+--
+--   plantilla (una vez)  ->  documento del mes SIN VALOR  ->  Conciliación:
+--   se le pone el valor y se confirman las retenciones  ->  Pagos.
+-- -----------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS gasto_periodico (
+  id             BIGSERIAL PRIMARY KEY,
+  tenant         TEXT NOT NULL DEFAULT 'manelfoods',
+
+  -- A quién se le paga. `num_doc` es el NIT CANÓNICO (sin dígito de
+  -- verificación): es la llave con la que se le encuentra la cuenta bancaria, y
+  -- con el DV pegado el proveedor desaparece del archivo del banco sin dar un
+  -- solo error (ver lib/nit.ts, el caso MODAL TRACK de $37M).
+  razon_social   TEXT NOT NULL,
+  num_doc        TEXT NOT NULL,
+  tipo_doc       TEXT NOT NULL DEFAULT 'NIT',
+  correo         TEXT,
+
+  -- Qué gasto es. `tipo` describe (servicio público, arriendo…), `concepto` y
+  -- `destino` clasifican contra los maestros — no se mezclan: lo primero es
+  -- lenguaje del equipo, lo segundo es la contabilidad.
+  tipo           TEXT NOT NULL,
+  tipo_detalle   TEXT,
+  concepto       TEXT,
+  destino        TEXT,
+  area           TEXT,
+  descripcion    TEXT,
+
+  -- CÓMO SE PAGA. No es una propiedad del carril sino de CADA gasto: la luz se
+  -- paga entrando a la página del proveedor con una referencia, el arriendo por
+  -- fiducia se transfiere, y algunos servicios salen por débito automático.
+  --   'pse'                -> va a la lista de pago manual, NO al archivo del banco
+  --   'transferencia'      -> archivo del banco, como cualquier factura
+  --   'debito_automatico'  -> NO se paga: ya salió. Solo se registra.
+  -- El tercero es el peligroso: si se mostrara como "por pagar", alguien lo
+  -- pagaría una segunda vez.
+  forma_pago     TEXT NOT NULL DEFAULT 'pse',
+
+  -- LA REFERENCIA DE PAGO es lo que se teclea en la página del proveedor, y es
+  -- el equivalente en este carril del NIT con dígito de verificación: si está
+  -- mal, la plata se le abona a OTRO cliente del mismo proveedor y no hay ningún
+  -- error — nadie se entera hasta que cortan el servicio.
+  --
+  -- Por eso vive ACÁ y no en `cuentas_bancarias_proveedor`: ese maestro es por
+  -- NIT, y EPM le factura a cinco tiendas con cinco referencias distintas. En el
+  -- maestro se pisarían entre ellas y se pagaría el contrato de una tienda con
+  -- la referencia de otra. Se verifica UNA vez, contra el recibo que se sube al
+  -- crear la plantilla, y se reusa — que es justo lo que hace que parametrizar
+  -- valga la pena.
+  referencia_pago TEXT,
+  sitio_pago      TEXT,          -- dónde se paga (la página, la oficina, el banco)
+
+  -- CUÁNDO. `dia_pago` es el día del mes en que vence; si el mes no tiene ese
+  -- día (31 en febrero) se usa el último. `dias_anticipacion` es cuánto antes
+  -- nace el documento: si naciera el mismo día no daría tiempo de conseguir el
+  -- recibo ni de pagarlo.
+  dia_pago          INT NOT NULL CHECK (dia_pago BETWEEN 1 AND 31),
+  dias_anticipacion INT NOT NULL DEFAULT 10 CHECK (dias_anticipacion BETWEEN 0 AND 60),
+
+  -- DESDE QUÉ MES genera. Es explícito y no se deduce de `creado_en` porque la
+  -- plantilla nace de un gasto que YA se cargó y se va a pagar por el camino
+  -- normal: si generara también ese mes, el primer día saldría duplicado. Lo
+  -- normal es el mes siguiente.
+  desde_periodo     DATE NOT NULL,
+
+  -- El valor del gasto que originó la plantilla. NO es un monto fijo que se
+  -- herede —el valor lo escribe un humano cada mes— sino la primera muestra de
+  -- la serie contra la cual se compara: "la luz de BOG004 venía en ~$800K y este
+  -- mes son $2,4M" no es un error de digitación, es un aire acondicionado dañado.
+  valor_referencia NUMERIC(16,2),
+
+  -- El contrato o el recibo de ejemplo, donde se lee la referencia. Es el
+  -- documento de LA PLANTILLA, distinto del recibo de cada mes.
+  documentos     JSONB NOT NULL DEFAULT '[]',
+
+  -- HASTA CUÁNDO. Una plantilla sin fin genera obligaciones fantasma para
+  -- siempre, y las tiendas cierran (Arkadia, Mall Plaza, Viva Barranquilla).
+  activo         BOOLEAN NOT NULL DEFAULT TRUE,
+  vigente_hasta  DATE,
+  nota_baja      TEXT,
+  baja_por       TEXT,
+  baja_en        TIMESTAMPTZ,
+
+  -- De qué gasto real nació. La plantilla NO se teclea en un formulario vacío:
+  -- se marca "este gasto se repite" sobre uno que ya existió, con su soporte y
+  -- su proveedor — así nace validada y no hay que escribir todo dos veces.
+  origen_doc_id  BIGINT,
+
+  creado_por     TEXT,
+  creado_en      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CHECK (forma_pago IN ('pse','transferencia','debito_automatico'))
+);
+CREATE INDEX IF NOT EXISTS ix_gp_activo ON gasto_periodico (activo) WHERE activo;
+CREATE INDEX IF NOT EXISTS ix_gp_nit    ON gasto_periodico (num_doc);
+
+-- El documento del mes: una fila más de `cuentas_cobro` (mismo carril, mismas
+-- retenciones, mismo camino a Pagos), pero que sabe de qué plantilla salió.
+ALTER TABLE cuentas_cobro
+  ADD COLUMN IF NOT EXISTS plantilla_id    BIGINT REFERENCES gasto_periodico(id),
+  ADD COLUMN IF NOT EXISTS periodo         DATE,      -- primer día del mes que cubre
+  ADD COLUMN IF NOT EXISTS forma_pago      TEXT,
+  ADD COLUMN IF NOT EXISTS referencia_pago TEXT;
+
+-- UN GASTO POR PLANTILLA Y POR MES. Es el candado más importante de todo esto:
+-- sin él, correr el generador dos veces —o que alguien cargue además el recibo a
+-- mano— produce DOBLE PAGO, y un doble pago no da ningún error: sale la plata y
+-- ya. La llave vive en la base y no en el código porque son dos caminos los que
+-- pueden crear la fila (el generador y la pantalla).
+CREATE UNIQUE INDEX IF NOT EXISTS ux_cc_plantilla_periodo
+  ON cuentas_cobro (plantilla_id, periodo) WHERE plantilla_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS ix_cc_plantilla ON cuentas_cobro (plantilla_id);
+
+-- UN DOCUMENTO PUEDE NACER SIN VALOR **SOLO** SI VIENE DE UNA PLANTILLA.
+--
+-- Es la excepción que pidió el negocio: la obligación existe antes que el
+-- recibo, y el monto se escribe cuando llega. Pero un gasto suelto sin valor es
+-- una fila que nadie sabe leer y que se puede colar a Pagos por $0.
+--
+-- Va como CHECK en la base y no como validación del formulario porque ya son
+-- TRES los caminos que crean documentos no-DIAN (portal público, cotizaciones,
+-- gasto interno); el cuarto que se escriba se saltaría una regla que viviera en
+-- la pantalla. Acá no hay cómo.
+ALTER TABLE cuentas_cobro DROP CONSTRAINT IF EXISTS ck_cc_valor_o_plantilla;
+ALTER TABLE cuentas_cobro ADD CONSTRAINT ck_cc_valor_o_plantilla
+  CHECK (valor IS NOT NULL OR plantilla_id IS NOT NULL);

@@ -20,33 +20,19 @@
 // que ya trae retenciones, aprobación, correos y enlace al pago.
 
 import type { PoolClient } from "pg";
-import { getPool } from "@/lib/db";
-import { registrarEvento } from "@/lib/eventos";
-import { refDe } from "@/lib/ref-documento";
+// Imports RELATIVOS (no "@/"): el centinela compila este módulo con `tsc` suelto
+// para probar el candado de Pagos contra la base real, y tsc resuelve los alias
+// al revisar tipos pero NO los reescribe en el JavaScript que emite. Con "@/" no
+// habría forma de probar la regla que decide qué se paga.
+import { getPool } from "./db";
+import { registrarEvento } from "./eventos";
+import { refDe } from "./ref-documento";
 
-/** LA REGLA, EN UN SOLO LUGAR: ¿este documento ya puede entrar al tablero de
- *  Pagos? Tiene que estar aprobado, sin pago asociado, y CLASIFICADO —
- *  concepto, destino y retenciones confirmadas.
- *
- *  Se escribe como SQL y no como función de TypeScript porque la usan tres
- *  consultas distintas (la bandeja, el tablero y el archivo del banco). Tres
- *  copias del mismo `WHERE` es como se rompió el candado de aprobación: una
- *  envejeció sin que nadie lo notara. `pfx` es el alias de la tabla. */
-export const LISTO_PARA_PAGOS = (pfx: string) =>
-  `${pfx}.estado = 'aprobada' AND ${pfx}.pago_id IS NULL
-   AND ${pfx}.concepto IS NOT NULL AND ${pfx}.destino IS NOT NULL
-   AND ${pfx}.retencion_ok`;
-
-/** Lo que TODAVÍA no está clasificado: lo que aparece en Conciliación esperando
- *  concepto, destino y retenciones.
- *
- *  Incluye lo YA PAGADO a propósito. El 20-ago se pagaron 5 cuentas de cobro sin
- *  destino (la pantalla vieja seguía abierta) y, si esta lista las escondiera,
- *  ese gasto se quedaría sin decir en qué tienda cayó PARA SIEMPRE — que es
- *  justo el problema que este carril vino a resolver. Pagar no es archivar. */
-export const POR_CLASIFICAR = (pfx: string) =>
-  `${pfx}.estado IN ('aprobada', 'pagada')
-   AND NOT (${pfx}.concepto IS NOT NULL AND ${pfx}.destino IS NOT NULL AND ${pfx}.retencion_ok)`;
+// La regla que decide qué se puede pagar vive en su propio módulo (puro): la
+// necesitan también el navegador y el centinela. Se re-exporta desde acá porque
+// es donde el resto del portal la viene a buscar.
+export { LISTO_PARA_PAGOS, POR_CLASIFICAR, faltaParaPagos } from "./falta-pagos";
+import { LISTO_PARA_PAGOS, POR_CLASIFICAR } from "./falta-pagos";
 
 export type DocNoDian = {
   id: number;
@@ -61,7 +47,11 @@ export type DocNoDian = {
   area: string | null;
   fecha: string;                     // fecha del documento, o la de llegada
   creado_en: string;
-  valor: number;
+  valor: number | null;               // NULL = gasto periódico esperando su monto
+  plantilla_id: number | null;
+  periodo: string | null;             // el mes que cubre (primer día)
+  forma_pago: string | null;
+  referencia_pago: string | null;
   concepto: string | null;
   destino: string | null;
   plazo_dias: number | null;
@@ -93,7 +83,12 @@ const CAMPOS = `
   cc.descripcion, cc.area,
   coalesce(cc.fecha_documento, cc.creado_en::date)::text AS fecha,
   cc.creado_en::text AS creado_en,
-  coalesce(cc.valor,0)::float AS valor,
+  -- VACÍO NO ES CERO. Un gasto periódico nace SIN valor (la obligación existe
+  -- antes que el recibo) y un coalesce a cero lo volvería un gasto de $0
+  -- perfectamente pagable. La pantalla necesita poder distinguirlos.
+  cc.valor::float AS valor,
+  cc.plantilla_id, cc.periodo::text AS periodo,
+  cc.forma_pago, cc.referencia_pago,
   cc.concepto, cc.destino, cc.plazo_dias, cc.retencion_ok,
   cc.reten_total::float, cc.retefuente::float, cc.reteiva::float, cc.reteica::float,
   cc.otros_valor::float, cc.otros_concepto, cc.observaciones,
@@ -177,6 +172,34 @@ export async function clasificar(
   if (!sets.length) return;
   vals.push(actor.email); sets.push(`clasificada_por = $${vals.length}`);
   await c.query(`UPDATE cuentas_cobro SET ${sets.join(", ")}, clasificada_en = now() WHERE id = $1`, vals);
+
+  // LO QUE SE CLASIFICA UNA VEZ NO SE VUELVE A CLASIFICAR. Si el documento salió
+  // de una plantilla de gasto periódico, su concepto y su destino SUBEN a ella:
+  // el mes entrante el documento nace ya clasificado y lo único que queda por
+  // hacer es escribir el monto, que es la promesa entera del módulo.
+  //
+  // Solo se LLENA lo que la plantilla tiene vacío. Si alguien cambió el destino
+  // de un mes puntual —una factura que excepcionalmente se carga a otra tienda—
+  // eso es de ese mes, no la nueva regla para siempre; cambiar la plantilla se
+  // hace en su pantalla, a la vista.
+  const conPlantilla = await c.query<{ plantilla_id: number | null }>(
+    "SELECT plantilla_id FROM cuentas_cobro WHERE id = $1", [id]);
+  const plantillaId = conPlantilla.rows[0]?.plantilla_id ?? null;
+  if (plantillaId && (campos.concepto || campos.destino)) {
+    const sube = await c.query<{ id: number; concepto: string | null; destino: string | null }>(
+      `UPDATE gasto_periodico
+          SET concepto = COALESCE(concepto, $2), destino = COALESCE(destino, $3)
+        WHERE id = $1 AND (concepto IS NULL OR destino IS NULL)
+        RETURNING id, concepto, destino`,
+      [plantillaId, campos.concepto ?? null, campos.destino ?? null]);
+    if (sube.rowCount) {
+      await registrarEvento(c, {
+        cufe: null, tipo: "aprende_gasto_periodico", campo: "concepto,destino",
+        valorNuevo: { plantilla_id: plantillaId, desde_doc: id, ...sube.rows[0] },
+        actor: actor.email, actorRol: actor.rol, origen: "web",
+      });
+    }
+  }
 
   await registrarEvento(c, {
     cufe: null, tipo: "clasifica_doc_no_dian", campo: Object.keys(campos).join(","),

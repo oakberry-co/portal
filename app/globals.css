@@ -1357,6 +1357,31 @@ tr.desfasada td { background: #fff8e6; }
 .nodian-ref2 { display: block; margin-top: 2px; }
 .nodian-sinbanco { display: block; font-size: 9.5px; color: var(--coral); font-weight: 700; }
 .nodian-err { grid-column: 1 / -1; color: var(--coral); font-size: 11.5px; padding-top: 4px; }
+/* Escribir el monto del mes de un gasto periódico, en la propia fila. Se ve
+   distinto de una cifra ya puesta a propósito: un hueco por llenar tiene que
+   pedir que lo llenen. */
+/* La columna del valor mide 84px en escritorio: el campo se ENVUELVE (el botón
+   cae debajo) en vez de desbordarse sobre la columna vecina. Ensanchar el grid
+   habría movido las 4.000 filas de facturas por un caso de veinte. */
+.poner-valor { display: flex; gap: 4px; align-items: center; justify-content: flex-end;
+  flex-wrap: wrap; min-width: 0; }
+.poner-valor input { width: 100%; font-size: 16px; padding: 4px 6px; text-align: right;
+  border: 1px solid var(--yellow); border-radius: 6px; background: #fffdf5; color: var(--ink);
+  min-width: 0; }
+.poner-valor .c-btn { width: 100%; }
+@media (max-width: 1140px) { .poner-valor { justify-content: flex-start; max-width: 180px; } }
+.poner-valor input:focus { outline: 2px solid var(--purple); outline-offset: 1px; }
+.poner-valor input::placeholder { font-size: 11px; }
+
+/* --- Lo que se paga a mano (PSE) dentro del tablero de Pagos --------------- */
+/* Se ve distinto de una transferencia a propósito: NO va en el archivo del
+   banco, y confundirlas es pagar dos veces lo mismo. */
+.pg-amano { background: #f3f0ff; border: 1px solid var(--border-lav); border-radius: 8px;
+  padding: 7px 9px; margin: 6px 0; display: flex; flex-wrap: wrap; gap: 6px;
+  align-items: center; justify-content: space-between; }
+.pg-amano.auto { background: #fff8e6; border-color: var(--yellow); }
+.pg-amano-head { font-size: 11px; color: var(--purple-deep); line-height: 1.4; min-width: 0; }
+.pg-amano .ref-copiar { font-size: 11.5px; }
 
 /* ── CARGAR UN GASTO SIN FACTURA (página privada del equipo) ───────────────── */
 .gasto-form { max-width: 860px; }
@@ -1373,6 +1398,53 @@ tr.desfasada td { background: #fff8e6; }
 .gasto-ok { color: var(--ok); font-size: 12.5px; font-weight: 600; }
 /* 16px en los inputs evita el zoom automático de iOS al enfocar (Regla 20). */
 @media (max-width: 700px) { .gasto-grid { grid-template-columns: 1fr; } }
+
+/* --- ¿Este gasto se repite? ------------------------------------------------ */
+/* Se despliega y no está siempre abierto: la mayoría de lo que entra por esta
+   página es de una sola vez, y siete campos más lo vuelven un trámite. */
+.gasto-repite { margin-top: 18px; border: 1px dashed var(--border-lav); border-radius: 12px;
+  padding: 12px 14px; background: #fcfaff; }
+.gasto-repite.on { border-style: solid; border-color: var(--purple); background: var(--lav-soft); }
+.repite-check { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; align-items: center;
+  cursor: pointer; }
+.repite-check input { grid-row: 1 / 3; width: 18px; height: 18px; accent-color: var(--purple); }
+.repite-check b { font-size: 13px; color: var(--purple-deep); }
+.repite-check i { font-size: 10.5px; color: var(--lav); font-style: normal; }
+.gasto-repite.on .gasto-grid { margin-top: 14px; }
+.repite-nota { font-size: 11px; color: var(--lav); line-height: 1.45; margin: 0; }
+
+/* --- Los gastos que ya están programados ----------------------------------- */
+.plantillas { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.plantillas th { text-align: left; font-size: 10.5px; text-transform: uppercase;
+  letter-spacing: .04em; color: var(--lav); font-weight: 700; padding: 0 10px 6px 0; }
+.plantillas td { padding: 8px 10px 8px 0; border-top: 1px solid var(--border-lav);
+  vertical-align: top; }
+.plantillas .prov { font-weight: 700; color: var(--purple-deep); }
+.plantillas .mini { font-size: 10.5px; color: var(--lav); }
+/* La referencia se COPIA, no se transcribe: teclearla a mano es como se le
+   abona la plata a otro cliente del mismo proveedor. */
+.ref-copiar { font-family: var(--mono); font-size: 12px;
+  background: #fff; border: 1px solid var(--border-lav); border-radius: 6px;
+  padding: 3px 7px; cursor: pointer; color: var(--ink); }
+.ref-copiar:hover { border-color: var(--purple); }
+.ref-copiar.copiada { border-color: var(--ok); color: var(--ok); }
+.plantillas .sin-ref { color: var(--coral); font-size: 11px; font-weight: 700; }
+/* Botones legibles y golpeables con el pulgar: la tabla se usa desde el celular
+   cuando alguien está pagando (Regla 20). */
+.plantillas .btn { font-size: 11.5px; padding: 7px 11px; }
+@media (max-width: 700px) {
+  /* En celular la tabla se lee en tarjetas: 7 columnas no caben y el scroll
+     lateral esconde justo la referencia, que es el dato que se va a copiar. */
+  .plantillas, .plantillas tbody, .plantillas tr, .plantillas td { display: block; width: 100%; }
+  .plantillas thead { display: none; }
+  .plantillas tr { border-top: 1px solid var(--border-lav); padding: 10px 0; }
+  .plantillas td { border: 0; padding: 2px 0; }
+  /* Cada celda dice qué es: sin el encabezado, "5" y "3 meses" son números
+     sueltos. Lo cazó la validación en celular, no la revisión en escritorio. */
+  .plantillas td[data-l]::before { content: attr(data-l) ": "; font-size: 10px;
+    text-transform: uppercase; letter-spacing: .04em; color: var(--lav); font-weight: 700; }
+  .plantillas td[data-l="Proveedor"]::before { display: none; }
+}
 
 /* --- Cambiar la cuenta de destino de UNA factura --------------------------- */
 /* Se ve distinto del modal de retenciones a propósito: esto no es un cálculo,

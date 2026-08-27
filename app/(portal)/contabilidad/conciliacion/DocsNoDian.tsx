@@ -27,12 +27,20 @@ import { semanaISO } from "@/lib/orden-facturas";
 import { Combobox } from "./Combobox";
 import { RetencionesCuentaCobro, type ReglaConcepto } from "../cuentas-de-cobro/RetencionesCuentaCobro";
 import { clasificarDocumento } from "./actions";
+import { ajustarMonto } from "@/lib/valor-actions";
+import { faltaParaPagos } from "@/lib/falta-pagos";
+import { etiquetaPeriodo, etiquetaForma, vaAlBanco } from "@/lib/gastos-periodicos";
 
 export type DocNoDianUI = {
   id: number; ref: string; tipo: string; tipo_detalle: string | null; origen: string;
   razon_social: string; num_doc: string; numero: string | null;
   descripcion: string | null; area: string | null;
-  fecha: string; valor: number;
+  fecha: string;
+  // NULL = gasto periódico esperando su monto. No es cero: es "todavía no
+  // sabemos cuánto", y confundirlos deja un gasto de $0 listo para pagarse.
+  valor: number | null;
+  plantilla_id: number | null; periodo: string | null;
+  forma_pago: string | null; referencia_pago: string | null;
   concepto: string | null; destino: string | null; plazo_dias: number | null;
   retencion_ok: boolean; reten_total: number | null;
   retefuente: number | null; reteiva: number | null; reteica: number | null;
@@ -48,14 +56,30 @@ export type DocNoDianUI = {
 };
 
 const cop = new Intl.NumberFormat("es-CO", { style: "currency", currency: "COP", maximumFractionDigits: 0 });
-const $ = (n: number) => cop.format(Math.round(n || 0));
+const $ = (n: number | null | undefined) => (n == null ? "—" : cop.format(Math.round(n)));
+/** Como se escribe la plata en Colombia: el punto separa MILES. */
+const milesCO = (raw: string) => {
+  const d = raw.replace(/[^\d]/g, "");
+  return d ? Number(d).toLocaleString("es-CO") : "";
+};
 const MESES = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
 const ddmm = (s: string) => { const d = new Date(s + (s.length === 10 ? "T00:00:00" : "")); return `${String(d.getDate()).padStart(2, "0")}/${MESES[d.getMonth()]}`; };
 
 const ETIQUETA_TIPO: Record<string, string> = {
   cuenta_cobro: "Cuenta de cobro",
   servicio_publico: "Servicio público",
+  arriendo: "Arriendo",
+  administracion: "Administración",
+  seguro: "Seguro / póliza",
+  impuesto: "Impuesto",
   otro: "Otro gasto",
+};
+
+/** De dónde salió el documento, para el title de la fila. */
+const ORIGEN: Record<string, string> = {
+  interno: "lo cargó el equipo",
+  periodico: "lo creó la plantilla del gasto periódico",
+  portal_publico: "lo envió el proveedor",
 };
 
 export function DocsNoDian({ docs, conceptos, destinos, puedeClasificar }: {
@@ -84,12 +108,11 @@ function FilaDoc({ d, conceptos, destinos, puedeClasificar }: {
   const [modal, setModal] = useState(false);
 
   // Lo que le falta, dicho con nombre propio. Un "no se puede" sin motivo es lo
-  // que hace que la gente deje de usar la pantalla (Regla 18).
-  const falta = [
-    !d.concepto ? "concepto" : null,
-    !d.destino ? "destino" : null,
-    !d.retencion_ok ? "retenciones" : null,
-  ].filter(Boolean) as string[];
+  // que hace que la gente deje de usar la pantalla (Regla 18). Sale de la MISMA
+  // función que decide el paso a Pagos: si acá dijera algo distinto, la fila
+  // diría "listo" y el botón la rechazaría.
+  const falta = faltaParaPagos(d);
+  const esperaValor = d.valor == null;
 
   function guardar(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -112,19 +135,36 @@ function FilaDoc({ d, conceptos, destinos, puedeClasificar }: {
           {d.numero ? ` · ${d.numero}` : ""}
           {d.area ? ` · área ${d.area}` : ""}
         </div>
+        {/* CÓMO se paga y con QUÉ referencia. Va en la fila y no escondido en la
+            plantilla porque quien concilia es quien va a entrar a la página del
+            proveedor a pagarlo. */}
+        {d.plantilla_id && (
+          <div className="muted mini" title="Viene de un gasto programado">
+            {etiquetaForma(d.forma_pago)}
+            {d.referencia_pago ? <> · ref <b className="mono">{d.referencia_pago}</b></> : null}
+          </div>
+        )}
       </div>
 
       {/* Toda la diferencia que hay que ver está acá: no hay número de factura
           porque no hay factura. La referencia (CC-46 / SP-51) va debajo, que es
           con la que el equipo la nombra. */}
-      <div className="c-num mono" title={`${ETIQUETA_TIPO[d.tipo] ?? d.tipo}${d.tipo_detalle ? " · " + d.tipo_detalle : ""}${d.origen === "interno" ? " · lo cargó el equipo" : " · lo envió el proveedor"}`}>
+      <div className="c-num mono" title={`${ETIQUETA_TIPO[d.tipo] ?? d.tipo}${d.tipo_detalle ? " · " + d.tipo_detalle : ""} · ${ORIGEN[d.origen] ?? d.origen}`}>
         <span className="c-sinfac">SIN FACTURA</span>
         <span className="muted mini nodian-ref2">{d.ref}</span>
+        {/* De qué MES es. Tres recibos de luz de la misma tienda en la misma
+            lista son indistinguibles sin esto. */}
+        {d.periodo && <span className="muted mini nodian-ref2">🔁 {etiquetaPeriodo(d.periodo)}</span>}
       </div>
 
       <div className="c-fecha"><span title="Fecha del documento">{ddmm(d.fecha)}</span></div>
       <div className="c-sem">{semanaISO(d.fecha)}</div>
-      <div className="c-valor num">{$(d.valor)}</div>
+      {/* EL VALOR ES LO ÚNICO QUE CAMBIA en un gasto periódico: nace vacío y se
+          escribe acá, en la misma pantalla donde se revisa. Mandar a otra
+          pantalla por un número es lo que hace que la gente pague por fuera. */}
+      <div className="c-valor num">
+        {esperaValor ? <PonerValor d={d} puede={puedeClasificar} /> : $(d.valor)}
+      </div>
 
       <form onSubmit={guardar} style={{ display: "contents" }}>
         <input type="hidden" name="id" value={d.id} />
@@ -152,8 +192,11 @@ function FilaDoc({ d, conceptos, destinos, puedeClasificar }: {
       {/* El Excel de retenciones va por CUFE y estas filas no tienen: sus
           retenciones se hacen por acá. Lo dice el title, para que quien baje el
           Excel y no las vea sepa por qué. */}
-      <button type="button" className="c-btn ghost" onClick={() => setModal(true)} disabled={!puedeClasificar}
-              title="Retenciones de este documento (no viaja en el Excel: no tiene CUFE)">Reten.</button>
+      <button type="button" className="c-btn ghost" onClick={() => setModal(true)}
+              disabled={!puedeClasificar || esperaValor}
+              title={esperaValor
+                ? "Primero escribe el valor del mes: la retención es un porcentaje de él."
+                : "Retenciones de este documento (no viaja en el Excel: no tiene CUFE)"}>Reten.</button>
       {/* Sin equivalente al desvío de cuenta por factura: se deja el hueco para
           que las columnas de las dos clases de fila sigan alineadas. */}
       <span />
@@ -177,7 +220,11 @@ function FilaDoc({ d, conceptos, destinos, puedeClasificar }: {
         <span className="sem" title={falta.length ? `Aún no pasa a Pagos: falta ${falta.join(", ")}` : "En el tablero de Pagos"}>
           <i className={"luz " + (falta.length ? "no" : "ok")} />Pago
         </span>
-        {!d.tiene_banco && (
+        {/* El aviso de la cuenta bancaria solo aplica a lo que se TRANSFIERE. Un
+            servicio público que se paga entrando a la página del proveedor no
+            necesita ninguna cuenta, y avisarlo igual entrena a la gente a
+            ignorar los avisos — que es peor que no ponerlos. */}
+        {!d.tiene_banco && vaAlBanco(d.forma_pago) && (
           <span className="nodian-sinbanco" title="Sin cuenta bancaria en Maestros: no va a entrar al archivo del banco aunque se clasifique.">
             ⚠ sin cuenta
           </span>
@@ -185,7 +232,7 @@ function FilaDoc({ d, conceptos, destinos, puedeClasificar }: {
       </div>
 
       {err && <div className="nodian-err">⚠ {err}</div>}
-      {modal && (
+      {modal && d.valor != null && (
         <RetencionesCuentaCobro
           id={d.id} proveedor={d.razon_social} valor={d.valor} ivaIncluido={d.iva_incluido}
           retefuente={d.retefuente} reteiva={d.reteiva} reteica={d.reteica}
@@ -196,5 +243,44 @@ function FilaDoc({ d, conceptos, destinos, puedeClasificar }: {
         />
       )}
     </div>
+  );
+}
+
+/** ESCRIBIR EL VALOR DEL MES.
+ *
+ *  Es el trabajo entero de un gasto periódico: todo lo demás —proveedor,
+ *  referencia, concepto, destino— ya venía decidido de la plantilla. Por eso el
+ *  campo está en la fila y no detrás de un modal: son varias filas seguidas y
+ *  abrir y cerrar una ventana por cada número convierte un barrido en un
+ *  trámite.
+ *
+ *  Escribe por el MISMO camino que la corrección de monto de la bandeja
+ *  (`ajustarMonto`), que sabe distinguir LLENAR de CAMBIAR: llenar no pide
+ *  motivo —no hay nada que justificar— y cambiar sí. Un segundo camino de
+ *  escritura para el mismo dato es como se desincronizan. */
+function PonerValor({ d, puede }: { d: DocNoDianUI; puede: boolean }) {
+  const [v, setV] = useState("");
+  const [pending, start] = useTransition();
+  const [err, setErr] = useState<string | null>(null);
+
+  function enviar(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const fd = new FormData(e.currentTarget);
+    fd.set("origen", "cuenta_cobro");
+    fd.set("id", String(d.id));
+    setErr(null);
+    start(async () => {
+      const r = await ajustarMonto(null, fd);
+      if (!r.ok) setErr(r.error ?? "No se pudo guardar.");
+    });
+  }
+
+  return (
+    <form onSubmit={enviar} className="poner-valor" title="Cuánto llegó este mes">
+      <input name="valor" inputMode="numeric" placeholder="¿cuánto?" value={v}
+             onChange={(e) => setV(milesCO(e.target.value))} disabled={!puede} required />
+      <button className="c-btn" disabled={pending || !puede || !v}>{pending ? "…" : "OK"}</button>
+      {err && <div className="nodian-err">⚠ {err}</div>}
+    </form>
   );
 }

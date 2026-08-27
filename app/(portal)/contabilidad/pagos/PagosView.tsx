@@ -25,6 +25,10 @@ export type FilaIntake = {
   fecha_pago_prog: string | null; creado_en: string;
   pct: number | null; base: number | null;      // adelanto: % sobre el valor cotizado
   tiene_banco: boolean; banco: string | null; certificada: boolean | null;
+  // Cómo se paga. 'transferencia' sale en el archivo del banco; lo demás se
+  // paga a mano, uno por uno, en la página del proveedor.
+  forma_pago: string; referencia_pago: string | null;
+  periodo: string | null; sitio_pago: string | null;
 };
 export type PagoHecho = {
   id: number; nit_proveedor: string; proveedor: string | null; cuenta_pago: string | null;
@@ -466,6 +470,12 @@ function ItemIntake({ it, ctas, cuenta0, pending, start, onPagar }: {
     } catch (e) { alert("No se pudo asignar la cuenta: " + (e as Error).message); }
   });
 
+  // LO QUE NO SE TRANSFIERE SE PAGA A MANO. No sale en el archivo del banco (el
+  // exportador lo excluye), así que quien está en esta pantalla es quien lo va a
+  // pagar: necesita la referencia AQUÍ, no en otra pestaña.
+  const aMano = it.forma_pago !== "transferencia";
+  const yaSalio = it.forma_pago === "debito_automatico";
+
   const detalle = it.tipo === "cotizacion"
     ? `adelanto ${it.pct ?? "?"}% de ${$(it.base ?? 0)}`
     // Si se le retuvo, quien paga tiene que ver de cuánto salió el neto.
@@ -493,11 +503,15 @@ function ItemIntake({ it, ctas, cuenta0, pending, start, onPagar }: {
           </>
         )}
       </div>
-      {!it.tiene_banco && (
+      {/* El aviso de "sin cuenta bancaria" solo aplica a lo que se transfiere. A
+          un servicio público que se paga por PSE no le hace falta ninguna
+          cuenta, y avisarlo igual es entrenar a la gente a ignorar los avisos. */}
+      {!it.tiene_banco && !aMano && (
         <div className="pg-nobank blk" title="Sin cuenta bancaria en el maestro: no puede salir en el archivo del banco.">
           ⚠ sin cuenta bancaria · no entra al archivo del banco
         </div>
       )}
+      {aMano && <PagoAMano it={it} yaSalio={yaSalio} />}
       <div className="pg-assign">
         <select value={it.cuenta_pago ?? ""} disabled={pending} onChange={(e) => asignar(e.target.value)}>
           <option value="">— elegir cuenta —</option>
@@ -507,7 +521,8 @@ function ItemIntake({ it, ctas, cuenta0, pending, start, onPagar }: {
                 title={it.cuenta_pago ? "Registrar el pago" : "Primero elige la cuenta desde la que se paga"}
                 onClick={onPagar}>✓ Confirmar pago</button>
       </div>
-      {!it.cuenta_pago && cuenta0 && <div className="mini muted">Elige desde qué cuenta sale para que entre a ese archivo del banco.</div>}
+      {!it.cuenta_pago && cuenta0 && !aMano && <div className="mini muted">Elige desde qué cuenta sale para que entre a ese archivo del banco.</div>}
+      {!it.cuenta_pago && aMano && <div className="mini muted">Elige desde qué cuenta salió la plata, para que quede registrado.</div>}
     </div>
   );
 }
@@ -726,6 +741,38 @@ function ModalConfirmar({ grupo, onClose }: { grupo: Grupo; onClose: () => void 
           </div>
         </form>
       </div>
+    </div>
+  );
+}
+
+/** LO QUE SE PAGA A MANO, con lo que hace falta para pagarlo.
+ *
+ *  Un servicio público no se transfiere: alguien entra a la página del
+ *  proveedor, teclea la referencia y paga. Esa referencia es el equivalente en
+ *  este carril del NIT con dígito de verificación — si está mal, la plata se le
+ *  abona a otro cliente del mismo proveedor y NO da ningún error; nadie se
+ *  entera hasta que cortan el servicio.
+ *
+ *  Por eso se COPIA con un botón y no se lee para transcribirla a mano. */
+function PagoAMano({ it, yaSalio }: { it: FilaIntake; yaSalio: boolean }) {
+  const [copiada, setCopiada] = useState(false);
+  return (
+    <div className={"pg-amano" + (yaSalio ? " auto" : "")}>
+      <div className="pg-amano-head">
+        {yaSalio
+          ? <>⚡ <b>Débito automático</b> — la plata ya salió: esto es solo registrarlo. <b>No lo pagues otra vez.</b></>
+          : <>💻 <b>Se paga a mano</b>{it.sitio_pago ? <> en <b>{it.sitio_pago}</b></> : " en la página del proveedor"} · no sale en el archivo del banco</>}
+      </div>
+      {it.referencia_pago && (
+        <button type="button" className={"ref-copiar" + (copiada ? " copiada" : "")}
+                title="Copiar la referencia de pago"
+                onClick={() => {
+                  navigator.clipboard?.writeText(it.referencia_pago ?? "");
+                  setCopiada(true); setTimeout(() => setCopiada(false), 1500);
+                }}>
+          {copiada ? "✓ copiada" : `ref ${it.referencia_pago}`}
+        </button>
+      )}
     </div>
   );
 }

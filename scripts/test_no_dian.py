@@ -51,7 +51,11 @@ def dsn():
 # módulo a propósito: si un día divergen, este test deja de proteger nada — por
 # eso abajo se comprueba, además, que el texto siga viviendo en un solo lugar.
 LISTO = ("cc.estado = 'aprobada' AND cc.pago_id IS NULL "
-         "AND cc.concepto IS NOT NULL AND cc.destino IS NOT NULL AND cc.retencion_ok")
+         "AND cc.concepto IS NOT NULL AND cc.destino IS NOT NULL AND cc.retencion_ok "
+         # El valor entró a la condición con los gastos periódicos: nacen SIN
+         # monto (la obligación existe antes que el recibo) y un gasto de $0 no
+         # se puede pagar. Ver scripts/test_gastos_periodicos.js.
+         "AND cc.valor IS NOT NULL AND cc.valor > 0")
 
 
 def en_pagos(cur, cc_id):
@@ -64,7 +68,7 @@ def main():
     con.autocommit = False
     cur = con.cursor()
     try:
-        print("\n1) La condición vive en UN solo lugar (lib/documentos-no-dian.ts)")
+        print("\n1) La condición vive en UN solo lugar (lib/falta-pagos.ts)")
         usos = []
         for rel in ("app/(portal)/contabilidad/pagos/page.tsx",
                     "app/(portal)/contabilidad/pagos/export/route.ts"):
