@@ -112,6 +112,14 @@ export const FacturaCard = memo(function FacturaCard({
   // de retenciones, que sin esto multiplicaría por un subtotal 0 y dejaría la
   // retención en cero sin decir nada.
   const sinXml = f.origen === "dian";
+  // La alarma ENVEJECE en vez de bloquear. Medido sobre 1.160 facturas de
+  // jul-ago: el 82% del XML llega en 24 horas, el 93% en 7 días. O sea, el que
+  // no llegó en una semana ya no llega solo — hay que pedírselo al proveedor.
+  // Antes de los 7 días avisar sería ruido; después, callarse sería perder el
+  // soporte del IVA descontable y de la deducción del costo.
+  const diasSinXml = sinXml
+    ? Math.floor((Date.now() - new Date(f.fecha_emision).getTime()) / 86_400_000)
+    : 0;
   const conf = f.confianza != null ? Math.round(Number(f.confianza) * 100) : null;
   const confBaja = conf != null && conf < 85;
 
@@ -126,6 +134,13 @@ export const FacturaCard = memo(function FacturaCard({
   // Semáforo de ESTADO DE PAGO: verde = pagada, naranja = movida de semana
   // (reprogramada y sin pagar), rojo = pendiente por pagar.
   const pagada = f.estado === "pagada" || f.estado === "causada" || f.pago_estado === "pagado";
+  //  <7d  gris   — todavía puede llegar solo, no molestar
+  //  ≥7d  ámbar  — pedirlo: ya no llega solo
+  //  ≥15d y PAGADA → rojo: se pagó y seguimos sin el soporte. Esa es la plata
+  //  que se pierde de verdad, porque el pago ya no es palanca para reclamarlo.
+  const nivelXml = !sinXml ? "" : pagada && diasSinXml >= 15 ? " urge"
+                   : diasSinXml >= 7 ? " pide" : "";
+
   const movida = !pagada && !!f.fecha_pago_prog;
   const pagoLuz = pagada ? "ok" : movida ? "mid" : "no";
   const pagoTitle = pagada ? "Pagada" : movida ? "Movida de semana (reprogramada)" : "Pendiente por pagar";
@@ -218,9 +233,15 @@ export const FacturaCard = memo(function FacturaCard({
           <span className="c-tienenc" title={`Le descuentan notas crédito: ${f.nc_detalle ?? ""}`}>−NC</span>
         )}
         {sinXml && (
-          <span className="c-sinxml"
-            title="La DIAN la reportó pero su XML nunca llegó al correo. Se puede clasificar y pagar; lo que falta es el detalle: no hay ítems ni base gravable, y si fuera nota crédito no sabemos qué factura corrige. Si el proveedor manda el XML después, la factura se completa sola.">
-            sin XML
+          <span className={"c-sinxml" + nivelXml}
+            title={
+              nivelXml === " urge"
+                ? `Se pagó y todavía no tenemos el XML (${diasSinXml} días). Sin el documento no hay soporte del IVA descontable ni de la deducción del costo. Pídeselo al proveedor a compras@manelfoods.com — cuando lo mande, la factura se completa sola.`
+                : nivelXml === " pide"
+                ? `${diasSinXml} días sin el XML. El 93% llega en la primera semana, así que este ya no va a llegar solo: pídeselo al proveedor a compras@manelfoods.com. Se puede pagar igual; lo que falta es el soporte.`
+                : "La DIAN la reportó y su XML todavía no llega al correo. Se puede clasificar y pagar con normalidad. Lo que falta es el detalle: no hay ítems ni base gravable. Si el proveedor lo manda, la factura se completa sola."
+            }>
+            sin XML{diasSinXml >= 7 ? ` · ${diasSinXml}d` : ""}
           </span>
         )}
       </div>

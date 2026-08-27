@@ -86,10 +86,29 @@ check(/\.ret-motivo\s*\{/.test(leer("app/globals.css")), "la clase del motivo ex
 // La trampa que el CLAUDE.md ya documenta: variables de color inexistentes
 // hacen que el elemento salga invisible, sin ningún error.
 const css = leer("app/globals.css");
-for (const v of (css.match(/\.c-sinxml[^}]*\}/s)?.[0].match(/var\(--[a-z-]+\)/g) || [])) {
-  const nombre = v.slice(4, -1);
-  check(new RegExp("\\" + nombre + "\\s*:").test(css), `la marca "sin XML" usa ${nombre}, que existe`);
+// TODAS las reglas de la marca, no solo la primera: los niveles `pide` y `urge`
+// tienen sus propios colores y un var() inexistente los deja invisibles.
+for (const bloque of css.match(/\.c-sinxml[^{]*\{[^}]*\}/g) || []) {
+  for (const v of bloque.match(/var\(--[a-z-]+\)/g) || []) {
+    const nombre = v.slice(4, -1);
+    check(new RegExp("\\" + nombre + "\\s*:").test(css),
+      `la marca "sin XML" usa ${nombre}, que existe`);
+  }
 }
+
+console.log("\n3b) La alarma envejece en vez de bloquear");
+// El umbral no es un gusto: el 93% de los XML llega en 7 días (1.160 facturas
+// de jul-ago). Bajarlo convierte la marca en ruido; subirlo pierde el soporte.
+check(/diasSinXml >= 7/.test(modal || "") || /diasSinXml >= 7/.test(leer("app/(portal)/contabilidad/conciliacion/FacturaCard.tsx")),
+  "el aviso de 'pídelo' entra a los 7 días");
+const tarjeta = leer("app/(portal)/contabilidad/conciliacion/FacturaCard.tsx");
+check(/pagada && diasSinXml >= 15/.test(tarjeta),
+  "el nivel rojo exige PAGADA + 15 días (pagar sin soporte es la pérdida real)");
+check(/\.c-sinxml\.pide/.test(css) && /\.c-sinxml\.urge/.test(css),
+  "los dos niveles tienen estilo propio");
+// Lo que NO puede pasar: que la alarma se vuelva candado. El pago avanza.
+check(!/sinXml.*disabled|disabled.*sinXml/.test(tarjeta),
+  "la marca NO bloquea ningún botón: el pago avanza sin el documento");
 
 // ---------------------------------------------------------------------------
 console.log("\n4) El sync: la factura coja se completa, y lo lleno no se pisa");

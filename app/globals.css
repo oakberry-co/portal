@@ -1506,6 +1506,13 @@ tr.desfasada td { background: #fff8e6; }
 .c-sinxml { color: var(--lav); border: 1px solid var(--border); border-radius: 4px;
   padding: 0 4px; font-size: 8.5px; font-weight: 700; margin-left: 4px;
   vertical-align: middle; letter-spacing: .02em; white-space: nowrap; }
+/* La marca ENVEJECE. Medido: el 93% de los XML llega en 7 días, así que antes
+   de eso avisar sería ruido. Después, callarse cuesta el IVA descontable.
+   · pide (≥7d)  — ya no llega solo, hay que pedírselo al proveedor.
+   · urge (≥15d y PAGADA) — se pagó y seguimos sin soporte; ahí ya no queda
+     palanca para reclamarlo, que es cuando la plata se pierde de verdad. */
+.c-sinxml.pide { color: var(--warn); border-color: var(--warn); }
+.c-sinxml.urge { background: var(--danger); border-color: var(--danger); color: #fff; }
 
 /* El motivo por el que un botón está trabado, PEGADO al botón. Un submit
    deshabilitado sin explicación es un lazo que no cierra: la persona no sabe si

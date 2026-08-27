@@ -78,6 +78,7 @@ asumiéndolo.
 ```bash
 for t in nit bancos candado_aprobacion permisos documentos retenciones_excel espina_dian; do
   node scripts/test_$t.js; done
+python3 scripts/test_enriquecimiento_xml.py   # base REAL, con ROLLBACK
 python3 scripts/test_intake_a_pagos.py     # contra la base REAL, con ROLLBACK
 ```
 
