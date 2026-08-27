@@ -47,6 +47,15 @@ from google.cloud import bigquery
 PROJECT = "project-oakberry-colombia-dw"
 LOCK_KEY = 918273  # idéntico a lib/eventos.ts: serializa la cadena de eventos
 
+# Piso de la ESPINA DIAN. Lo que la DIAN reportó desde esta fecha y nunca llegó
+# por correo entra igual al portal, marcado origen='dian'. Es un PISO, no una
+# ventana: los meses siguientes siguen entrando solos.
+# Por qué agosto y no todo: antes de agosto hay 294 facturas de fuga, casi toda
+# anterior al multi-buzón y ya cerrada. Meterlas de golpe le cae encima al
+# equipo como 294 filas sin concepto ni destino. El backfill viejo, si se
+# quiere, es una corrida aparte y una decisión aparte.
+DIAN_ESPINA_DESDE = "2026-08-01"
+
 
 # ---------------------------------------------------------------------------
 # Bitácora: hash canónico IDÉNTICO a lib/eventos.ts (llaves ordenadas).
@@ -170,9 +179,79 @@ def query_fuente(tenant: str, since: str | None) -> str:
     """
 
 
+def query_espina_dian(tenant: str, since: str | None) -> str:
+    """Lo que la DIAN dice que nos facturaron y cuyo XML nunca llegó al correo.
+
+    Mismas columnas que query_fuente() para que el resto del sync no tenga que
+    saber de dónde vino cada fila. Lo que no se sabe va NULL — nunca cero, nunca
+    inventado: sin ítems no hay concepto por contenido, y sin subtotal ni
+    responsabilidad DIAN no se pueden proponer retenciones.
+
+    El piso de fecha es el MAYOR entre DIAN_ESPINA_DESDE y el --since que pidan:
+    la espina nunca va más atrás de lo decidido, aunque el sync completo sí.
+    """
+    piso = max(since, DIAN_ESPINA_DESDE) if since else DIAN_ESPINA_DESDE
+    return f"""
+    SELECT
+      d.cufe,
+      d.proveedor_nit                               AS nit_proveedor,
+      d.proveedor                                   AS nombre_proveedor,
+      COALESCE(NULLIF(d.numero_factura, ''), d.cufe) AS numero,
+      d.consecutivo_num,
+      LEAST(d.fecha_emision, CURRENT_DATE('America/Bogota')) AS fecha_emision,
+      CAST(NULL AS FLOAT64)                         AS subtotal,
+      ROUND(d.iva, 2)                               AS iva,
+      ROUND(d.valor_factura, 2)                     AS total,
+      d.moneda,
+      d.es_exterior,
+      CAST(NULL AS STRING)                          AS responsabilidad_dian,
+      CAST(NULL AS STRING)                          AS link_drive,
+      CAST(NULL AS STRING)                          AS gcs_xml_path,
+      d.recepcion,
+      d.doc_tipo,
+      -- El listado DIAN no dice a qué factura corrige una nota crédito: eso vive
+      -- solo en el XML (cac:BillingReference). Va NULL y el centinela
+      -- 'nota_credito_sin_referencia' la levanta, que es lo correcto — una nota
+      -- suelta tiene que verse, no disimularse cruzándola por valor (el 45,7%
+      -- de las facturas comparte NIT y total con una gemela).
+      CAST(NULL AS STRING)                          AS ref_numero,
+      CAST(NULL AS STRING)                          AS ref_cufe,
+      CAST(NULL AS STRING)                          AS ref_motivo,
+      d.concepto_sug,
+      d.destino_nombre_sug                          AS destino_sug,
+      CAST(NULL AS FLOAT64)                         AS retefuente_sug,
+      CAST(NULL AS FLOAT64)                         AS reteiva_sug,
+      CAST(NULL AS FLOAT64)                         AS reteica_sug,
+      CAST(NULL AS INT64)                           AS plazo_dias_sug,
+      CAST(NULL AS FLOAT64)                         AS confianza
+    FROM `{PROJECT}.facturacion.v_dian_sin_captura` d
+    WHERE d.tenant = '{tenant}'
+      AND d.fecha_emision >= '{piso}'
+    """
+
+
 def fetch_source(tenant: str, since: str | None) -> list[dict]:
+    """Las dos fuentes: lo capturado por correo + la espina DIAN sin capturar.
+
+    No se pisan: v_dian_sin_captura excluye por construcción todo CUFE que ya
+    esté en `facturas`. Aun así se deduplica acá, porque un CUFE repetido haría
+    que execute_values mandara la misma llave dos veces en un solo INSERT y
+    Postgres rechaza el lote entero ('ON CONFLICT no puede afectar la fila dos
+    veces'). Gana la fila con XML.
+    """
     bq = bigquery.Client(project=PROJECT)
-    return [dict(r) for r in bq.query(query_fuente(tenant, since)).result()]
+    filas = []
+    for r in bq.query(query_fuente(tenant, since)).result():
+        filas.append({**dict(r), "origen": "xml"})
+    for r in bq.query(query_espina_dian(tenant, since)).result():
+        filas.append({**dict(r), "origen": "dian"})
+
+    por_cufe: dict[str, dict] = {}
+    for f in filas:
+        previa = por_cufe.get(f["cufe"])
+        if previa is None or (previa["origen"] == "dian" and f["origen"] == "xml"):
+            por_cufe[f["cufe"]] = f
+    return list(por_cufe.values())
 
 
 def fetch_maestros(tenant: str):
@@ -356,7 +435,7 @@ def run_sync(conn, filas, *, purge_demo=False, actor="sistema", origen="sync",
           (cufe, nit_proveedor, nombre_proveedor, numero, consecutivo_num,
            fecha_emision, subtotal, iva, total, moneda, es_exterior,
            responsabilidad_dian, link_drive, gcs_xml_path, sincronizado_en,
-           doc_tipo, ref_numero, ref_cufe, ref_motivo)
+           doc_tipo, ref_numero, ref_cufe, ref_motivo, origen)
         VALUES %s
         ON CONFLICT (cufe) DO UPDATE SET
           link_drive   = COALESCE(EXCLUDED.link_drive,   facturas.link_drive),
@@ -368,11 +447,39 @@ def run_sync(conn, filas, *, purge_demo=False, actor="sistema", origen="sync",
           doc_tipo   = COALESCE(EXCLUDED.doc_tipo,   facturas.doc_tipo),
           ref_numero = COALESCE(EXCLUDED.ref_numero, facturas.ref_numero),
           ref_cufe   = COALESCE(EXCLUDED.ref_cufe,   facturas.ref_cufe),
-          ref_motivo = COALESCE(EXCLUDED.ref_motivo, facturas.ref_motivo)
+          ref_motivo = COALESCE(EXCLUDED.ref_motivo, facturas.ref_motivo),
+
+          -- ENRIQUECIMIENTO TARDÍO (2026-08-27). Una factura que entró por la
+          -- espina DIAN no tiene subtotal, IVA ni responsabilidad: eso vive en
+          -- el XML. Si el XML llega después por correo, esta fila se COMPLETA.
+          -- Sin esto la factura quedaría coja para siempre y la idea de traer la
+          -- espina crearía un problema nuevo en vez de resolver uno.
+          --
+          -- Ojo al orden del COALESCE: acá es (facturas.X, EXCLUDED.X) —el revés
+          -- de los enlaces de arriba— porque es plata. Solo se LLENA lo vacío;
+          -- lo que ya tiene valor no se toca nunca. Un enlace nuevo es tan bueno
+          -- como el viejo; un monto nuevo que contradice al viejo es una
+          -- discrepancia que hay que ver, no pisar en silencio (la vigila el
+          -- centinela `dian_vs_xml_descuadrado`). `total` no aparece por lo
+          -- mismo: identidad y montos se capturan UNA vez.
+          subtotal = COALESCE(facturas.subtotal, EXCLUDED.subtotal),
+          iva      = COALESCE(facturas.iva,      EXCLUDED.iva),
+          responsabilidad_dian = COALESCE(facturas.responsabilidad_dian,
+                                          EXCLUDED.responsabilidad_dian),
+          -- El origen solo avanza de 'dian' a 'xml' (apareció el documento),
+          -- nunca al revés: la vista de la espina excluye lo ya capturado, pero
+          -- que el sentido único esté escrito acá lo hace cierto igual.
+          origen = CASE WHEN EXCLUDED.origen = 'xml' THEN 'xml'
+                        ELSE facturas.origen END
         WHERE facturas.link_drive   IS DISTINCT FROM COALESCE(EXCLUDED.link_drive,   facturas.link_drive)
            OR facturas.gcs_xml_path IS DISTINCT FROM COALESCE(EXCLUDED.gcs_xml_path, facturas.gcs_xml_path)
            OR facturas.ref_cufe     IS DISTINCT FROM COALESCE(EXCLUDED.ref_cufe,     facturas.ref_cufe)
            OR facturas.doc_tipo     IS DISTINCT FROM COALESCE(EXCLUDED.doc_tipo,     facturas.doc_tipo)
+           OR (facturas.subtotal IS NULL AND EXCLUDED.subtotal IS NOT NULL)
+           OR (facturas.iva      IS NULL AND EXCLUDED.iva      IS NOT NULL)
+           OR (facturas.responsabilidad_dian IS NULL
+               AND EXCLUDED.responsabilidad_dian IS NOT NULL)
+           OR (facturas.origen = 'dian' AND EXCLUDED.origen = 'xml')
         RETURNING (xmax = 0) AS insertada
     """, [(
         r["cufe"], r["nit_proveedor"], r["nombre_proveedor"], r["numero"],
@@ -380,10 +487,14 @@ def run_sync(conn, filas, *, purge_demo=False, actor="sistema", origen="sync",
         r["total"], r["moneda"], r["es_exterior"], r["responsabilidad_dian"],
         r["link_drive"], r["gcs_xml_path"], r["recepcion"],
         r.get("doc_tipo"), r.get("ref_numero"), r.get("ref_cufe"), r.get("ref_motivo"),
-    ) for r in filas], template="(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+        r.get("origen", "xml"),
+    ) for r in filas], template="(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
         page_size=1000, fetch=True)
     n_facturas = sum(1 for row in ret if row[0])       # insertadas
-    n_enlaces = sum(1 for row in ret if not row[0])    # enlaces rellenados
+    # Filas que existían y se COMPLETARON: enlace, referencia de nota crédito,
+    # o el subtotal/IVA que llegó con el XML de una factura que había entrado
+    # por la espina DIAN.
+    n_enlaces = sum(1 for row in ret if not row[0])
 
     # factura_estado — fila inicial 'capturada' solo para nuevas.
     execute_values(cur,

@@ -18,6 +18,11 @@ export type FacturaRow = {
   subtotal: string | null;
   iva: string | null;
   total: string | null;
+  // 'xml' = llegó su documento por correo · 'dian' = la vimos en el barrido de
+  // la DIAN y el XML nunca llegó (no hay ítems, ni subtotal, ni referencia de
+  // nota crédito). Sin este dato, una factura sin subtotal se ve igual que un
+  // bug del parser.
+  origen: string | null;
   responsabilidad_dian: string | null;
   link_drive: string | null;
   // Soporte archivado a mano por compras en Drive (tabla `factura_soportes`).
@@ -102,6 +107,11 @@ export const FacturaCard = memo(function FacturaCard({
   const total = num(f.total);
   const subtotal = num(f.subtotal);
   const iva = num(f.iva);
+  // La DIAN la reportó pero su XML nunca llegó: existe y hay que pagarla, pero
+  // no sabemos su base gravable. Se marca en la tarjeta Y se le avisa al modal
+  // de retenciones, que sin esto multiplicaría por un subtotal 0 y dejaría la
+  // retención en cero sin decir nada.
+  const sinXml = f.origen === "dian";
   const conf = f.confianza != null ? Math.round(Number(f.confianza) * 100) : null;
   const confBaja = conf != null && conf < 85;
 
@@ -206,6 +216,12 @@ export const FacturaCard = memo(function FacturaCard({
         )}
         {Number(f.nc_aplicada) > 0 && (
           <span className="c-tienenc" title={`Le descuentan notas crédito: ${f.nc_detalle ?? ""}`}>−NC</span>
+        )}
+        {sinXml && (
+          <span className="c-sinxml"
+            title="La DIAN la reportó pero su XML nunca llegó al correo. Se puede clasificar y pagar; lo que falta es el detalle: no hay ítems ni base gravable, y si fuera nota crédito no sabemos qué factura corrige. Si el proveedor manda el XML después, la factura se completa sola.">
+            sin XML
+          </span>
         )}
       </div>
       <div className="c-fecha">
@@ -366,6 +382,7 @@ export const FacturaCard = memo(function FacturaCard({
           cufe={f.cufe}
           proveedor={f.nombre_proveedor ?? f.nit_proveedor}
           subtotal={subtotal}
+          sinXml={sinXml}
           iva={iva}
           total={total}
           retefuente={f.retefuente}

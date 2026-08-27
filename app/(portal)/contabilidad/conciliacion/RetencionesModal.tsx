@@ -8,6 +8,7 @@ import { useState } from "react";
 import { confirmarRetenciones } from "./actions";
 import { type FilaPatch } from "./FacturaCard";
 import { pct, type ReglaConcepto } from "../cuentas-de-cobro/RetencionesCuentaCobro";
+import { soloDigitos, montoRetencion, faltaBase as calcFaltaBase } from "@/lib/base-retencion";
 
 const cop = new Intl.NumberFormat("es-CO", { style: "currency", currency: "COP", maximumFractionDigits: 0 });
 const copN = (n: number) => cop.format(Math.round(n || 0));
@@ -16,12 +17,14 @@ const pctIni = (amt: string | null, base: number) =>
   amt != null && amt !== "" && base > 0 ? String(+((Number(amt) / base) * 100).toFixed(3)) : "";
 
 export function RetencionesModal({
-  cufe, proveedor, subtotal, iva, total,
+  cufe, proveedor, subtotal, iva, total, sinXml = false,
   retefuente, reteiva, reteica, retefuente_sug, reteiva_sug, reteica_sug,
   tarRf, tarIva, tarIca, otros_valor, otros_concepto, observaciones, yaConfirmada, onSaved, onClose,
   regla, concepto,
 }: {
   cufe: string; proveedor: string; subtotal: number; iva: number; total: number;
+  /** La DIAN la reportó pero su XML nunca llegó: no conocemos la base gravable. */
+  sinXml?: boolean;
   retefuente: string | null; reteiva: string | null; reteica: string | null;
   retefuente_sug: string | null; reteiva_sug: string | null; reteica_sug: string | null;
   tarRf: string | null; tarIva: string | null; tarIca: string | null;
@@ -47,10 +50,24 @@ export function RetencionesModal({
   const [otros, setOtros] = useState(otros_valor && Number(otros_valor) > 0 ? String(Math.round(Number(otros_valor))) : "");
   const [otrosConcepto, setOtrosConcepto] = useState(otros_concepto ?? "");
 
-  const amtRf = Math.round((subtotal * (Number(rf) || 0)) / 100);
-  const amtRi = Math.round((iva * (Number(ri) || 0)) / 100);
-  const amtRic = Math.round((subtotal * (Number(ric) || 0)) / 100);
+  // BASE GRAVABLE CUANDO NO HAY XML. Sin el documento no conocemos el subtotal,
+  // y `num(null)` lo entrega como 0. Multiplicar 0 por la tarifa daba retención
+  // $0 sin un solo aviso: el contador escribía 2,5% y veía cero al lado. "Vacío
+  // no es cero" — acá la base SE ESCRIBE, leyéndola del papel, igual que se
+  // escribe la cuenta bancaria en vez de adivinarla.
+  const [baseM, setBaseM] = useState(subtotal > 0 ? String(Math.round(subtotal)) : "");
+  const [ivaM, setIvaM] = useState(iva > 0 ? String(Math.round(iva)) : "");
+  const baseRf = sinXml ? soloDigitos(baseM) : subtotal;
+  const baseIva = sinXml ? soloDigitos(ivaM) : iva;
+
+  const amtRf = montoRetencion(baseRf, rf);
+  const amtRi = montoRetencion(baseIva, ri);
+  const amtRic = montoRetencion(baseRf, ric);
   const retenTotal = amtRf + amtRi + amtRic;
+  // Se traba SOLO en el caso que miente: hay tarifa escrita y no hay base sobre
+  // la cual aplicarla. Decidir que un proveedor "no retiene" (0%) sigue siendo
+  // válido sin base — eso también es una decisión y no hay por qué estorbarla.
+  const faltaBase = calcFaltaBase({ baseRf, baseIva, rf, ri, ric });
   const otrosNum = Number(String(otros).replace(/[^\d]/g, "")) || 0;
   const valorAPagar = total - retenTotal - otrosNum;
 
@@ -66,7 +83,9 @@ export function RetencionesModal({
         <div className="modal-head">
           <div>
             <h3>Retenciones</h3>
-            <p className="modal-sub">{proveedor} · subtotal {copN(subtotal)} · IVA {copN(iva)}</p>
+            <p className="modal-sub">{proveedor} · {sinXml
+              ? "sin XML: la base la escribes tú"
+              : <>subtotal {copN(subtotal)} · IVA {copN(iva)}</>}</p>
           </div>
           <button type="button" className="modal-x" onClick={onClose} aria-label="Cerrar">×</button>
         </div>
@@ -92,6 +111,15 @@ export function RetencionesModal({
           </div>
         )}
 
+        {sinXml && (
+          <div className="ret-sugerencia flojo">
+            📄 De esta factura <b>solo tenemos lo que reportó la DIAN</b>: su XML nunca
+            llegó al correo. Sabemos cuánto vale en total ({copN(total)}), pero no su
+            base gravable — <b>escríbela leyéndola del documento</b>. Si el proveedor
+            manda el XML después, la factura se completa sola.
+          </div>
+        )}
+
         <form action={confirmar}>
           <input type="hidden" name="cufe" value={cufe} />
           <input type="hidden" name="retefuente" value={amtRf} />
@@ -105,19 +133,25 @@ export function RetencionesModal({
             <tbody>
               <tr>
                 <td>ReteFuente</td>
-                <td className="num">{copN(subtotal)}</td>
+                <td className="num">{sinXml
+                  ? <input className="ret-otros num" value={baseM} onChange={(e) => setBaseM(e.target.value)}
+                      inputMode="numeric" placeholder="base $" aria-label="Base gravable" />
+                  : copN(baseRf)}</td>
                 <td><span className="pct-wrap"><input type="number" min={0} step="0.001" value={rf} onChange={(e) => setRf(e.target.value)} placeholder="0" /><span className="pct-sfx">%</span></span></td>
                 <td className="num">{copN(amtRf)}</td>
               </tr>
               <tr>
                 <td>ReteIVA</td>
-                <td className="num">{copN(iva)}</td>
+                <td className="num">{sinXml
+                  ? <input className="ret-otros num" value={ivaM} onChange={(e) => setIvaM(e.target.value)}
+                      inputMode="numeric" placeholder="IVA $" aria-label="IVA del documento" />
+                  : copN(baseIva)}</td>
                 <td><span className="pct-wrap"><input type="number" min={0} step="0.001" value={ri} onChange={(e) => setRi(e.target.value)} placeholder="0" /><span className="pct-sfx">%</span></span></td>
                 <td className="num">{copN(amtRi)}</td>
               </tr>
               <tr>
                 <td>ReteICA</td>
-                <td className="num">{copN(subtotal)}</td>
+                <td className="num">{copN(baseRf)}</td>
                 <td><span className="pct-wrap"><input type="number" min={0} step="0.001" value={ric} onChange={(e) => setRic(e.target.value)} placeholder="0" /><span className="pct-sfx">%</span></span></td>
                 <td className="num">{copN(amtRic)}</td>
               </tr>
@@ -142,7 +176,11 @@ export function RetencionesModal({
 
           <div className="modal-foot">
             <button type="button" className="ghost" onClick={onClose}>Cancelar</button>
-            <button type="submit">{yaConfirmada ? "Reconfirmar" : "Confirmar retenciones"}</button>
+            {faltaBase && (
+              <span className="ret-motivo">Escribe la base antes de confirmar: con base en cero
+                la retención quedaría en $0 aunque la tarifa diga otra cosa.</span>
+            )}
+            <button type="submit" disabled={faltaBase}>{yaConfirmada ? "Reconfirmar" : "Confirmar retenciones"}</button>
           </div>
         </form>
       </div>

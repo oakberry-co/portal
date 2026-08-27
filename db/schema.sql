@@ -42,6 +42,24 @@ ALTER TABLE facturas
   ADD COLUMN IF NOT EXISTS link_drive   TEXT,
   ADD COLUMN IF NOT EXISTS gcs_xml_path TEXT;
 
+-- De dónde salió la factura (2026-08-27):
+--   'xml'  = llegó su XML por correo. Trae ítems, subtotal, IVA y, si es nota
+--            crédito, a qué factura corrige. Es el caso completo.
+--   'dian' = la vimos en el barrido de la DIAN y su XML nunca llegó. Trae
+--            identidad y valor total; NO trae subtotal, ítems ni referencia de
+--            nota crédito.
+-- Por qué hace falta la columna: sin ella una factura sin subtotal se ve igual
+-- que un bug del parser, y nadie sabe que a esa fila le falta el documento.
+-- Antes de esto, lo que no llegaba por correo simplemente no existía para el
+-- portal: no se clasificaba, no se pagaba, y una factura que no se paga se
+-- pierde. El default es 'xml' porque todo lo cargado hasta hoy entró por correo.
+ALTER TABLE facturas
+  ADD COLUMN IF NOT EXISTS origen TEXT NOT NULL DEFAULT 'xml';
+DO $$ BEGIN
+  ALTER TABLE facturas ADD CONSTRAINT ck_origen CHECK (origen IN ('xml','dian'));
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+CREATE INDEX IF NOT EXISTS ix_facturas_origen ON facturas (origen) WHERE origen = 'dian';
+
 -- -----------------------------------------------------------------------------
 -- 2) FACTURA_PROPUESTA — lo que la MÁQUINA sugiere (concepto/destino/retención).
 --    Se REFRESCA a diario desde BQ. NO es verdad humana: es insumo para revisar.
