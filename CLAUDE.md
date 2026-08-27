@@ -76,7 +76,7 @@ asumiéndolo.
 ### Los centinelas (correr TODOS antes de desplegar)
 
 ```bash
-for t in nit bancos candado_aprobacion permisos documentos retenciones_excel; do
+for t in nit bancos candado_aprobacion permisos documentos retenciones_excel espina_dian; do
   node scripts/test_$t.js; done
 python3 scripts/test_intake_a_pagos.py     # contra la base REAL, con ROLLBACK
 ```
@@ -111,6 +111,15 @@ Los centinelas de datos (no de código) viven en el otro repo:
   el banco exige la cuenta como TEXTO y Excel se come los ceros a la izquierda.
 - **Cruzar por valor es inviable:** el 45,7% de las facturas comparten NIT y
   total con una gemela.
+- **`scripts/sync_bq_to_pg.py` se despliega solo al guardarlo.** No espera a un
+  push: la VM lo corre por cron desde el árbol de trabajo (`*/10 14-23`, `40` en
+  la madrugada, `--full` a las 10). Editarlo ES desplegarlo, y entra en
+  producción hasta 10 minutos después. La app de Vercel sí necesita el push, así
+  que entre lo uno y lo otro hay una ventana donde los DATOS ya cambiaron y la
+  INTERFAZ todavía no — pasó el 27-ago: las facturas sin XML entraron a la base
+  antes de que existiera la marca que las explica. Probar siempre con
+  `--dry-run` (hace ROLLBACK) antes de guardar la versión buena, y desplegar la
+  interfaz de inmediato.
 - **Tras un redeploy**, una pestaña abierta sigue enviando al build anterior. En
   local, `next start` corriendo mientras se reconstruye sirve HTML nuevo con JS
   viejo (los botones no reaccionan): reiniciar el server antes de probar.
