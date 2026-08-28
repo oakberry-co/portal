@@ -135,9 +135,21 @@ async function cargar(): Promise<{ pendientes: FilaPago[]; validacion: FilaPago[
   // adelanto: sin él, un pago sin facturas parecería un registro roto.
   const historial = await pool.query<PagoHecho>(`
     SELECT p.id, p.nit_proveedor,
-           coalesce(max(f.nombre_proveedor), max(p.origen_ref)) AS proveedor, p.cuenta_pago,
+           -- A QUIÉN SE LE PAGÓ, SIEMPRE CON NOMBRE. Un pago sin facturas DIAN
+           -- detrás —cuenta de cobro, servicio público, adelanto— no tiene de
+           -- dónde sacar el nombre por «facturas», y caía a la referencia:
+           -- «CC-160» en la columna de Confirmados no le dice a nadie que esa
+           -- plata fue para ETB. Se le pregunta al documento que originó el
+           -- pago, y de último al maestro por NIT.
+           coalesce(max(f.nombre_proveedor), max(ik.proveedor), max(mp.nombre),
+                    p.origen_ref, p.nit_proveedor) AS proveedor, p.cuenta_pago,
            p.fecha_pago::text AS fecha_pago, p.monto::float AS monto, p.tipo,
-           p.origen, p.origen_ref,
+           -- QUÉ ERA. «origen» dice el carril; «origen_tipo» dice la clase de
+           -- gasto: un servicio público entra por el carril de las cuentas de
+           -- cobro pero no es una cuenta de cobro, y llamarlo así esconde el
+           -- gasto que más se repite.
+           p.origen, p.origen_ref, max(ik.doc_tipo) AS origen_tipo,
+           max(ik.concepto) AS origen_concepto,
            p.comprobante_url, p.nota, p.pagado_por, p.creado_en::text AS creado_en,
            count(pf.cufe)::int AS n_facturas,
            coalesce(json_agg(json_build_object('numero', f.numero, 'monto', pf.monto_aplicado)
@@ -145,6 +157,17 @@ async function cargar(): Promise<{ pendientes: FilaPago[]; validacion: FilaPago[
     FROM pagos p
     LEFT JOIN pago_facturas pf ON pf.pago_id = p.id
     LEFT JOIN facturas f ON f.cufe = pf.cufe
+    LEFT JOIN maestro_proveedores mp ON mp.nit = p.nit_proveedor
+    -- LATERAL con LIMIT 1 (no dos JOIN sueltos): un pago viene de UN documento,
+    -- y dos joins que pueden traer fila multiplicarían «pago_facturas» — o sea
+    -- el conteo de facturas del pago, que es lo que se muestra al lado.
+    LEFT JOIN LATERAL (
+      SELECT cc.razon_social AS proveedor, cc.tipo AS doc_tipo, cc.concepto
+        FROM cuentas_cobro cc WHERE cc.pago_id = p.id
+       UNION ALL
+      SELECT cot.razon_social, 'cotizacion', cot.concepto
+        FROM cotizaciones cot WHERE cot.pago_id = p.id
+       LIMIT 1) ik ON TRUE
     GROUP BY p.id
     ORDER BY p.fecha_pago DESC, p.id DESC
     LIMIT 300`);

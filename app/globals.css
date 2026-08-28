@@ -862,6 +862,11 @@ button.ghost { background: #fff; color: var(--purple); }
 .pg-conf-head:hover { background: #fdfbf6; }
 .pg-conf-nom { flex: 1; font-weight: 700; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .pg-conf-cta { font-size: 10px; color: var(--purple); background: var(--lav-soft); border-radius: 999px; padding: 1px 8px; white-space: nowrap; }
+/* Qué documento hubo detrás del pago cuando NO fue una factura electrónica.
+   Va al lado del nombre del proveedor: en Confirmados, un pago sin este sello
+   se lee como una factura, y son cosas distintas en el consolidado. */
+.pg-conf-org { font-size: 9.5px; font-weight: 700; color: #8a6100; background: #fff8e6;
+  border: 1px solid rgba(212,160,23,.35); border-radius: 999px; padding: 0 6px; white-space: nowrap; }
 .pg-conf-mto { font-weight: 800; color: var(--ok); font-size: 12.5px; }
 .pg-conf-det { padding: 8px 12px; background: var(--cream); border-top: 1px solid var(--border); }
 .pg-conf-det .pg-fact-list { margin-top: 6px; }

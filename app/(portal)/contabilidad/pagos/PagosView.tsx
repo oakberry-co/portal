@@ -4,6 +4,7 @@ import { Fragment, useState, useTransition } from "react";
 import { asignarCuenta, quitarCuenta, confirmarPago, agregarCuentaPago, toggleCuentaPago, guardarDiaPago,
          asignarCuentaIntake, confirmarPagoIntake, descontarAdelanto, quitarAdelanto,
          revisarCuentasBancarias, vincularCuentaBancaria, type RevisionCuentas } from "./actions";
+import { etiquetaOrigen, etiquetaOrigenCorta } from "@/lib/origen-pago";
 import { ModalPortal } from "../_ui/ModalPortal";
 
 export type FilaPago = {
@@ -35,6 +36,10 @@ export type PagoHecho = {
   id: number; nit_proveedor: string; proveedor: string | null; cuenta_pago: string | null;
   fecha_pago: string; monto: number; tipo: string; comprobante_url: string | null; nota: string | null;
   origen: string; origen_ref: string | null;
+  /** Qué clase de documento era (servicio_publico, arriendo, cuenta_cobro…) y
+   *  para qué fue. Lo que permite decir "ETB · servicio público" en vez de
+   *  "CC-160". */
+  origen_tipo: string | null; origen_concepto: string | null;
   pagado_por: string; creado_en: string; n_facturas: number;
   facturas: { numero: string; monto: number }[];
 };
@@ -433,6 +438,11 @@ export function PagosView({ pendientes, validacion, intake, adelantos, historial
                 <div className="pg-conf-head" onClick={() => setExpPago(toggle(expPago, p.id))}>
                   <span className="pg-caret">{expPago.has(p.id) ? "▾" : "▸"}</span>
                   <span className="pg-conf-nom">{p.proveedor ?? p.nit_proveedor}</span>
+                  {p.origen !== "factura" && (
+                    <span className="pg-conf-org" title={`${etiquetaOrigen(p.origen, p.origen_tipo)} · ${p.origen_ref ?? ""} — sin factura electrónica`}>
+                      {etiquetaOrigenCorta(p.origen, p.origen_tipo)}
+                    </span>
+                  )}
                   <span className="pg-conf-cta">{p.cuenta_pago ?? "—"}</span>
                   <span className="pg-conf-mto">{$(p.monto)}</span>
                 </div>
@@ -442,7 +452,7 @@ export function PagosView({ pendientes, validacion, intake, adelantos, historial
                     {p.nota && <div className="pg-nota">📝 {p.nota}</div>}
                     {p.origen === "factura"
                       ? <div className="pg-fact-list">{p.facturas.map((x, i) => <span key={i}><b className="mono">{x.numero}</b> {$(x.monto)}</span>)}</div>
-                      : <div className="pg-fact-list"><span className="pg-sindian">🧾 sin factura DIAN · <b className="mono">{p.origen_ref}</b></span></div>}
+                      : <div className="pg-fact-list"><span className="pg-sindian">🧾 {etiquetaOrigen(p.origen, p.origen_tipo)} · <b className="mono">{p.origen_ref}</b>{p.origen_concepto ? " · " + p.origen_concepto : ""} · sin factura DIAN</span></div>}
                   </div>
                 )}
               </div>
@@ -626,7 +636,7 @@ function HistorialView({ historial, cuentas }: { historial: PagoHecho[]; cuentas
                     <td>{p.tipo === "abono" ? <span className="pg-abono">abono</span>
                        : p.tipo === "adelanto" ? <span className="pg-abono">adelanto</span>
                        : <span className="pg-completo">completo</span>}</td>
-                    <td className="num">{p.origen === "factura" ? <>{p.n_facturas} {exp.has(p.id) ? "▾" : "▸"}</> : <span className="pg-sindian" title="Cuenta de cobro o adelanto: no tiene factura electrónica">s/DIAN</span>}</td>
+                    <td className="num">{p.origen === "factura" ? <>{p.n_facturas} {exp.has(p.id) ? "▾" : "▸"}</> : <span className="pg-sindian" title={`${etiquetaOrigen(p.origen, p.origen_tipo)} ${p.origen_ref ?? ""}: no tiene factura electrónica`}>{etiquetaOrigenCorta(p.origen, p.origen_tipo)}</span>}</td>
                     <td>{p.comprobante_url ? <a href={p.comprobante_url} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}>📎</a> : <span className="muted">—</span>}</td>
                     <td className="muted">{p.pagado_por.split("@")[0]}</td>
                   </tr>
@@ -635,7 +645,7 @@ function HistorialView({ historial, cuentas }: { historial: PagoHecho[]; cuentas
                       {p.nota && <div className="pg-nota">📝 {p.nota}</div>}
                       {p.origen === "factura"
                         ? <div className="pg-fact-list">{p.facturas.map((x, i) => <span key={i}><b className="mono">{x.numero}</b> {$(x.monto)}</span>)}</div>
-                        : <div className="pg-fact-list"><span className="pg-sindian">🧾 {p.origen === "cotizacion" ? "adelanto de cotización" : "cuenta de cobro"} · <b className="mono">{p.origen_ref}</b></span></div>}
+                        : <div className="pg-fact-list"><span className="pg-sindian">🧾 {etiquetaOrigen(p.origen, p.origen_tipo)} · <b className="mono">{p.origen_ref}</b>{p.origen_concepto ? " · " + p.origen_concepto : ""}</span></div>}
                     </td></tr>
                   )}
                 </Fragment>

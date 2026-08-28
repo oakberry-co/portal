@@ -7,6 +7,7 @@
 import ExcelJS from "exceljs";
 import { getPool } from "@/lib/db";
 import { exigirCap } from "@/lib/auth";
+import { etiquetaOrigen } from "@/lib/origen-pago";
 
 export const dynamic = "force-dynamic";
 
@@ -27,17 +28,19 @@ export async function GET(req: Request) {
 
   const { rows } = await getPool().query(
     `SELECT p.fecha_pago, p.nit_proveedor,
-            coalesce(f.nombre_proveedor, ik.razon_social) AS nombre_proveedor, p.cuenta_pago,
+            coalesce(f.nombre_proveedor, ik.razon_social, mp.nombre) AS nombre_proveedor, p.cuenta_pago,
+            ik.doc_tipo,
             p.monto AS monto_pago, p.tipo, p.comprobante_url, p.nota, p.pagado_por,
             p.origen, coalesce(f.numero, p.origen_ref) AS numero,
             coalesce(pf.monto_aplicado, CASE WHEN p.origen <> 'factura' THEN p.monto END) AS monto_aplicado
        FROM pagos p
        LEFT JOIN pago_facturas pf ON pf.pago_id = p.id
        LEFT JOIN facturas f ON f.cufe = pf.cufe
+       LEFT JOIN maestro_proveedores mp ON mp.nit = p.nit_proveedor
        LEFT JOIN LATERAL (
-         SELECT razon_social FROM cuentas_cobro WHERE pago_id = p.id
+         SELECT razon_social, tipo AS doc_tipo FROM cuentas_cobro WHERE pago_id = p.id
           UNION ALL
-         SELECT razon_social FROM cotizaciones  WHERE pago_id = p.id
+         SELECT razon_social, 'cotizacion' FROM cotizaciones  WHERE pago_id = p.id
           LIMIT 1) ik ON TRUE
        ${where}
       ORDER BY p.fecha_pago DESC, p.id DESC, f.fecha_emision`,
@@ -67,14 +70,15 @@ export async function GET(req: Request) {
 
   const n = (v: unknown) => (v == null || v === "" ? null : Number(v));
   const ymd = (d: unknown) => (d ? new Date(d as string).toISOString().slice(0, 10) : "");
-  const ORIGEN: Record<string, string> = {
-    factura: "Factura DIAN", cuenta_cobro: "Cuenta de cobro", cotizacion: "Adelanto cotización",
-  };
+  // La etiqueta la escribe el mismo módulo que la pantalla: el consolidado y el
+  // tablero tienen que llamar igual al mismo gasto. Y distingue el servicio
+  // público de la cuenta de cobro — entran por el mismo carril, pero llamarlos
+  // a todos "cuenta de cobro" esconde el gasto que más se repite.
   for (const r of rows) {
     ws.addRow({
       fecha: ymd(r.fecha_pago), nit: r.nit_proveedor, prov: r.nombre_proveedor ?? "",
       cuenta: r.cuenta_pago ?? "", num: r.numero ?? "",
-      origen: ORIGEN[r.origen as string] ?? r.origen, aplicado: n(r.monto_aplicado),
+      origen: etiquetaOrigen(r.origen as string, r.doc_tipo as string | null), aplicado: n(r.monto_aplicado),
       tipo: r.tipo, montop: n(r.monto_pago), comp: r.comprobante_url ?? "",
       nota: r.nota ?? "", quien: r.pagado_por,
     });
