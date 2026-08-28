@@ -517,7 +517,7 @@ function ItemIntake({ it, ctas, cuenta0, pending, start, onPagar }: {
           ⚠ sin cuenta bancaria · no entra al archivo del banco
         </div>
       )}
-      {aMano && <PagoAMano it={it} yaSalio={yaSalio} />}
+      {(aMano || it.referencia_pago) && <PagoAMano it={it} aMano={aMano} yaSalio={yaSalio} />}
       <div className="pg-assign">
         <select value={it.cuenta_pago ?? ""} disabled={pending} onChange={(e) => asignar(e.target.value)}>
           <option value="">— elegir cuenta —</option>
@@ -764,14 +764,23 @@ function ModalConfirmar({ grupo, onClose }: { grupo: Grupo; onClose: () => void 
  *  entera hasta que cortan el servicio.
  *
  *  Por eso se COPIA con un botón y no se lee para transcribirla a mano. */
-function PagoAMano({ it, yaSalio }: { it: FilaIntake; yaSalio: boolean }) {
+function PagoAMano({ it, aMano, yaSalio }: { it: FilaIntake; aMano: boolean; yaSalio: boolean }) {
   const [copiada, setCopiada] = useState(false);
+  // Un link se abre; un nombre de oficina se lee. Se distingue mirando el texto
+  // y no adivinando: si no parece una dirección, no se convierte en enlace.
+  const url = it.sitio_pago && /^(https?:\/\/|www\.|[\w-]+\.[a-z]{2,})/i.test(it.sitio_pago.trim())
+    ? (it.sitio_pago.startsWith("http") ? it.sitio_pago : "https://" + it.sitio_pago.trim())
+    : null;
   return (
     <div className={"pg-amano" + (yaSalio ? " auto" : "")}>
       <div className="pg-amano-head">
         {yaSalio
           ? <>⚡ <b>Débito automático</b> — la plata ya salió: esto es solo registrarlo. <b>No lo pagues otra vez.</b></>
-          : <>💻 <b>Se paga a mano</b>{it.sitio_pago ? <> en <b>{it.sitio_pago}</b></> : " en la página del proveedor"} · no sale en el archivo del banco</>}
+          : aMano
+            ? <>💻 <b>Se paga a mano</b>{it.sitio_pago ? <> en {url
+                ? <a href={url} target="_blank" rel="noreferrer"><b>{it.sitio_pago}</b></a>
+                : <b>{it.sitio_pago}</b>}</> : " en la página del proveedor"} · no sale en el archivo del banco</>
+            : <>🔢 <b>Referencia de pago</b> — va en la descripción del giro</>}
       </div>
       {it.referencia_pago && (
         <button type="button" className={"ref-copiar" + (copiada ? " copiada" : "")}

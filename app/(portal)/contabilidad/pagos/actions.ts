@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { getPool, withTx } from "@/lib/db";
 import { registrarEvento } from "@/lib/eventos";
+import { refDe } from "@/lib/ref-documento";
 import { exigirCap } from "@/lib/auth";
 import { syncAbono } from "@/lib/abonos";
 import { subirComprobante } from "@/lib/intake";
@@ -259,13 +260,15 @@ export async function confirmarPagoIntake(fd: FormData) {
   await withTx(async (c: PoolClient) => {
     const q = tipo === "cuenta_cobro"
       ? `SELECT id, razon_social AS nombre, num_doc AS nit, estado, cuenta_pago, pago_id,
-                correo, coalesce(valor_a_pagar, valor, 0) AS debido, 0 AS saldo, 'CC-' || id AS ref,
+                correo, coalesce(valor_a_pagar, valor, 0) AS debido, 0 AS saldo,
+                tipo AS tipo_gasto, ''::text AS ref,
                 concepto, destino, retencion_ok,
                 coalesce(valor, 0) AS bruto, coalesce(reten_total, 0) AS retenciones,
                 coalesce(numero, '') AS documento
            FROM cuentas_cobro WHERE id = $1 FOR UPDATE`
       : `SELECT id, razon_social AS nombre, nit, estado, cuenta_pago, pago_id,
-                correo, NULL::text AS concepto, NULL::text AS destino, TRUE AS retencion_ok,
+                correo, 'cotizacion'::text AS tipo_gasto,
+                NULL::text AS concepto, NULL::text AS destino, TRUE AS retencion_ok,
                 round(coalesce(valor,0) * coalesce(adelanto_pct,0) / 100) AS debido,
                 coalesce(valor,0) - round(coalesce(valor,0) * coalesce(adelanto_pct,0) / 100) AS saldo,
                 coalesce(codigo, 'COT-' || id) AS ref,
@@ -275,11 +278,15 @@ export async function confirmarPagoIntake(fd: FormData) {
     const { rows } = await c.query<{
       id: number; nombre: string; nit: string; estado: string; correo: string | null;
       cuenta_pago: string | null; pago_id: number | null; debido: string;
-      saldo: string; ref: string; bruto: string; retenciones: string; documento: string;
+      saldo: string; ref: string; tipo_gasto: string; bruto: string; retenciones: string; documento: string;
       concepto: string | null; destino: string | null; retencion_ok: boolean;
     }>(q, [id]);
     const s = rows[0];
     if (!s) throw new Error("Solicitud no encontrada.");
+    // La misma referencia que muestra la pantalla: la escribe `refDe`, no el
+    // SQL. Va al `origen_ref` del pago, o sea al Historial y al consolidado del
+    // contador — dos nombres para el mismo documento lo vuelven irrastreable.
+    s.ref = tipo === "cotizacion" ? s.ref : refDe(s.tipo_gasto, s.id);
     if (s.pago_id) throw new Error("Esta solicitud ya tiene un pago registrado.");
     const estadosOk = tipo === "cuenta_cobro" ? ["aprobada"] : ["aprobada", "facturada"];
     if (!estadosOk.includes(s.estado)) throw new Error("La solicitud no está aprobada.");

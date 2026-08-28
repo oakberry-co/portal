@@ -2,6 +2,7 @@ import { getPool } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { puede } from "@/lib/permisos";
 import { LISTO_PARA_PAGOS } from "@/lib/documentos-no-dian";
+import { refDe } from "@/lib/ref-documento";
 import { NC_APLICADA, SALDO_NETO, NO_ES_NOTA } from "@/lib/notas-credito";
 import { PagosView, type FilaPago, type FilaIntake, type PagoHecho, type CuentaPago, type Adelanto } from "./PagosView";
 
@@ -39,7 +40,11 @@ const CAMPOS = `
 // NETO de retenciones) y adelantos de cotización (por el % pactado). Van al bloque "sin
 // factura DIAN" de Validación — plata real, sin factura electrónica detrás.
 const SQL_INTAKE = `
-  SELECT 'cuenta_cobro' AS tipo, cc.id, 'CC-' || cc.id AS ref,
+  -- La referencia NO se arma en SQL: el prefijo sale del tipo de gasto (SP, AR,
+  -- IM…) y ese mapeo vive en lib/ref-documento. Con la copia en SQL, el mismo
+  -- documento se llamaba SP-419 en Conciliación y CC-419 acá — y esa referencia
+  -- es la llave con la que viaja al Excel de retenciones y al Historial.
+  SELECT 'cuenta_cobro' AS tipo, cc.id, cc.tipo AS tipo_gasto, ''::text AS ref,
          cc.razon_social AS proveedor, cc.num_doc AS nit, cc.concepto, cc.area,
          -- LO QUE SE PAGA es el neto de retenciones, no el valor del cobro.
          coalesce(cc.valor_a_pagar, cc.valor, 0)::float AS monto, cc.cuenta_pago,
@@ -51,7 +56,10 @@ const SQL_INTAKE = `
          -- acá, la va a buscar a otro lado — o la teclea de memoria, que es como
          -- se le abona la plata a otro cliente del mismo proveedor.
          coalesce(cc.forma_pago, 'transferencia') AS forma_pago,
-         cc.referencia_pago, cc.periodo::text AS periodo, g.sitio_pago
+         cc.referencia_pago, cc.periodo::text AS periodo,
+         -- El link del documento manda sobre el de la plantilla: si alguien lo
+         -- corrigió para ESTE mes, es el que sirve.
+         coalesce(cc.link_pago, g.sitio_pago) AS sitio_pago
     FROM cuentas_cobro cc
     LEFT JOIN cuentas_bancarias_proveedor cb ON cb.nit = cc.num_doc
     LEFT JOIN gasto_periodico g ON g.id = cc.plantilla_id
@@ -61,7 +69,7 @@ const SQL_INTAKE = `
    -- una copia envejece y el candado deja de existir por un lado.
    WHERE ${LISTO_PARA_PAGOS("cc")}
   UNION ALL
-  SELECT 'cotizacion', cot.id, coalesce(cot.codigo, 'COT-' || cot.id),
+  SELECT 'cotizacion', cot.id, 'cotizacion', coalesce(cot.codigo, 'COT-' || cot.id),
          cot.razon_social, cot.nit, cot.concepto, cot.destino,
          round(coalesce(cot.valor,0) * coalesce(cot.adelanto_pct,0) / 100)::float,
          cot.cuenta_pago, cot.fecha_pago_prog::text, cot.creado_en::text,
@@ -119,7 +127,9 @@ async function cargar(): Promise<{ pendientes: FilaPago[]; validacion: FilaPago[
        AND EXISTS (SELECT 1 FROM cotizacion_abonos a WHERE a.cotizacion_id = cot.id)
      ORDER BY cot.creado_en`);
   // Bloque APARTE de Validación — lo aprobado en el intake (sin factura DIAN).
-  const intake = await pool.query<FilaIntake>(SQL_INTAKE);
+  const intakeRaw = await pool.query<FilaIntake & { tipo_gasto: string }>(SQL_INTAKE);
+  const intake = { rows: intakeRaw.rows.map((r) => ({
+    ...r, ref: r.tipo === "cotizacion" ? r.ref : refDe(r.tipo_gasto, r.id) })) };
   // Columna 4 — CONFIRMADOS: los pagos ya registrados (con su cuenta).
   // `origen` distingue el pago de una factura del de una cuenta de cobro o un
   // adelanto: sin él, un pago sin facturas parecería un registro roto.
