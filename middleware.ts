@@ -29,8 +29,14 @@ export const { auth: middleware } = NextAuth(authConfig);
 // logo roto. En escritorio no se veía porque quedaba cacheado de antes; en un
 // celular, sin caché, se veía siempre. Cualquier asset nuevo de `public/` que
 // use una página pública hay que agregarlo aquí.
+//
+// `pruebas` también sale del matcher, y no por comodidad: en producción esa ruta
+// se REESCRIBE hacia el despliegue de pruebas (ver next.config.mjs), y el
+// middleware corre ANTES que los rewrites. Si lo interceptara, mandaría a /login
+// del portal real una petición que iba para el otro ambiente —que tiene su
+// propio candado— y el ambiente de pruebas nunca abriría.
 export const config = {
   matcher: [
-    "/((?!api/auth|cuentas-de-cobro|cotizaciones|completar|robots.txt|sitemap.xml|og/|oakberry-logo|_next/static|_next/image|favicon.ico).*)",
+    "/((?!api/auth|pruebas|cuentas-de-cobro|cotizaciones|completar|robots.txt|sitemap.xml|og/|oakberry-logo|_next/static|_next/image|favicon.ico).*)",
   ],
 };

@@ -7,6 +7,7 @@ import { CasillaDocumentoConDV } from "../CasillaDV";
 import { CasillaMonto } from "../CasillaMonto";
 import { RevisarAntesDeEnviar, resumenDe, type FilaResumen } from "../RevisarAntesDeEnviar";
 import { AREAS, PLAZOS_NEGOCIADOS, DOCS_COTIZACION, DOCS_RECURRENTE } from "@/lib/areas";
+import { ruta } from "@/lib/ruta";
 
 const CAMPOS = [
   { name: "razon_social", etiqueta: "Razón social" },
@@ -56,7 +57,7 @@ export function FormCotizacion() {
         <div className="pub-cot">{estado.codigo}</div>
         <p>El equipo de Oakberry la revisa y te contacta. Gracias 💜</p>
         {estado.aviso && <p className="pub-aviso">⚠️ {estado.aviso}</p>}
-        <a className="pub-btn ghost" href="/cotizaciones">Enviar otra</a>
+        <a className="pub-btn ghost" href={ruta("/cotizaciones")}>Enviar otra</a>
       </div>
     );
   }

@@ -4,6 +4,7 @@ import { useActionState, useMemo, useState } from "react";
 import { crearGastoSinFactura } from "./actions";
 import { TIPOS_GASTO, DIAS_AVISO } from "@/lib/gastos-periodicos";
 import type { Resultado } from "@/lib/resultado";
+import { ruta } from "@/lib/ruta";
 
 /** El valor se escribe como se escribe en Colombia: con puntos de miles. Se
  *  formatea mientras se teclea para que nadie mande $9.870 creyendo que puso
@@ -148,7 +149,7 @@ export function FormGasto({ proveedores }: { proveedores: ProveedorConocido[] })
         {res && !res.ok && <span className="gasto-err">⚠ {res.error}</span>}
         {res && res.ok && (
           <span className="gasto-ok">
-            ✓ Guardado. Ya está en <a href="/contabilidad/conciliacion">Conciliación de pagos</a>
+            ✓ Guardado. Ya está en <a href={ruta("/contabilidad/conciliacion")}>Conciliación de pagos</a>
             {repite ? ", y el mes entrante vuelve a aparecer solo." : ", esperando concepto y destino."}
           </span>
         )}

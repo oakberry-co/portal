@@ -529,7 +529,17 @@ def main() -> int:
 
             if not args.commit:
                 continue
-            dest = [f["para"]] + [x for x in [(f["cc"] or BUZON_COMPRAS)] if x]
+            # CANDADO DEL AMBIENTE DE PRUEBAS. Si esta variable está puesta, el
+            # correo va SOLO a esa dirección, pase lo que pase — nunca al
+            # proveedor. Es una variable de entorno y no un flag a propósito: un
+            # flag hay que acordarse de escribirlo, y el día que se olvide, un
+            # proveedor recibe "su cuenta fue aprobada" por una prueba.
+            forzado = (os.environ.get("CORREO_DESTINO_FORZADO") or "").strip()
+            if forzado:
+                print(f"     🧪 ambiente de pruebas: en vez de {f['para']} va a {forzado}")
+                dest = [forzado]
+            else:
+                dest = [f["para"]] + [x for x in [(f["cc"] or BUZON_COMPRAS)] if x]
             resp = ses.send_raw_email(Source=REMITENTE, Destinations=dest,
                                       RawMessage={"Data": msg.as_bytes()})
             cur.execute("""UPDATE correo_saliente

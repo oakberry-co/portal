@@ -2,6 +2,7 @@ import { getPool } from "@/lib/db";
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
 import { puede } from "@/lib/permisos";
+import { ruta } from "@/lib/ruta";
 
 export const dynamic = "force-dynamic";
 
@@ -141,7 +142,7 @@ export default async function SoportesPage() {
         <div className="sop-tarea">
           <b>⚠️ {sinRuta.length} destinos no tienen carpeta asignada</b> — sus facturas se clasifican
           pero <b>no se archivan solas</b>, porque nadie ha dicho a qué carpeta van. Se arregla en{" "}
-          <a href="/contabilidad/maestros">Maestros</a>, poniéndoles la carpeta (o unificándolos con el
+          <a href={ruta("/contabilidad/maestros")}>Maestros</a>, poniéndoles la carpeta (o unificándolos con el
           destino que ya la tiene).
           <div className="sop-tarea-lista">
             {sinRuta.map((d) => (

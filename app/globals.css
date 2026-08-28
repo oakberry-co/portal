@@ -1603,3 +1603,14 @@ tr.desfasada td { background: #fff8e6; }
   font-size: 11.5px; font-weight: 700; color: var(--purple); cursor: pointer; text-align: right; }
 .cc-monto-link:hover { text-decoration: underline; }
 .cc-monto-ok { display: block; margin-top: 4px; font-size: 11.5px; font-weight: 700; color: #1e7d47; }
+
+/* --- Franja del ambiente de pruebas ---------------------------------------- */
+/* Rayada y coral a propósito: tiene que verse distinto de cualquier estado
+   normal del portal, incluso de reojo. `sticky` y no `fixed` para que empuje el
+   contenido en vez de taparlo (una franja que tapa el menú se odia y se quita). */
+.franja-pruebas {
+  position: sticky; top: 0; z-index: 200;
+  background: repeating-linear-gradient(45deg, #e8593c, #e8593c 14px, #d14e33 14px, #d14e33 28px);
+  color: #fff; text-align: center; font-weight: 800; font-size: 12px;
+  letter-spacing: .04em; padding: 7px 12px; font-family: var(--sans);
+}

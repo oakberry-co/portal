@@ -58,6 +58,34 @@ repo datawarehouse** — ojo, ese comando NO trae este código.
 - **Bitácora** `eventos`: append-only y encadenada por hash. Todo cambio de
   estado se registra **en la misma transacción** (`registrarEvento`).
 
+## El ambiente de pruebas (`/pruebas`)
+
+El MISMO repo sirve dos despliegues: producción (`www.manelfoods.co`) y pruebas
+(`www.manelfoods.co/pruebas` — otro proyecto de Vercel, otra base). Lo único que
+los separa es la variable **`BASE_PATH`**; no hay un `if` dentro de la app, porque
+compartir el pool de conexiones es exactamente cómo una factura de mentiras
+termina en los libros de verdad.
+
+```bash
+# Local, contra una base de pruebas (NUNCA la del .env.local)
+createdb portal_e2e && psql -q portal_e2e -f db/schema.sql
+DATABASE_URL="postgresql://…/portal_e2e" python3 scripts/sembrar_demo.py --aplicar
+BASE_PATH=/pruebas DATABASE_URL="postgresql://…/portal_e2e" AUTH_MODE=dev DEV_USER_ROL=admin \
+  npx next start -p 3402      # abre en /pruebas/… ; la raíz da 404 y está bien
+```
+
+- `scripts/sembrar_demo.py` deja facturas falsas paradas en **cada** estado del
+  flujo (por clasificar · clasificada · lista para pago con y sin cuenta · en
+  validación · pagada · nota crédito · cuenta de cobro · cotización con adelanto).
+  `--rehacer` rebobina. **Se niega a correr contra la base del `.env.local`.**
+- **Retroceder no es deshacer:** la bitácora es append-only y así sigue. Se
+  rebobina volviendo a sembrar (o reseteando la rama de Neon).
+- `CORREO_DESTINO_FORZADO=<correo>` manda TODO ahí y nunca al proveedor. Es
+  variable de entorno y no un flag a propósito: un flag hay que acordarse.
+- Todo enlace interno pasa por `ruta()` (`lib/ruta.ts`). Next prefija `<Link>` y
+  `redirect()`, pero **no un `<a href>` pelado** — y sin prefijo, en pruebas un
+  clic te devuelve a producción sin avisar. Lo cuida `test_enlaces_basepath.js`.
+
 ## Cómo se trabaja
 
 ```bash
@@ -77,7 +105,7 @@ asumiéndolo.
 
 ```bash
 for t in nit bancos candado_aprobacion permisos documentos retenciones_excel espina_dian \
-         desvio_titular nombre_pago modal_portal; do
+         desvio_titular nombre_pago modal_portal enlaces_basepath; do
   node scripts/test_$t.js; done
 python3 scripts/test_enriquecimiento_xml.py   # base REAL, con ROLLBACK
 python3 scripts/test_intake_a_pagos.py     # contra la base REAL, con ROLLBACK

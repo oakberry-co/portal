@@ -3,6 +3,7 @@ import { puede, type Cap } from "@/lib/permisos";
 import { MenuPortal, type GrupoMenu } from "./MenuPortal";
 import { signOut } from "@/auth";
 import { AsistenteFloating } from "./AsistenteFloating";
+import { ruta } from "@/lib/ruta";
 
 // El portal interno: menú + sesión. Las landings públicas (/cuentas-de-cobro y
 // /cotizaciones) quedan FUERA de este grupo y por eso no lo heredan.
@@ -67,7 +68,7 @@ export default async function PortalLayout({ children }: { children: React.React
     <>
       {user && (
         <header className="nav">
-          <a href="/" className="nav-brand">
+          <a href={ruta("/")} className="nav-brand">
             <span className="nav-dot" />Oakberry<span className="nav-thin">· Portal</span>
           </a>
           <MenuPortal grupos={menuPara(user.rol)} />

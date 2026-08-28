@@ -7,6 +7,7 @@ import { CasillaDocumentoConDV } from "../CasillaDV";
 import { CasillaMonto } from "../CasillaMonto";
 import { RevisarAntesDeEnviar, resumenDe, type FilaResumen } from "../RevisarAntesDeEnviar";
 import { AREAS, CLASES_DOC } from "@/lib/areas";
+import { ruta } from "@/lib/ruta";
 
 // Solo el soporte: al recurrente no se le vuelven a pedir los documentos de
 // identidad, que es justo lo que lo hacía abandonar desde el celular.
@@ -59,7 +60,7 @@ export function FormCuentaCobro({ conceptos }: { conceptos: string[] }) {
         <h2>¡Recibido!</h2>
         <p>Tu cuenta de cobro llegó a Oakberry. El equipo de contabilidad la revisa y te contacta. Gracias 💜</p>
         {estado.aviso && <p className="pub-aviso">⚠️ {estado.aviso}</p>}
-        <a className="pub-btn ghost" href="/cuentas-de-cobro">Enviar otra</a>
+        <a className="pub-btn ghost" href={ruta("/cuentas-de-cobro")}>Enviar otra</a>
       </div>
     );
   }

@@ -33,10 +33,25 @@ export function emailEnAllowlist(email?: string | null): boolean {
   return false;
 }
 
+// EL AMBIENTE DE PRUEBAS VIVE EN EL MISMO DOMINIO (www.manelfoods.co/pruebas), y
+// las cookies NO distinguen rutas por sí solas: con el nombre de siempre, entrar
+// a pruebas pisaría la sesión del portal real (y al revés) — el token del otro
+// ambiente no verifica contra este `AUTH_SECRET`, así que cada visita
+// deslogearía a la otra. Por eso en pruebas la cookie se llama distinto y vive
+// bajo `/pruebas`.
+const EN_PRUEBAS = !!process.env.BASE_PATH;
+const COOKIE_SESION = EN_PRUEBAS ? "authjs.session-token.pruebas" : "authjs.session-token";
+
 export const authConfig = {
   providers: [Google],
   session: { strategy: "jwt" }, // JWT: el middleware (edge) verifica la sesión sin DB
   pages: { signIn: "/login" },
+  cookies: {
+    sessionToken: {
+      name: (process.env.VERCEL ? "__Secure-" : "") + COOKIE_SESION,
+      options: { httpOnly: true, sameSite: "lax", path: EN_PRUEBAS ? "/pruebas" : "/", secure: !!process.env.VERCEL },
+    },
+  },
   callbacks: {
     // Middleware: protege TODO menos /login. Sin sesión -> Auth.js redirige a /login.
     authorized({ auth, request: { nextUrl } }) {

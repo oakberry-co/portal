@@ -1,5 +1,35 @@
+// AMBIENTE DE PRUEBAS — el MISMO repo sirve los dos despliegues.
+//
+//   producción  →  www.manelfoods.co            (sin BASE_PATH)
+//   pruebas     →  www.manelfoods.co/pruebas    (BASE_PATH=/pruebas, otra base)
+//
+// Son DOS despliegues con DOS bases. La separación NO es un `if` dentro de la
+// app: si /pruebas fuera una ruta más del mismo deploy compartiría el pool de
+// conexiones, y un solo camino que se olvide escribe la factura de mentiras en
+// los libros de verdad. Acá lo único compartido es el código.
+//
+// El deploy de producción REESCRIBE /pruebas/* hacia el otro origen; el de
+// pruebas no reescribe nada (si lo hiciera, se llamaría a sí mismo en bucle).
+const BASE_PATH = process.env.BASE_PATH || "";
+const PRUEBAS_ORIGIN = process.env.PRUEBAS_ORIGIN || "";
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  ...(BASE_PATH ? { basePath: BASE_PATH } : {}),
+
+  // El navegador también necesita el prefijo (los `<a href>` pelados lo llevan a
+  // mano, ver lib/ruta.ts). Sale de la MISMA variable a propósito: dos variables
+  // que hay que mantener iguales terminan distintas justo el día que importa.
+  env: { NEXT_PUBLIC_BASE_PATH: BASE_PATH },
+
+  async rewrites() {
+    if (BASE_PATH || !PRUEBAS_ORIGIN) return [];   // solo el deploy de producción reescribe
+    return [
+      { source: "/pruebas", destination: `${PRUEBAS_ORIGIN}/pruebas` },
+      { source: "/pruebas/:path*", destination: `${PRUEBAS_ORIGIN}/pruebas/:path*` },
+    ];
+  },
+
   // El cliente `pg` es solo de servidor; que no intente empacarlo al bundle del navegador.
   serverExternalPackages: ["pg", "exceljs", "@anthropic-ai/sdk"],
 

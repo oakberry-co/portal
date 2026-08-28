@@ -6,6 +6,7 @@ import { asignarCuenta, quitarCuenta, confirmarPago, agregarCuentaPago, toggleCu
          revisarCuentasBancarias, vincularCuentaBancaria, type RevisionCuentas } from "./actions";
 import { etiquetaOrigen, etiquetaOrigenCorta } from "@/lib/origen-pago";
 import { ModalPortal } from "../_ui/ModalPortal";
+import { ruta } from "@/lib/ruta";
 
 export type FilaPago = {
   cufe: string; nombre_proveedor: string | null; nit_proveedor: string; numero: string;
@@ -327,7 +328,7 @@ export function PagosView({ pendientes, validacion, intake, adelantos, historial
           {revision.faltantes.map((f) => (
             <div key={f.nit} className="pg-rev-item falta">
               <b>{f.nombre}</b> <span className="mono">{f.nit}</span> — no hay ninguna cuenta cargada.
-              Cárgala en <a href="/contabilidad/maestros">Maestros › Cuentas bancarias</a> o pídele al proveedor
+              Cárgala en <a href={ruta("/contabilidad/maestros")}>Maestros › Cuentas bancarias</a> o pídele al proveedor
               su certificación bancaria por <span className="mono">manelfoods.co/cuentas-de-cobro</span>.
             </div>
           ))}
@@ -365,7 +366,7 @@ export function PagosView({ pendientes, validacion, intake, adelantos, historial
                   <span className="pg-cta-nom">{c.cuenta === "—" ? "🕓 Sin cuenta asignada" : "💳 " + c.cuenta}</span>
                   <span className="pg-cta-tot">{$(c.total)}</span>
                   {c.cuenta !== "—" && (
-                    <a className="pg-csv" href={`/contabilidad/pagos/export?cuenta=${encodeURIComponent(c.cuenta)}`} title="Descargar el archivo del banco en Excel (.xlsx). El número de cuenta va en celda de texto: los ceros a la izquierda no se pierden.">⬇ Excel</a>
+                    <a className="pg-csv" href={ruta(`/contabilidad/pagos/export?cuenta=${encodeURIComponent(c.cuenta)}`)} title="Descargar el archivo del banco en Excel (.xlsx). El número de cuenta va en celda de texto: los ceros a la izquierda no se pierden.">⬇ Excel</a>
                   )}
                 </div>
                 {c.provs.map((g) => {
@@ -602,7 +603,7 @@ function HistorialView({ historial, cuentas }: { historial: PagoHecho[]; cuentas
   const href = (() => {
     const u = new URLSearchParams();
     if (cta) u.set("cuenta", cta); if (desde) u.set("desde", desde); if (hasta) u.set("hasta", hasta);
-    const qs = u.toString(); return "/contabilidad/pagos/historial/export" + (qs ? "?" + qs : "");
+    const qs = u.toString(); return ruta("/contabilidad/pagos/historial/export" + (qs ? "?" + qs : ""));
   })();
 
   return (

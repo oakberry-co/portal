@@ -1,3 +1,4 @@
+import { ruta } from "@/lib/ruta";
 // Índice del portal — la cáscara. Cada tarjeta es un módulo.
 // Fase 0: solo Contabilidad > Conciliación de pagos está vivo.
 
@@ -17,7 +18,7 @@ export default function Home() {
       </section>
 
       <div className="cards">
-        <a className="card" href="/contabilidad/conciliacion">
+        <a className="card" href={ruta("/contabilidad/conciliacion")}>
           <div className="card-ico">🧾</div>
           <h3>Conciliación de pagos</h3>
           <p>Factura por factura: concepto, destino, plazo y retenciones. Con bitácora incorruptible.</p>

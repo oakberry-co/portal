@@ -5,6 +5,7 @@ import { SubirRetenciones } from "./SubirRetenciones";
 import { FacturaCard, type FacturaRow, type FilaPatch } from "./FacturaCard";
 import { DocsNoDian, type DocNoDianUI } from "./DocsNoDian";
 import { comparar, isoWeek, type Orden } from "@/lib/orden-facturas";
+import { ruta } from "@/lib/ruta";
 
 const MESES = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
 const PAGE = 100; // filas por página — no montamos 3.900 filas (mataba el navegador)
@@ -74,7 +75,7 @@ export function ConciliacionView({
     if (desde) p.set("desde", desde);
     if (hasta) p.set("hasta", hasta);
     const qs = p.toString();
-    return "/contabilidad/conciliacion/export" + (qs ? "?" + qs : "");
+    return ruta("/contabilidad/conciliacion/export" + (qs ? "?" + qs : ""));
   })();
 
   const opts = useMemo(() => {

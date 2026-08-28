@@ -1,6 +1,7 @@
 import "./globals.css";
 import type { Metadata } from "next";
 import { Bebas_Neue, Montserrat, DM_Mono } from "next/font/google";
+import { FranjaPruebas } from "./FranjaPruebas";
 
 // Cáscara mínima: fuentes y estilos, nada más.
 //
@@ -31,7 +32,10 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="es" className={`${display.variable} ${sans.variable} ${mono.variable}`}>
-      <body>{children}</body>
+      <body>
+        <FranjaPruebas />
+        {children}
+      </body>
     </html>
   );
 }

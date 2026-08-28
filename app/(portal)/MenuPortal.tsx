@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
+import { ruta as enlace } from "@/lib/ruta";
 
 // EL MENÚ, AGRUPADO. Antes eran 10 enlaces sueltos en una fila que se partía en
 // dos renglones y ya no cabía nada más. Agrupados por lo que la persona VIENE A
@@ -44,7 +45,7 @@ export function MenuPortal({ grupos }: { grupos: GrupoMenu[] }) {
         }
         if (g.href) {
           return (
-            <a key={g.label} href={g.href} className={"nav-link" + (ruta === g.href ? " activo" : "")}>
+            <a key={g.label} href={enlace(g.href)} className={"nav-link" + (ruta === g.href ? " activo" : "")}>
               {g.label}
             </a>
           );
@@ -62,7 +63,7 @@ export function MenuPortal({ grupos }: { grupos: GrupoMenu[] }) {
               <div className="nav-drop">
                 {items.map((i) =>
                   i.href ? (
-                    <a key={i.label} href={i.href}
+                    <a key={i.label} href={enlace(i.href)}
                        className={"nav-drop-item" + (ruta.startsWith(i.href) ? " activo" : "")}>
                       {i.label}
                     </a>
