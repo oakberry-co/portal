@@ -4,6 +4,7 @@ import { Fragment, useState, useTransition } from "react";
 import { asignarCuenta, quitarCuenta, confirmarPago, agregarCuentaPago, toggleCuentaPago, guardarDiaPago,
          asignarCuentaIntake, confirmarPagoIntake, descontarAdelanto, quitarAdelanto,
          revisarCuentasBancarias, vincularCuentaBancaria, type RevisionCuentas } from "./actions";
+import { ModalPortal } from "../_ui/ModalPortal";
 
 export type FilaPago = {
   cufe: string; nombre_proveedor: string | null; nit_proveedor: string; numero: string;
@@ -79,6 +80,11 @@ function porProveedor(filas: FilaPago[]): Grupo[] {
   const m = new Map<string, Grupo>();
   for (const f of filas) {
     const g = m.get(f.nit_proveedor) ?? m.set(f.nit_proveedor, { nit: f.nit_proveedor, nombre: f.nombre_proveedor ?? f.nit_proveedor, tiene_banco: f.tiene_banco, facturas: [], total: 0, oldest: "9999" }).get(f.nit_proveedor)!;
+    // El destino es POR FACTURA (una puede ir desviada y la otra no), así que el
+    // aviso del proveedor solo se prende si a ALGUNA le falta a dónde ir. Antes
+    // se heredaba el de la primera factura del grupo: con dos facturas mezcladas
+    // el aviso mentía en un sentido o en el otro.
+    g.tiene_banco = g.tiene_banco && f.tiene_banco;
     g.facturas.push(f);
   }
   return [...m.values()].map((g) => {
@@ -363,7 +369,7 @@ export function PagosView({ pendientes, validacion, intake, adelantos, historial
                     <div key={key} className="pg-prov val">
                       <div className="pg-prov-head" onClick={() => setAbierto(toggle(abierto, key))}>
                         <span className="pg-caret">{abierto.has(key) ? "▾" : "▸"}</span>
-                        <span className="pg-prov-nom">{g.nombre}{!g.tiene_banco && <span className="pg-nobank" title="Sin cuenta bancaria: NO entra al archivo del banco. Pídele al proveedor su certificación bancaria por el portal público.">⚠ sin cuenta · no entra al archivo del banco</span>}</span>
+                        <span className="pg-prov-nom">{g.nombre}{!g.tiene_banco && <span className="pg-nobank" title="Sin cuenta bancaria: NO entra al archivo del banco. Pídele al proveedor su certificación bancaria por el portal público — o, si esta vez pidió que se le pague a otra cuenta, desvía la factura desde Conciliación (botón «Cuenta»).">⚠ sin cuenta · no entra al archivo del banco</span>}</span>
                         <span className="pg-prov-tot">{$(g.total)}</span>
                       </div>
                       {abierto.has(key) && (
@@ -531,6 +537,7 @@ function ModalConfirmarIntake({ it, onClose }: { it: FilaIntake; onClose: () => 
   const [monto, setMonto] = useState(String(Math.round(it.monto)));
   const hoy = new Date().toISOString().slice(0, 10);
   return (
+    <ModalPortal>
     <div className="modal-backdrop" onMouseDown={onClose}>
       <div className="modal" onMouseDown={(e) => e.stopPropagation()}>
         <div className="modal-head">
@@ -563,6 +570,7 @@ function ModalConfirmarIntake({ it, onClose }: { it: FilaIntake; onClose: () => 
         </form>
       </div>
     </div>
+    </ModalPortal>
   );
 }
 
@@ -716,6 +724,7 @@ function ModalConfirmar({ grupo, onClose }: { grupo: Grupo; onClose: () => void 
   const esAbono = m > 0 && m < total - 1;
   const hoy = new Date().toISOString().slice(0, 10);
   return (
+    <ModalPortal>
     <div className="modal-backdrop" onMouseDown={onClose}>
       <div className="modal" onMouseDown={(e) => e.stopPropagation()}>
         <div className="modal-head">
@@ -742,6 +751,7 @@ function ModalConfirmar({ grupo, onClose }: { grupo: Grupo; onClose: () => void 
         </form>
       </div>
     </div>
+    </ModalPortal>
   );
 }
 

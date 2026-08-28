@@ -9,6 +9,7 @@ import { confirmarRetenciones } from "./actions";
 import { type FilaPatch } from "./FacturaCard";
 import { pct, type ReglaConcepto } from "../cuentas-de-cobro/RetencionesCuentaCobro";
 import { soloDigitos, montoRetencion, faltaBase as calcFaltaBase } from "@/lib/base-retencion";
+import { ModalPortal } from "../_ui/ModalPortal";
 
 const cop = new Intl.NumberFormat("es-CO", { style: "currency", currency: "COP", maximumFractionDigits: 0 });
 const copN = (n: number) => cop.format(Math.round(n || 0));
@@ -78,6 +79,7 @@ export function RetencionesModal({
   }
 
   return (
+    <ModalPortal>
     <div className="modal-backdrop" onMouseDown={onClose}>
       <div className="modal" onMouseDown={(e) => e.stopPropagation()}>
         <div className="modal-head">
@@ -185,5 +187,6 @@ export function RetencionesModal({
         </form>
       </div>
     </div>
+    </ModalPortal>
   );
 }

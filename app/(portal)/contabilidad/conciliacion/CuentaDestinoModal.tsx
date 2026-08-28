@@ -18,6 +18,7 @@
 import { useState, useTransition } from "react";
 import { cambiarCuentaDestino } from "./actions";
 import { BANCOS } from "@/lib/bancos";
+import { ModalPortal } from "../_ui/ModalPortal";
 
 const TIPOS_CUENTA = [
   { v: "ahorros", t: "Cuenta de ahorros" },
@@ -27,8 +28,8 @@ const TIPOS_CUENTA = [
 
 export type CuentaDestino = {
   banco: string | null; tipo: string | null; numero: string | null;
-  titular: string | null; doc: string | null; motivo: string | null;
-  por: string | null;
+  titular: string | null; doc: string | null; tipoDoc: string | null;
+  motivo: string | null; por: string | null;
 };
 
 export function CuentaDestinoModal({ cufe, factura, proveedor, actual, cuentaMaestro, onClose }: {
@@ -64,6 +65,7 @@ export function CuentaDestinoModal({ cufe, factura, proveedor, actual, cuentaMae
   }
 
   return (
+    <ModalPortal>
     <div className="modal-backdrop" onMouseDown={onClose}>
       <div className="modal cta-dest" onMouseDown={(e) => e.stopPropagation()}>
         <div className="modal-head">
@@ -117,11 +119,16 @@ export function CuentaDestinoModal({ cufe, factura, proveedor, actual, cuentaMae
             </label>
             <label className="campo">
               <span>Documento del titular</span>
-              <input name="doc" inputMode="numeric" defaultValue={actual?.doc ?? ""} placeholder="Cédula o NIT" />
+              <input name="doc" inputMode="numeric" required defaultValue={actual?.doc ?? ""} placeholder="Cédula o NIT (sin dígito de verificación)" />
+              <i>Es el que viaja al banco como dueño de la cuenta. El NIT va SIN el dígito de verificación.</i>
             </label>
             <label className="campo">
               <span>Tipo de documento</span>
-              <select name="tipo_doc" defaultValue="CC">
+              {/* Se abre como quedó guardado. Cuando volvía siempre a "Cédula",
+                  editar el motivo de un desvío le cambiaba la identidad al
+                  titular sin que nadie lo tocara: una empresa salía al banco
+                  como persona natural. */}
+              <select name="tipo_doc" defaultValue={actual?.tipoDoc ?? "CC"} required>
                 <option value="CC">Cédula</option>
                 <option value="NIT">NIT</option>
                 <option value="CE">Cédula de extranjería</option>
@@ -144,5 +151,6 @@ export function CuentaDestinoModal({ cufe, factura, proveedor, actual, cuentaMae
         </form>
       </div>
     </div>
+    </ModalPortal>
   );
 }

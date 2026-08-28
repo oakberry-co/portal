@@ -21,8 +21,18 @@ const CAMPOS = `
   (SELECT string_agg(nc.numero || ' · ' || coalesce(nc.ref_motivo, 'nota crédito'), ' | ')
      FROM facturas nc WHERE nc.ref_cufe = f.cufe AND nc.doc_tipo = 'CreditNote') AS nc_detalle,
   coalesce(e.pago_estado,'pendiente') AS pago_estado,
-  (cb.nit IS NOT NULL) AS tiene_banco,
-  (e.cta_dest_numero IS NOT NULL) AS desviada,
+  -- ¿ESTA factura tiene a dónde ir? Hay DOS caminos: la cuenta del maestro y el
+  -- desvío pegado a la factura (cta_dest_*). Mirar solo el maestro —como estaba—
+  -- marcaba «sin cuenta · no entra al archivo» facturas que SÍ salen en el
+  -- archivo (el export hace COALESCE con cta_dest_*), y mandaba a cargar en
+  -- Maestros la cuenta del favor puntual: exactamente el veneno que el desvío
+  -- existe para evitar. Pasó con MTS CONSULTORÍA (MLK234/MLK244, ago-2026).
+  -- Y se exige el NÚMERO, no la fila del maestro: el candado del archivo del
+  -- banco es el número de cuenta, así que una fila sin él decía «listo» en el
+  -- tablero y desaparecía callada del Excel.
+  (nullif(btrim(e.cta_dest_numero), '') IS NOT NULL
+   OR nullif(btrim(cb.num_cuenta), '') IS NOT NULL) AS tiene_banco,
+  (nullif(btrim(e.cta_dest_numero), '') IS NOT NULL) AS desviada,
   e.cta_dest_banco, e.cta_dest_numero`;
 
 // Lo aprobado en las dos bandejas del intake: cuentas de cobro (por su valor

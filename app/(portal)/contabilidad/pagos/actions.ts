@@ -508,21 +508,28 @@ export type RevisionCuentas = {
  *  únicos a los que se les va a pagar y por tanto los únicos que importan. */
 const SQL_PROVEEDORES_TABLERO = `
   WITH prov AS (
-    SELECT f.nit_proveedor AS nit, f.nombre_proveedor AS nombre
+    -- 'desviada' viaja por fila: esa factura ya tiene a dónde ir y NO necesita
+    -- que el proveedor tenga cuenta en el maestro. Sin esto, el botón mandaba a
+    -- cargar en Maestros la cuenta del favor puntual — y desde ahí se irían
+    -- TODAS las facturas siguientes de ese proveedor (MTS CONSULTORÍA, ago-2026).
+    SELECT f.nit_proveedor AS nit, f.nombre_proveedor AS nombre,
+           (nullif(btrim(e.cta_dest_numero), '') IS NOT NULL) AS desviada
       FROM factura_estado e JOIN facturas f USING (cufe)
       LEFT JOIN maestro_proveedores mp ON mp.nit = f.nit_proveedor
      WHERE e.estado IN ('retenciones_ok','aprobada_pago')
        AND coalesce(e.pago_estado,'pendiente') <> 'pagado'
        AND coalesce(e.tipo_pago, mp.tipo_pago_default, 'credito') <> 'debito'
-    UNION
-    SELECT num_doc, razon_social FROM cuentas_cobro
+    UNION ALL
+    SELECT num_doc, razon_social, FALSE FROM cuentas_cobro
      WHERE estado = 'aprobada' AND pago_id IS NULL
-    UNION
-    SELECT nit, razon_social FROM cotizaciones
+    UNION ALL
+    SELECT nit, razon_social, FALSE FROM cotizaciones
      WHERE estado IN ('aprobada','facturada') AND pago_id IS NULL AND requiere_adelanto
   )
   SELECT p.nit, max(p.nombre) AS nombre,
-         bool_or(cb.num_cuenta IS NOT NULL) AS tiene
+         -- Con cuenta en el maestro, o TODO lo suyo va desviado: en los dos casos
+         -- hay a dónde pagar y no falta nada por cargar.
+         (bool_or(nullif(btrim(cb.num_cuenta), '') IS NOT NULL) OR bool_and(p.desviada)) AS tiene
     FROM prov p
     LEFT JOIN cuentas_bancarias_proveedor cb ON cb.nit = p.nit
    WHERE p.nit IS NOT NULL AND p.nit <> ''

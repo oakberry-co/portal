@@ -30,6 +30,7 @@ export type FacturaRow = {
   // Desvío de pago de ESTA factura (no toca el maestro). Ver CuentaDestinoModal.
   cta_dest_banco: string | null; cta_dest_tipo: string | null; cta_dest_numero: string | null;
   cta_dest_titular: string | null; cta_dest_doc: string | null;
+  cta_dest_tipo_doc: string | null;
   cta_dest_motivo: string | null; cta_dest_por: string | null;
   // La del maestro, para poder mostrar de dónde se desvía.
   cb_banco: string | null; cb_num_cuenta: string | null;
@@ -391,6 +392,7 @@ export const FacturaCard = memo(function FacturaCard({
           actual={f.cta_dest_numero ? {
             banco: f.cta_dest_banco, tipo: f.cta_dest_tipo, numero: f.cta_dest_numero,
             titular: f.cta_dest_titular, doc: f.cta_dest_doc,
+            tipoDoc: f.cta_dest_tipo_doc,
             motivo: f.cta_dest_motivo, por: f.cta_dest_por,
           } : null}
           cuentaMaestro={{ banco: f.cb_banco, numero: f.cb_num_cuenta }}

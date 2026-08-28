@@ -11,6 +11,7 @@
 
 import { useState } from "react";
 import { confirmarRetencionesCuentaCobro } from "./actions";
+import { ModalPortal } from "../_ui/ModalPortal";
 
 const cop = new Intl.NumberFormat("es-CO", { style: "currency", currency: "COP", maximumFractionDigits: 0 });
 const $ = (n: number) => cop.format(Math.round(n || 0));
@@ -75,6 +76,7 @@ export function RetencionesCuentaCobro({
   const aPagar = valor - retenTotal - otrosNum;
 
   return (
+    <ModalPortal>
     <div className="modal-backdrop" onMouseDown={onClose}>
       <div className="modal" onMouseDown={(e) => e.stopPropagation()}>
         <div className="modal-head">
@@ -169,5 +171,6 @@ export function RetencionesCuentaCobro({
         </form>
       </div>
     </div>
+    </ModalPortal>
   );
 }

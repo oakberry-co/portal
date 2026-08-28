@@ -53,7 +53,7 @@ async function cargar(): Promise<{ filas: FacturaRow[]; conceptos: string[]; des
             -- Desvío del pago de ESTA factura + la cuenta del maestro, para
             -- poder mostrar de dónde se está desviando.
             e.cta_dest_banco, e.cta_dest_tipo, e.cta_dest_numero, e.cta_dest_titular,
-            e.cta_dest_doc, e.cta_dest_motivo, e.cta_dest_por,
+            e.cta_dest_doc, e.cta_dest_tipo_doc, e.cta_dest_motivo, e.cta_dest_por,
             cb.banco AS cb_banco, cb.num_cuenta AS cb_num_cuenta,
             -- Notas crédito que corrigen ESTA factura + qué es ella misma.
             f.doc_tipo, f.ref_numero, f.ref_motivo,

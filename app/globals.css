@@ -413,10 +413,20 @@ button.ghost { background: #fff; color: var(--purple); }
 .modal-backdrop {
   position: fixed; inset: 0; z-index: 100; background: rgba(44, 24, 56, .45);
   display: grid; place-items: center; padding: 20px; backdrop-filter: blur(2px);
+  /* La columna NO puede crecer con el contenido. Sin `minmax(0, 1fr)` el grid
+     la dimensiona a max-content —y el <select> de bancos, con 72 nombres,
+     mide más que un celular—: el panel se salía por la derecha y el formulario
+     quedaba cortado justo donde se escribe la cuenta. */
+  grid-template-columns: minmax(0, 1fr);
 }
 .modal {
   width: 100%; max-width: 520px; background: var(--card); border: 1px solid var(--border);
   border-radius: 18px; box-shadow: var(--shadow-lg); padding: 22px 24px;
+  /* Nunca más alto que la pantalla: sin esto, un modal largo (el de desviar el
+     pago, con su aviso amarillo) se sale por abajo y los botones Cancelar y
+     Confirmar quedan FUERA, sin scroll — el formulario se ve pero no se puede
+     terminar. `dvh` porque en el celular la barra del navegador se mueve. */
+  max-height: calc(100dvh - 40px); overflow-y: auto; overscroll-behavior: contain;
 }
 .modal-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
 .modal-head h3 { margin: 0; font-size: 17px; color: var(--purple-deep); font-weight: 800; }
@@ -1465,7 +1475,18 @@ tr.desfasada td { background: #fff8e6; }
   padding: 10px 12px; margin: 12px 0; font-size: 12.5px; display: flex;
   flex-direction: column; gap: 6px; align-items: flex-start; }
 .cta-dest-err { color: var(--coral); font-size: 12.5px; font-weight: 600; margin: 8px 0 0; }
-.modal-pie { display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px; }
+/* El pie se queda PEGADO abajo mientras el cuerpo del modal se desplaza. En una
+   pantalla de portátil el formulario de desvío no cabe entero, y con el botón
+   "Desviar solo esta factura" fuera de la vista el modal se ve como si estuviera
+   roto. Los márgenes negativos cancelan el padding del panel para que la barra
+   llegue de borde a borde. */
+.modal-pie, .modal-foot {
+  position: sticky; bottom: -22px; z-index: 1;
+  margin: 16px -24px -22px; padding: 12px 24px;
+  background: var(--card); border-top: 1px solid var(--border);
+  border-radius: 0 0 18px 18px;
+}
+.modal-pie { display: flex; justify-content: flex-end; gap: 10px; }
 /* Chip de la grilla: la factura que va desviada se ve de un golpe. */
 .c-desvio { background: var(--yellow); color: var(--ink) !important; border-color: var(--yellow) !important; }
 @media (max-width: 640px) { .cta-dest-grid { grid-template-columns: 1fr; } }

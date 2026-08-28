@@ -9,6 +9,7 @@ import { clasificar } from "@/lib/documentos-no-dian";
 import { intentar, type Resultado } from "@/lib/resultado";
 import { limpiarTextoHumano } from "@/lib/texto";
 import { esBancoConocido } from "@/lib/bancos";
+import { revisarTitularDestino } from "@/lib/cuenta-destino";
 import { asegurarConcepto, asegurarDestino } from "@/lib/maestros";
 import type { PoolClient } from "pg";
 
@@ -389,6 +390,12 @@ export async function cambiarCuentaDestino(fd: FormData): Promise<Resultado> {
     }
     const titular = t("titular");
     if (!titular) throw new Error("Escribe a nombre de quién está la cuenta.");
+    // QUIÉN es el dueño de esa cuenta. Es lo que viaja al banco: si queda vacío
+    // o contradice al titular, el archivo declara al proveedor de la factura
+    // como dueño de la cuenta de un tercero.
+    const rev = revisarTitularDestino(titular, String(fd.get("tipo_doc") ?? ""), String(fd.get("doc") ?? ""));
+    if (rev.error) throw new Error(rev.error);
+    const tipoDoc = String(fd.get("tipo_doc") ?? "").trim().toUpperCase();
     // El MOTIVO es obligatorio: dentro de tres meses, "por qué esta factura se
     // pagó a otra cuenta" tiene que poder responderse sin llamar a nadie.
     const motivo = t("motivo");
@@ -409,15 +416,15 @@ export async function cambiarCuentaDestino(fd: FormData): Promise<Resultado> {
                 cta_dest_titular = $5, cta_dest_doc = $6, cta_dest_tipo_doc = $7,
                 cta_dest_motivo = $8, cta_dest_por = $9, cta_dest_en = now(), actualizado_en = now()
           WHERE cufe = $1`,
-        [cufe, banco, tipoCuenta, numero, titular,
-         (t("doc") ?? "").replace(/[^\d]/g, "") || null, String(fd.get("tipo_doc") ?? "CC"),
+        [cufe, banco, tipoCuenta, numero, titular, rev.doc, tipoDoc,
          motivo, user.email]);
 
       await registrarEvento(c, {
         cufe, tipo: "cambia_cuenta_destino", campo: "cta_dest_numero",
         valorNuevo: { factura: cur.rows[0].numero, proveedor: cur.rows[0].nombre,
                       banco, tipo_cuenta: tipoCuenta, num_cuenta: numero,
-                      titular, motivo, solo_esta_factura: true },
+                      titular, tipo_doc: tipoDoc, doc: rev.doc,
+                      motivo, solo_esta_factura: true },
         actor: user.email, actorRol: user.rol, origen: "web",
       });
     });
