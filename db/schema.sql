@@ -115,6 +115,13 @@ CREATE TABLE IF NOT EXISTS factura_estado (
 );
 CREATE INDEX IF NOT EXISTS ix_estado_estado ON factura_estado (estado);
 
+-- El descuento que no es retención ("Otros") y la nota de quien lo revisó. Salen
+-- restando en lo que se paga, así que sin ellas el tablero muestra un número y
+-- el archivo del banco otro. También se agregaron por script en producción.
+ALTER TABLE factura_estado ADD COLUMN IF NOT EXISTS otros_valor    NUMERIC(16,2) NOT NULL DEFAULT 0;
+ALTER TABLE factura_estado ADD COLUMN IF NOT EXISTS otros_concepto TEXT;
+ALTER TABLE factura_estado ADD COLUMN IF NOT EXISTS observaciones  TEXT;
+
 -- Migración idempotente: columnas de retenciones confirmadas (individuales).
 ALTER TABLE factura_estado
   ADD COLUMN IF NOT EXISTS retefuente NUMERIC(16,2),
@@ -231,6 +238,34 @@ CREATE TABLE IF NOT EXISTS maestro_retenciones (        -- tipo+tarifa aprendida
   creado_en      TIMESTAMPTZ NOT NULL DEFAULT now(),
   UNIQUE (nit_proveedor, tipo)
 );
+
+-- La retención que suele practicarse POR CONCEPTO, aprendida de lo ya hecho
+-- (scripts/aprender_retenciones.py) o escrita por un humano. `fuente='humano'`
+-- manda: lo aprendido nunca pisa una regla que alguien fijó a mano (Regla 13).
+-- Vivía SOLO en producción, creada por el script: una base nueva —el ambiente de
+-- pruebas, o un rearranque— quedaba sin ella y Conciliación no abría.
+CREATE TABLE IF NOT EXISTS regla_retencion_concepto (
+  concepto       TEXT PRIMARY KEY,
+  retefuente     NUMERIC,                                 -- tarifa %; NULL = no se sabe
+  reteica        NUMERIC,                                 -- por mil
+  reteiva        NUMERIC,
+  aplica         BOOLEAN NOT NULL DEFAULT TRUE,           -- FALSE = a este concepto NO se le retiene
+  fuente         TEXT NOT NULL DEFAULT 'aprendida',       -- aprendida | humano
+  n_casos        INTEGER NOT NULL DEFAULT 0,              -- de cuántas facturas salió
+  concordancia   NUMERIC,                                 -- qué tan parejas venían esas facturas
+  nota           TEXT,
+  creado_por     TEXT,
+  actualizado_en TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Lo que el humano practicó DE VERDAD, aprendido de las retenciones ya
+-- confirmadas: la tarifa que se viene aplicando puede diferir de la del maestro,
+-- y esa es la que sugiere la pantalla. Se agregó por script en producción; sin
+-- esto, una base nueva no abre Conciliación.
+ALTER TABLE maestro_retenciones ADD COLUMN IF NOT EXISTS tarifa_practicada NUMERIC;
+ALTER TABLE maestro_retenciones ADD COLUMN IF NOT EXISTS practicada_casos  INTEGER;
+ALTER TABLE maestro_retenciones ADD COLUMN IF NOT EXISTS practicada_conc   NUMERIC;
+ALTER TABLE maestro_retenciones ADD COLUMN IF NOT EXISTS practicada_en     TIMESTAMPTZ;
 
 CREATE TABLE IF NOT EXISTS maestro_cuentas_puc (
   codigo      TEXT PRIMARY KEY,                          -- ej. 14050501
