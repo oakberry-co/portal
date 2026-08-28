@@ -1138,3 +1138,9 @@ CREATE INDEX IF NOT EXISTS ix_cc_plantilla ON cuentas_cobro (plantilla_id);
 ALTER TABLE cuentas_cobro DROP CONSTRAINT IF EXISTS ck_cc_valor_o_plantilla;
 ALTER TABLE cuentas_cobro ADD CONSTRAINT ck_cc_valor_o_plantilla
   CHECK (valor IS NOT NULL OR plantilla_id IS NOT NULL);
+
+-- El LINK DE PAGO del documento (28-ago-2026). Vivía solo en la plantilla, así
+-- que un gasto de una sola vez —el recibo que se paga hoy y no vuelve— perdía
+-- el dato de dónde pagarlo justo cuando alguien lo iba a usar. Va pegado al
+-- documento igual que la referencia: quien paga mira UNA fila, no dos tablas.
+ALTER TABLE cuentas_cobro ADD COLUMN IF NOT EXISTS link_pago TEXT;

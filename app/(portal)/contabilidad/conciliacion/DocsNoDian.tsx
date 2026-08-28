@@ -39,7 +39,7 @@ export type DocNoDianUI = {
   // NULL = gasto periódico esperando su monto. No es cero: es "todavía no
   // sabemos cuánto", y confundirlos deja un gasto de $0 listo para pagarse.
   valor: number | null;
-  plantilla_id: number | null; periodo: string | null;
+  plantilla_id: number | null; periodo: string | null; vence: string | null;
   forma_pago: string | null; referencia_pago: string | null;
   concepto: string | null; destino: string | null; plazo_dias: number | null;
   retencion_ok: boolean; reten_total: number | null;
@@ -63,6 +63,12 @@ const milesCO = (raw: string) => {
   return d ? Number(d).toLocaleString("es-CO") : "";
 };
 const MESES = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
+/** Hoy en Bogotá: la fecha se compara contra un vencimiento, y en UTC después de
+ *  las 7 p.m. un gasto que vence mañana ya aparecería como "vence hoy". */
+const hoyBta = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "America/Bogota", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+const diasHasta = (iso: string) =>
+  Math.round((Date.parse(iso + "T00:00:00Z") - Date.parse(hoyBta + "T00:00:00Z")) / 86400000);
 const ddmm = (s: string) => { const d = new Date(s + (s.length === 10 ? "T00:00:00" : "")); return `${String(d.getDate()).padStart(2, "0")}/${MESES[d.getMonth()]}`; };
 
 const ETIQUETA_TIPO: Record<string, string> = {
@@ -137,11 +143,14 @@ function FilaDoc({ d, conceptos, destinos, puedeClasificar }: {
         </div>
         {/* CÓMO se paga y con QUÉ referencia. Va en la fila y no escondido en la
             plantilla porque quien concilia es quien va a entrar a la página del
-            proveedor a pagarlo. */}
-        {d.plantilla_id && (
-          <div className="muted mini" title="Viene de un gasto programado">
-            {etiquetaForma(d.forma_pago)}
-            {d.referencia_pago ? <> · ref <b className="mono">{d.referencia_pago}</b></> : null}
+            proveedor a pagarlo. La referencia se muestra siempre que exista: un
+            gasto de una sola vez también se paga tecleándola. */}
+        {(d.referencia_pago || (d.plantilla_id && !vaAlBanco(d.forma_pago))) && (
+          <div className="muted mini">
+            {!vaAlBanco(d.forma_pago) ? etiquetaForma(d.forma_pago) : null}
+            {d.referencia_pago
+              ? <>{!vaAlBanco(d.forma_pago) ? " · " : ""}ref <b className="mono">{d.referencia_pago}</b></>
+              : null}
           </div>
         )}
       </div>
@@ -157,7 +166,14 @@ function FilaDoc({ d, conceptos, destinos, puedeClasificar }: {
         {d.periodo && <span className="muted mini nodian-ref2">🔁 {etiquetaPeriodo(d.periodo)}</span>}
       </div>
 
-      <div className="c-fecha"><span title="Fecha del documento">{ddmm(d.fecha)}</span></div>
+      <div className="c-fecha">
+        <span title="Fecha del documento">{ddmm(d.fecha)}</span>
+        {/* CUÁNTO FALTA PARA QUE SE VENZA. Un gasto sin factura no lo reclama
+            nadie: no llega un correo del proveedor ni una factura vencida en la
+            DIAN. Si acá no se ve, se entera la tienda cuando le cortan el
+            servicio. */}
+        {d.vence && <Vence iso={d.vence} />}
+      </div>
       <div className="c-sem">{semanaISO(d.fecha)}</div>
       {/* EL VALOR ES LO ÚNICO QUE CAMBIA en un gasto periódico: nace vacío y se
           escribe acá, en la misma pantalla donde se revisa. Mandar a otra
@@ -283,4 +299,13 @@ function PonerValor({ d, puede }: { d: DocNoDianUI; puede: boolean }) {
       {err && <div className="nodian-err">⚠ {err}</div>}
     </form>
   );
+}
+
+/** Cuánto falta para el vencimiento, con el mismo lenguaje que el tablero de
+ *  Pagos: leer dos idiomas para el mismo estado obliga a traducir. */
+function Vence({ iso }: { iso: string }) {
+  const d = diasHasta(iso);
+  const clase = d < 0 ? "lo" : d <= 3 ? "mid" : "hi";
+  const texto = d < 0 ? `⏰ ${-d}d tarde` : d === 0 ? "⏰ vence hoy" : `faltan ${d}d`;
+  return <span className={"nodian-vence " + clase} title={`Hay que pagarlo el ${iso}`}>{texto}</span>;
 }

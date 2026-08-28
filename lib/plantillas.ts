@@ -94,10 +94,10 @@ export async function crearDocumentoDelMes(
     razon_social: string; num_doc: string; tipo_doc: string; correo: string | null;
     tipo: string; tipo_detalle: string | null; descripcion: string | null;
     concepto: string | null; destino: string | null; area: string | null;
-    forma_pago: string; referencia_pago: string | null;
+    forma_pago: string; referencia_pago: string | null; sitio_pago: string | null;
     dia_pago: number; documentos: unknown;
   }>(`SELECT razon_social, num_doc, tipo_doc, correo, tipo, tipo_detalle, descripcion,
-             concepto, destino, area, forma_pago, referencia_pago, dia_pago, documentos
+             concepto, destino, area, forma_pago, referencia_pago, sitio_pago, dia_pago, documentos
         FROM gasto_periodico WHERE id = $1`, [plantillaId]);
   if (!p.rowCount) throw new Error("Esa plantilla ya no existe.");
   const g = p.rows[0];
@@ -108,13 +108,13 @@ export async function crearDocumentoDelMes(
        (razon_social, tipo_doc, num_doc, correo, area, descripcion,
         valor, documentos, estado, origen, tipo, tipo_detalle,
         concepto, concepto_fuente, destino, destino_fuente,
-        fecha_vencimiento, plantilla_id, periodo, forma_pago, referencia_pago,
+        fecha_vencimiento, plantilla_id, periodo, forma_pago, referencia_pago, link_pago,
         creado_por, aprobado_en, revisado_por, revisado_en)
      VALUES ($1,$2,$3,$4,$5,$6,
              NULL,$7,'aprobada','periodico',$8,$9,
              $10,'plantilla',$11,'plantilla',
-             $12,$13,$14,$15,$16,
-             $17, now(), $17, now())
+             $12,$13,$14,$15,$16,$17,
+             $18, now(), $18, now())
      ON CONFLICT (plantilla_id, periodo) WHERE plantilla_id IS NOT NULL DO NOTHING
      RETURNING id`,
     [g.razon_social, g.tipo_doc, g.num_doc, g.correo, g.area,
@@ -123,7 +123,7 @@ export async function crearDocumentoDelMes(
      [g.descripcion, etiquetaPeriodo(periodo)].filter(Boolean).join(" · "),
      JSON.stringify(g.documentos ?? []), g.tipo, g.tipo_detalle,
      g.concepto, g.destino, venc, plantillaId, periodo, g.forma_pago, g.referencia_pago,
-     actor.email]);
+     g.sitio_pago, actor.email]);
   if (!r.rowCount) return null;              // ya existía: no es un error, es el candado
   const id = r.rows[0].id;
   const ref = refDe(g.tipo, id);

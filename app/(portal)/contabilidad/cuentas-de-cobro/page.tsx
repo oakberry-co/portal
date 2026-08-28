@@ -16,6 +16,10 @@ async function cargar(): Promise<{ items: CuentaCobro[]; conceptos: string[]; de
   const pool = getPool();
   const r = await pool.query<CuentaCobro>(
     `SELECT cc.id, cc.razon_social, cc.tipo_doc, cc.num_doc, cc.contacto, cc.correo,
+            -- El tipo de gasto (servicio público, arriendo…): de él sale el
+            -- prefijo de la referencia, y esta bandeja muestra TODO
+            -- cuentas_cobro, no solo lo que llegó por el portal público.
+            cc.tipo,
             cc.telefono, cc.area, cc.concepto, cc.destino, cc.descripcion, cc.valor::float AS valor,
             cc.documentos, cc.estado, cc.nota_revision, cc.revisado_por,
             cc.creado_en::text AS creado_en, cc.fecha_pago_prog::text AS fecha_pago_prog,

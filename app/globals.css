@@ -1357,6 +1357,14 @@ tr.desfasada td { background: #fff8e6; }
 .nodian-ref2 { display: block; margin-top: 2px; }
 .nodian-sinbanco { display: block; font-size: 9.5px; color: var(--coral); font-weight: 700; }
 .nodian-err { grid-column: 1 / -1; color: var(--coral); font-size: 11.5px; padding-top: 4px; }
+/* Cuánto falta para que se venza un gasto sin factura. Nadie lo reclama —no hay
+   correo del proveedor ni factura vencida en la DIAN—, así que si no se ve acá
+   se entera la tienda cuando le cortan el servicio. */
+.nodian-vence { display: block; font-size: 9.5px; font-weight: 700; margin-top: 2px;
+  white-space: nowrap; }
+.nodian-vence.hi { color: var(--lav); }
+.nodian-vence.mid { color: #8a6100; }
+.nodian-vence.lo { color: var(--coral); }
 /* Escribir el monto del mes de un gasto periódico, en la propia fila. Se ve
    distinto de una cifra ya puesta a propósito: un hueco por llenar tiene que
    pedir que lo llenen. */

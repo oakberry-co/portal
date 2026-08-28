@@ -50,6 +50,7 @@ export type DocNoDian = {
   valor: number | null;               // NULL = gasto periódico esperando su monto
   plantilla_id: number | null;
   periodo: string | null;             // el mes que cubre (primer día)
+  vence: string | null;               // cuándo hay que tenerlo pagado
   forma_pago: string | null;
   referencia_pago: string | null;
   concepto: string | null;
@@ -88,6 +89,7 @@ const CAMPOS = `
   -- perfectamente pagable. La pantalla necesita poder distinguirlos.
   cc.valor::float AS valor,
   cc.plantilla_id, cc.periodo::text AS periodo,
+  cc.fecha_vencimiento::text AS vence,
   cc.forma_pago, cc.referencia_pago,
   cc.concepto, cc.destino, cc.plazo_dias, cc.retencion_ok,
   cc.reten_total::float, cc.retefuente::float, cc.reteiva::float, cc.reteica::float,

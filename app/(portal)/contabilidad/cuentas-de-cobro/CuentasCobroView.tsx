@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState, useState, type ReactNode } from "react";
+import { refDe } from "@/lib/ref-documento";
 import { revisarCuentaCobro } from "./actions";
 import { DOCS_CUENTA_COBRO, DOCS_RECURRENTE, docsFaltantes } from "@/lib/areas";
 import { bloqueoAprobacion, type CertEstado, type CuentaMaestro } from "@/lib/certificaciones";
@@ -16,7 +17,7 @@ import { ErrorAccion } from "../_intake/ErrorAccion";
 import type { Resultado } from "@/lib/resultado";
 
 export type CuentaCobro = {
-  id: number; razon_social: string; tipo_doc: string | null; num_doc: string;
+  id: number; razon_social: string; tipo: string; tipo_doc: string | null; num_doc: string;
   contacto: string | null; correo: string | null; telefono: string | null; area: string | null;
   concepto: string | null; destino: string | null; descripcion: string | null; valor: number | null;
   documentos: DocIntake[];
@@ -90,7 +91,9 @@ export function CuentasCobroView({ items, operar, conceptos, destinos }: {
   // Los mismos filtros de Conciliación. Las PESTAÑAS filtran por estado; esto
   // por lo demás: quién, cuándo, de qué área.
   const { filtrados, barra } = useFiltrosIntake(items, (i) => ({
-    texto: [i.razon_social, i.num_doc, i.concepto, i.descripcion, i.contacto, "CC-" + i.id]
+    // La MISMA referencia que se ve en la fila (SP-419, AR-88…), no un "CC-"
+    // fijo: buscar por lo que la pantalla muestra tiene que funcionar.
+    texto: [i.razon_social, i.num_doc, i.concepto, i.descripcion, i.contacto, refDe(i.tipo, i.id)]
       .filter(Boolean).join(" "),
     fecha: i.creado_en, area: i.area, proveedor: i.razon_social,
   }));

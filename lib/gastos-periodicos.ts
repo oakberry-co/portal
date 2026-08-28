@@ -70,6 +70,11 @@ export const SQL_VA_AL_BANCO = (pfx: string) =>
  *  sumen el total exacto y ninguna fila se quede sin aparecer en ninguna. */
 export const SQL_PAGO_MANUAL = (pfx: string) => `NOT (${SQL_VA_AL_BANCO(pfx)})`;
 
+/** CUÁNTOS DÍAS ANTES aparece el gasto en Conciliación. Uno solo para todos, no
+ *  una casilla: nadie tiene por qué decidirlo gasto por gasto, y siete días es
+ *  lo que alcanza para conseguir el recibo y pagar sin llegar al corte. */
+export const DIAS_AVISO = 7;
+
 export type Plantilla = {
   id: number;
   dia_pago: number;

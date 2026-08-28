@@ -140,8 +140,13 @@ def main():
         # página abierta desde antes siguió viendo botones del build anterior.
         accion = open(os.path.join(RAIZ, "app/(portal)/contabilidad/pagos/actions.ts"),
                       encoding="utf-8").read()
+        # El cuerpo se recorta en la SIGUIENTE función, no a N caracteres: con un
+        # tope fijo, agregarle diez líneas a la acción hacía que el centinela
+        # dejara de ver el candado y gritara por un cambio inocente. Un centinela
+        # que se rompe solo se termina ignorando.
         i = accion.find("export async function confirmarPagoIntake")
-        cuerpo = accion[i:i + 4000] if i >= 0 else ""
+        j = accion.find("export async function", i + 10) if i >= 0 else -1
+        cuerpo = accion[i:j if j > 0 else len(accion)] if i >= 0 else ""
         check("Clasifícala en Conciliación" in cuerpo,
               "confirmarPagoIntake vuelve a revisar concepto/destino/retenciones contra la base")
         check("s.destino" in cuerpo and "s.concepto" in cuerpo,

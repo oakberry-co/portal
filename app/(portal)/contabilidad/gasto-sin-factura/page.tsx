@@ -1,9 +1,8 @@
 import { getCurrentUser } from "@/lib/auth";
 import { puede } from "@/lib/permisos";
 import { redirect } from "next/navigation";
-import { AREAS } from "@/lib/areas";
 import { getPool } from "@/lib/db";
-import { FormGasto } from "./FormGasto";
+import { FormGasto, type ProveedorConocido } from "./FormGasto";
 import { Plantillas, type PlantillaUI } from "./Plantillas";
 
 export const dynamic = "force-dynamic";
@@ -33,19 +32,29 @@ export default async function GastoSinFacturaPage() {
   // público — quien sube esto no es el proveedor, somos nosotros.
   if (!puede(rol, "clasificar")) redirect("/contabilidad/conciliacion");
 
-  const { rows } = await getPool().query<PlantillaUI>(SQL);
+  const [{ rows }, provs] = await Promise.all([
+    getPool().query<PlantillaUI>(SQL),
+    // A quién ya le hemos pagado, para que escribir el nombre traiga el NIT. Sale
+    // del maestro de proveedores Y de lo que ya entró por esta misma pantalla:
+    // el recibo del agua de una tienda pequeña no siempre está en el maestro.
+    getPool().query<ProveedorConocido>(
+      `SELECT nit, nombre FROM maestro_proveedores WHERE nombre IS NOT NULL
+        UNION
+       SELECT num_doc, razon_social FROM cuentas_cobro WHERE razon_social IS NOT NULL
+        ORDER BY nombre`),
+  ]);
 
   return (
     <div className="container">
       <h1>🧾 Gasto sin factura</h1>
       <p className="sub">
         Para lo que <b>nadie nos factura electrónicamente</b>: servicios públicos, arriendos,
-        impuestos, reembolsos. Se carga con su soporte y entra a <b>Conciliación de pagos</b> como
-        un documento más — se le pone concepto y destino, se le practican retenciones, y de ahí
-        pasa a Pagos. Si el gasto <b>se repite todos los meses</b>, se parametriza una vez y desde
-        entonces aparece solo.
+        impuestos, reembolsos. Entra a <b>Conciliación de pagos</b> como un documento más — se le
+        pone concepto y destino, se le practican retenciones, y de ahí pasa a Pagos. Si el gasto
+        <b>se repite todos los meses</b>, se configura una vez y desde entonces aparece solo,
+        siete días antes de vencerse.
       </p>
-      <FormGasto areas={[...AREAS]} />
+      <FormGasto proveedores={provs.rows} />
       <Plantillas filas={rows} />
     </div>
   );

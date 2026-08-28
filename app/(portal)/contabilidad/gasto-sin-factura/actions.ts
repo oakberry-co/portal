@@ -30,7 +30,7 @@ import { refDe } from "@/lib/documentos-no-dian";
 import { crearPlantilla, generarPendientes, darDeBaja } from "@/lib/plantillas";
 import { pesos } from "@/lib/pesos";
 import { mesDe, mesSiguiente, hoyBogota } from "@/lib/habiles";
-import { TIPOS_GASTO, FORMAS_PAGO, esFormaPago, vaAlBanco } from "@/lib/gastos-periodicos";
+import { TIPOS_GASTO, DIAS_AVISO } from "@/lib/gastos-periodicos";
 
 // Ojo al tocar este archivo: es `"use server"`, y de un módulo de servidor Next
 // solo deja exportar funciones async. Las constantes (los tipos de gasto, las
@@ -61,48 +61,68 @@ export async function crearGastoSinFactura(_prev: Resultado | null, fd: FormData
     const valor = Math.round(Number(String(fd.get("valor") ?? "").replace(/[^\d]/g, "")));
     if (!Number.isFinite(valor) || valor <= 0) throw new Error("Escribe el valor del gasto.");
 
-    const fecha = String(fd.get("fecha_documento") ?? "").trim() || null;
+    // Sin fecha del documento se usa hoy: el plazo tiene que correr desde algún
+    // lado, y pedir una fecha que casi siempre es la de hoy era un campo más.
+    const fecha = hoyBogota();
+
+    // EL SOPORTE ES OPCIONAL (28-ago-2026, decisión de Daniel probándolo).
+    //
+    // Era obligatorio con un argumento correcto —un pago sin respaldo es lo que
+    // esto vino a evitar— pero en la práctica lo que hacía era que el gasto no
+    // se cargara: quien tiene el recibo en la mano es quien paga, no siempre
+    // quien registra. Un gasto registrado sin recibo se puede completar después;
+    // uno que nunca se registró no existe para nadie.
+    //
+    // Lo que NO se hace es callarlo: la fila queda sin soporte a la vista y el
+    // centinela `pagada_sin_soporte` ya vigila lo que se pagó sin respaldo.
     const soporte = fd.get("doc_soporte");
-    if (!(soporte instanceof File) || soporte.size === 0) {
-      throw new Error("Adjunta el documento soporte (el recibo o la factura del servicio).");
-    }
+    const traeSoporte = soporte instanceof File && soporte.size > 0;
 
     // La subida va ANTES de abrir la transacción: puede tardar, y no se bloquean
     // filas mientras tanto. Si Drive falla NO se pierde el registro — el
     // documento queda 'pendiente' y se ve en la pantalla (Regla 18).
-    const { docs, fallidos } = await subirDocumentos(
-      [{ file: soporte, clase: "soporte" }], "cuentas-de-cobro",
+    const { docs, fallidos } = traeSoporte ? await subirDocumentos(
+      [{ file: soporte as File, clase: "soporte" }], "cuentas-de-cobro",
       // La carpeta en Drive queda `Intake/cuentas-de-cobro/<NIT — Razón>/<envío>/`,
       // igual que la de un proveedor: quien busque el recibo del agua de agosto
       // no tiene que aprender una segunda convención. `envio` va en hora de
       // Bogotá — la VM vive en UTC.
-      { nit, razon, envio: etiquetaEnvio() });
+      { nit, razon, envio: etiquetaEnvio() }) : { docs: [], fallidos: 0 };
+
+    // LA REFERENCIA Y EL LINK SUBEN AL FORMULARIO PRINCIPAL (28-ago-2026).
+    //
+    // Estaban dentro del bloque de recurrencia, y no es ahí donde viven: un
+    // recibo de una sola vez también se paga tecleando una referencia. Ahora se
+    // piden siempre y el bloque de "se repite" quedó con una sola casilla.
+    const referencia = t("referencia_pago");
+    const sitio = t("link_pago");
+
+    // CÓMO SE PAGA, DEDUCIDO — ya no se pregunta.
+    //
+    // Si el gasto trae REFERENCIA, es porque alguien la va a teclear en la
+    // página del proveedor: se paga a mano y NO entra al archivo del banco. Sin
+    // referencia, se transfiere como cualquier cuenta de cobro.
+    //
+    // La deducción está elegida por CUÁL ERROR SE VE. Si acierta mal hacia
+    // "a mano", el pago se queda pendiente en el tablero y alguien lo nota; si
+    // acertara mal hacia "transferencia", el banco lo giraría además de lo que
+    // ya se pagó por la página — el proveedor cobra dos veces y no hay ningún
+    // error de por medio. Se puede corregir después en el tablero de Pagos.
+    const formaPago = referencia ? "pse" : "transferencia";
 
     // ¿ESTE GASTO SE REPITE? Acá nace la plantilla, y nace de un gasto REAL —con
-    // su proveedor, su soporte y su valor— en vez de un formulario vacío: así
-    // queda validada de entrada y nadie teclea lo mismo dos veces.
+    // su proveedor y su valor— en vez de un formulario vacío: así queda validada
+    // de entrada y nadie teclea lo mismo dos veces.
     const repetir = String(fd.get("repetir") ?? "") === "si";
     const diaPago = Number(String(fd.get("dia_pago") ?? "").trim());
-    const formaPago = String(fd.get("forma_pago") ?? "pse").trim();
-    const referencia = t("referencia_pago");
-    const sitio = t("sitio_pago");
-    const hasta = String(fd.get("vigente_hasta") ?? "").trim() || null;
-    const anticipacion = Number(String(fd.get("dias_anticipacion") ?? "10").trim());
+    const hasta: string | null = null;
+    // AVISA 7 DÍAS ANTES, PARA TODOS. Era una casilla y nadie tiene por qué
+    // decidirlo gasto por gasto: siete días es lo que alcanza para conseguir el
+    // recibo y pagar sin llegar al corte.
+    const anticipacion = DIAS_AVISO;
     if (repetir) {
       if (!Number.isInteger(diaPago) || diaPago < 1 || diaPago > 31) {
-        throw new Error("Escribe el día del mes en que hay que pagarlo (1 a 31).");
-      }
-      if (!esFormaPago(formaPago)) throw new Error("Elige cómo se paga este gasto.");
-      // SIN REFERENCIA NO SE PUEDE PAGAR POR PSE: quien entre a la página del
-      // proveedor no va a tener qué teclear, y ese es justo el trabajo que esto
-      // viene a ahorrar. Si se paga por transferencia la cuenta sale del maestro
-      // y no hace falta.
-      if (formaPago !== "transferencia" && !referencia) {
-        throw new Error("Falta la referencia de pago: es lo que se teclea en la página del "
-          + "proveedor. Está en el recibo que acabas de adjuntar — cópiala de ahí, no de memoria.");
-      }
-      if (!Number.isInteger(anticipacion) || anticipacion < 0 || anticipacion > 60) {
-        throw new Error("Los días de anticipación tienen que estar entre 0 y 60.");
+        throw new Error("Escribe el día máximo en que hay que pagarlo (1 a 31).");
       }
     }
 
@@ -111,14 +131,20 @@ export async function crearGastoSinFactura(_prev: Resultado | null, fd: FormData
     await withTx(async (c) => {
       const r = await c.query<{ id: number }>(
         `INSERT INTO cuentas_cobro
-           (razon_social, tipo_doc, num_doc, correo, area, descripcion, valor,
+           (razon_social, tipo_doc, num_doc, correo, valor,
             documentos, estado, origen, tipo, tipo_detalle, numero, fecha_documento,
+            forma_pago, referencia_pago, link_pago,
             creado_por, aprobado_en, revisado_por, revisado_en)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'aprobada','interno',$9,$10,$11,$12,$13, now(), $13, now())
+         VALUES ($1,$2,$3,$4,$5,$6,'aprobada','interno',$7,$8,$9,$10,$11,$12,$13,$14, now(), $14, now())
          RETURNING id`,
         [razon, String(fd.get("tipo_doc") ?? "NIT"), nit, limpiarCorreo(String(fd.get("correo") ?? "")),
-         t("area"), t("descripcion"), valor, JSON.stringify(docs),
-         tipo, detalle, t("numero"), fecha, user.email]);
+         valor, JSON.stringify(docs),
+         tipo, detalle, t("numero"), fecha,
+         // Van EN EL DOCUMENTO y no solo en la plantilla: un gasto de una sola
+         // vez también se paga tecleando una referencia, y quien paga la busca
+         // en la fila que tiene delante.
+         formaPago, referencia || null, sitio || null,
+         user.email]);
       id = r.rows[0].id;
       if (repetir) {
         // Arranca el mes SIGUIENTE: el gasto que acaba de entrar ya se va a
@@ -128,11 +154,11 @@ export async function crearGastoSinFactura(_prev: Resultado | null, fd: FormData
         plantilla = await crearPlantilla(c, {
           razon_social: razon, num_doc: nit, tipo_doc: String(fd.get("tipo_doc") ?? "NIT"),
           correo: limpiarCorreo(String(fd.get("correo") ?? "")) || null,
-          tipo, tipo_detalle: detalle || null, descripcion: t("descripcion") || null,
+          tipo, tipo_detalle: detalle || null, descripcion: null,
           // Concepto y destino todavía no existen acá: los pone quien clasifica
           // en Conciliación, y desde ahí SUBEN solos a la plantilla (ver
           // `clasificar` en lib/documentos-no-dian.ts). Se clasifica una vez.
-          concepto: null, destino: null, area: t("area") || null,
+          concepto: null, destino: null, area: null,
           forma_pago: formaPago, referencia_pago: referencia || null, sitio_pago: sitio || null,
           dia_pago: diaPago, dias_anticipacion: anticipacion,
           desde_periodo: mesSiguiente(mesDe(base)), vigente_hasta: hasta,
