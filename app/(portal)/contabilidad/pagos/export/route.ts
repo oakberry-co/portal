@@ -228,7 +228,12 @@ export async function GET(req: NextRequest) {
   }
   return new NextResponse(buf as ArrayBuffer, { headers: {
     "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    "Content-Disposition": `attachment; filename="pagos_${slugDe(cuenta)}_${hoyISO()}`
+    // EL ARCHIVO NACIDO EN PRUEBAS SE DELATA EN SU PROPIO NOMBRE. Es el único
+    // camino por el que el ambiente de pruebas podría mover plata de verdad: no
+    // por software —su base es otra— sino porque un humano baja este Excel y lo
+    // sube al banco creyendo que es el bueno. Adentro se ve idéntico. El prefijo
+    // va primero para que se lea antes de abrirlo, en la lista de descargas.
+    "Content-Disposition": `attachment; filename="${process.env.AMBIENTE === "pruebas" ? "PRUEBAS-NO-SUBIR-AL-BANCO_" : ""}pagos_${slugDe(cuenta)}_${hoyISO()}`
       + (sinCuenta.length ? `_FALTAN-${sinCuenta.length}` : "")
       + (revisar ? `_REVISAR-${revisar}` : "")
       + (desviadas ? `_DESVIADAS-${desviadas}` : "") + `.xlsx"`,

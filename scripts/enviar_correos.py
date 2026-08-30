@@ -444,6 +444,18 @@ def armar(fila: dict) -> tuple[EmailMessage, str, str]:
     return msg, asunto, mid
 
 
+def base_de_produccion(url: str) -> bool:
+    """¿Esta es la base de PRODUCCIÓN (la del .env.local del repo)?"""
+    import re as _re
+    for f in (".env.local", ".env"):
+        p = os.path.join(os.path.dirname(AQUI), f)
+        if os.path.exists(p):
+            m = _re.search(r'^DATABASE_URL\s*=\s*"?([^"\n]+)"?', open(p, encoding="utf-8").read(), _re.M)
+            if m:
+                return (url or "").strip() == m.group(1).strip()
+    return False
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -457,6 +469,18 @@ def main() -> int:
     if not dsn:
         print("ERROR: falta DATABASE_URL", file=sys.stderr)
         return 2
+    # CANDADO DEL AMBIENTE. Correr esto contra la base de PRUEBAS —que es una
+    # copia de producción, con los correos REALES de los proveedores— y sin
+    # destino forzado, le escribiría a gente de verdad diciéndole que le
+    # aprobamos una cuenta que nadie aprobó. Se niega antes de conectar.
+    if args.commit and not base_de_produccion(dsn) and not (os.environ.get("CORREO_DESTINO_FORZADO") or "").strip():
+        print("⛔ Esta NO es la base de producción y no hay CORREO_DESTINO_FORZADO.\n"
+              "   La copia de pruebas trae los correos REALES de los proveedores: enviar desde\n"
+              "   acá les escribiría a ellos. Corré así:\n"
+              '     CORREO_DESTINO_FORZADO="tu@manelfoods.com" python3 scripts/enviar_correos.py --commit',
+              file=sys.stderr)
+        return 2
+
     conn = psycopg2.connect(dsn)
     cur = conn.cursor()
 

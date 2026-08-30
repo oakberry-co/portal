@@ -102,6 +102,10 @@ neon branches reset pruebas --parent --project-id odd-king-16815003
   variable de entorno y no un flag a propósito: un flag hay que acordarse.
 - En pruebas, `INTAKE_UPLOAD_URL` va VACÍA: así un documento subido no cae en el
   Drive real de contabilidad (queda `pendiente` y el envío se guarda igual).
+- **El Excel del banco bajado desde pruebas** sale llamándose
+  `PRUEBAS-NO-SUBIR-AL-BANCO_…`: es el único camino por el que el ambiente podría
+  mover plata de verdad, y no por software (su base es otra) sino porque alguien
+  lo sube al banco creyendo que es el bueno. Adentro se ve idéntico.
 - **Los 7 crons de la VM apuntan solo a producción.** En pruebas se corren a mano
   con `DATABASE_URL=` por delante.
 
@@ -124,7 +128,8 @@ asumiéndolo.
 
 ```bash
 for t in nit bancos candado_aprobacion permisos documentos retenciones_excel espina_dian \
-         desvio_titular nombre_pago modal_portal enlaces_basepath; do
+         desvio_titular nombre_pago modal_portal enlaces_basepath \
+         aislamiento_pruebas; do
   node scripts/test_$t.js; done
 python3 scripts/test_enriquecimiento_xml.py   # base REAL, con ROLLBACK
 python3 scripts/test_intake_a_pagos.py     # contra la base REAL, con ROLLBACK
