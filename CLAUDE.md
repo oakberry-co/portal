@@ -58,33 +58,52 @@ repo datawarehouse** — ojo, ese comando NO trae este código.
 - **Bitácora** `eventos`: append-only y encadenada por hash. Todo cambio de
   estado se registra **en la misma transacción** (`registrarEvento`).
 
-## El ambiente de pruebas (`/pruebas`)
+## El ambiente de pruebas
 
-El MISMO repo sirve dos despliegues: producción (`www.manelfoods.co`) y pruebas
-(`www.manelfoods.co/pruebas` — otro proyecto de Vercel, otra base). Lo único que
-los separa es la variable **`BASE_PATH`**; no hay un `if` dentro de la app, porque
-compartir el pool de conexiones es exactamente cómo una factura de mentiras
+Un SEGUNDO despliegue del mismo repo, con su propia base:
+
+| | |
+|---|---|
+| **Producción** | `www.manelfoods.co` · Neon rama `main` · proyecto Vercel `portal` |
+| **Pruebas** | `portal-pruebas-plum.vercel.app` · Neon rama `pruebas` · proyecto Vercel `portal-pruebas` |
+| **La puerta** | `www.manelfoods.co/pruebas` **redirige** al ambiente |
+
+Lo único que los distingue es **`AMBIENTE=pruebas`**: enciende la franja roja y
+le cambia el nombre a la cookie de sesión. La separación es de infraestructura,
+no un `if`: compartir el pool de conexiones es cómo una factura de mentiras
 termina en los libros de verdad.
+
+**Por qué la puerta REDIRIGE y no sirve el ambiente por dentro** (rewrite +
+`basePath`): topa con el login. Auth.js arma sus URLs con la ruta que recibe —a
+la que Next ya le quitó el prefijo— así que el callback de Google apuntaba al
+`/api/auth/callback/google` de PRODUCCIÓN. Probadas las tres variantes de
+`AUTH_URL` contra un despliegue real: o el login del ambiente aterriza en
+producción, o Auth.js responde `"Bad request"` a todo. No se intenta de nuevo.
 
 ```bash
 # Local, contra una base de pruebas (NUNCA la del .env.local)
 createdb portal_e2e && psql -q portal_e2e -f db/schema.sql
 DATABASE_URL="postgresql://…/portal_e2e" python3 scripts/sembrar_demo.py --aplicar
-BASE_PATH=/pruebas DATABASE_URL="postgresql://…/portal_e2e" AUTH_MODE=dev DEV_USER_ROL=admin \
-  npx next start -p 3402      # abre en /pruebas/… ; la raíz da 404 y está bien
+AMBIENTE=pruebas DATABASE_URL="postgresql://…/portal_e2e" AUTH_MODE=dev DEV_USER_ROL=admin \
+  npx next start -p 3402
+
+# Rebobinar el ambiente entero al estado de producción (segundos)
+neon branches reset pruebas --parent --project-id odd-king-16815003
 ```
 
 - `scripts/sembrar_demo.py` deja facturas falsas paradas en **cada** estado del
   flujo (por clasificar · clasificada · lista para pago con y sin cuenta · en
   validación · pagada · nota crédito · cuenta de cobro · cotización con adelanto).
-  `--rehacer` rebobina. **Se niega a correr contra la base del `.env.local`.**
+  `--rehacer` rebobina lo sembrado. **Se niega a correr contra la base del
+  `.env.local`.**
 - **Retroceder no es deshacer:** la bitácora es append-only y así sigue. Se
-  rebobina volviendo a sembrar (o reseteando la rama de Neon).
+  rebobina sembrando de nuevo o reseteando la rama de Neon.
 - `CORREO_DESTINO_FORZADO=<correo>` manda TODO ahí y nunca al proveedor. Es
   variable de entorno y no un flag a propósito: un flag hay que acordarse.
-- Todo enlace interno pasa por `ruta()` (`lib/ruta.ts`). Next prefija `<Link>` y
-  `redirect()`, pero **no un `<a href>` pelado** — y sin prefijo, en pruebas un
-  clic te devuelve a producción sin avisar. Lo cuida `test_enlaces_basepath.js`.
+- En pruebas, `INTAKE_UPLOAD_URL` va VACÍA: así un documento subido no cae en el
+  Drive real de contabilidad (queda `pendiente` y el envío se guarda igual).
+- **Los 7 crons de la VM apuntan solo a producción.** En pruebas se corren a mano
+  con `DATABASE_URL=` por delante.
 
 ## Cómo se trabaja
 
