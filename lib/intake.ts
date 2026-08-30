@@ -54,6 +54,10 @@ export async function subirAintake(file: File, tipo: string, nombre?: string,
 
   const fd = new FormData();
   fd.set("tipo", tipo);
+  // Lo que suba el ambiente de pruebas va a CONTABILIDAD/PRUEBAS/, no al archivo
+  // real: un soporte de mentiras revuelto con los de verdad no se distingue
+  // después. El relay obedece este campo; no lo adivina.
+  if (process.env.AMBIENTE === "pruebas") fd.set("ambiente", "pruebas");
   // El relay usa esto para armar `Intake/<tipo>/<NIT — Razón social>/<envío>/`.
   if (quien?.nit) fd.set("nit", quien.nit);
   if (quien?.razon) fd.set("razon", quien.razon);

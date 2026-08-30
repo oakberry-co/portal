@@ -1,6 +1,16 @@
 #!/usr/bin/env python3
 """SEMBRADOR DE ESCENARIOS DEL AMBIENTE DE PRUEBAS.
 
+`--vaciar` deja la base PELADA: se lleva las facturas, la bitácora, los pagos y el
+intake, pero **conserva los maestros** (proveedores, destinos, conceptos, PUC,
+retenciones, cuentas bancarias), los usuarios y la configuración. Así el ambiente
+no tiene miles de facturas ajenas, pero clasificar sigue ofreciendo las tiendas y
+los conceptos de verdad.
+
+Solo se siembra el carril DIAN (facturas). Las cuentas de cobro, las cotizaciones
+y los gastos sin factura los carga el equipo A MANO desde los portales del
+ambiente: es parte de lo que se quiere probar.
+
 Deja facturas y documentos FALSOS ya parados en cada punto del flujo, para poder
 empezar la prueba donde uno quiera en vez de recorrer los cinco pasos cada vez:
 
@@ -11,8 +21,6 @@ empezar la prueba donde uno quiera en vez de recorrer los cinco pasos cada vez:
     PRB-005  en Validación con cuenta propia (para bajar el archivo del banco)
     PRB-006  pagada (aparece en Confirmados/Historial)
     PRB-007  nota crédito que corrige a PRB-005 (le baja el saldo)
-    CC       cuenta de cobro aprobada, esperando pago
-    COT      cotización con 50% de adelanto
 
 "Retroceder" NO es deshacer: la bitácora del portal es append-only y así debe
 seguir. Se rebobina volviendo a sembrar:
@@ -36,6 +44,25 @@ import psycopg2
 
 RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MARCA = "PRB-"          # prefijo de todo lo sembrado: así se limpia sin dudas
+
+# Lo TRANSACCIONAL se va; los maestros se quedan. Un ambiente sin destinos ni
+# conceptos no sirve para probar: clasificar es la mitad del flujo.
+TRANSACCIONAL = [
+    "pago_facturas", "pagos", "factura_soportes", "factura_propuesta",
+    "factura_estado", "cotizacion_abonos", "cotizaciones", "certificacion_bancaria",
+    "cuentas_cobro", "correo_saliente", "sync_solicitudes", "dashboard_semana",
+    "lectura_valor", "eventos", "facturas",
+]
+# La bitácora es append-only por trigger: para vaciarla hay que quitar los
+# candados y volver a ponerlos IDÉNTICOS (los mismos de db/schema.sql).
+CANDADOS_EVENTOS = """
+DROP TRIGGER IF EXISTS trg_eventos_append_only ON eventos;
+CREATE TRIGGER trg_eventos_append_only BEFORE UPDATE OR DELETE ON eventos
+  FOR EACH ROW EXECUTE FUNCTION eventos_append_only();
+DROP TRIGGER IF EXISTS trg_eventos_no_truncate ON eventos;
+CREATE TRIGGER trg_eventos_no_truncate BEFORE TRUNCATE ON eventos
+  FOR EACH STATEMENT EXECUTE FUNCTION eventos_no_truncate();
+"""
 NIT_CON_CUENTA = "900555111"
 NIT_SIN_CUENTA = "900555222"
 
@@ -87,6 +114,25 @@ def limpiar(cur) -> None:
     cur.execute("DELETE FROM cuentas_cobro WHERE num_doc IN (%s, %s)", (NIT_CON_CUENTA, NIT_SIN_CUENTA))
     cur.execute("DELETE FROM cuentas_bancarias_proveedor WHERE creado_por = 'demo'")
     print(f"   🗑  borradas {len(cufes)} factura(s) sembradas + su intake")
+
+
+def vaciar(cur) -> None:
+    """Deja la base pelada de movimiento, con los maestros intactos."""
+    cur.execute("DROP TRIGGER IF EXISTS trg_eventos_append_only ON eventos")
+    cur.execute("DROP TRIGGER IF EXISTS trg_eventos_no_truncate ON eventos")
+    borradas = []
+    for t in TRANSACCIONAL:
+        cur.execute(f"SELECT count(*) FROM {t}")
+        n = cur.fetchone()[0]
+        if n:
+            cur.execute(f"DELETE FROM {t}")
+            borradas.append(f"{t} {n:,}".replace(",", "."))
+    cur.execute(CANDADOS_EVENTOS)
+    print("   🧹 vaciado: " + (", ".join(borradas) if borradas else "ya estaba limpio"))
+    for t in ("maestro_proveedores", "maestro_destinos", "maestro_conceptos",
+              "cuentas_bancarias_proveedor", "usuarios"):
+        cur.execute(f"SELECT count(*) FROM {t}")
+        print(f"      se conservan {t}: {cur.fetchone()[0]}")
 
 
 def factura(cur, sufijo, nit, nombre, total, estado, **extra):
@@ -160,40 +206,36 @@ def sembrar(cur) -> None:
             doc_tipo="CreditNote", ref_cufe="PRB-005", ref_numero="PRB-005",
             ref_motivo="devolución de producto (demo)")
 
-    # Intake: una cuenta de cobro aprobada y una cotización con adelanto.
-    cur.execute("""INSERT INTO cuentas_cobro
-        (razon_social, tipo_doc, num_doc, correo, area, concepto, descripcion, valor,
-         banco, tipo_cuenta, num_cuenta, estado, valor_a_pagar, retencion_ok, aprobado_en, fecha_pago_prog)
-        VALUES ('DEMO SERVICIOS PERSONALES','CC',%s,'demo@example.com','TRANSVERSAL','Servicios',
-                'Cuenta de cobro de prueba', 800000,'BANCOLOMBIA','ahorros','01230009999',
-                'aprobada', 720000, TRUE, now(), CURRENT_DATE + 5)""", (SIN,))
-    cur.execute("""INSERT INTO cotizaciones
-        (codigo, razon_social, nit, correo, area, concepto, descripcion, valor, estado,
-         requiere_adelanto, adelanto_pct, plazo_dias, aprobado_en, fecha_pago_prog, destino)
-        VALUES ('COT-DEMO','DEMO OBRA SAS',%s,'demo@example.com','TRANSVERSAL','Servicios',
-                'Cotización de prueba', 4000000, 'aprobada', TRUE, 50, 30, now(), CURRENT_DATE + 2,
-                'OAKBERRY ANDINO')""", (CON,))
-    print("   🌱 sembradas 7 facturas + 1 cuenta de cobro + 1 cotización")
+    # El intake NO se siembra a propósito: las cuentas de cobro, las cotizaciones
+    # y los gastos sin factura los carga el equipo A MANO desde los portales del
+    # ambiente. Cargar esos tres carriles ES parte de lo que se quiere probar.
+    print("   🌱 sembradas 7 facturas del carril DIAN (el intake se carga a mano)")
 
 
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--aplicar", action="store_true", help="escribir (por defecto es ensayo)")
-    ap.add_argument("--limpiar", action="store_true", help="borrar lo sembrado")
-    ap.add_argument("--rehacer", action="store_true", help="limpiar y volver a sembrar")
+    ap.add_argument("--limpiar", action="store_true", help="borrar solo lo sembrado (PRB-*)")
+    ap.add_argument("--vaciar", action="store_true",
+                    help="dejar la base PELADA (se va todo el movimiento, quedan los maestros)")
+    ap.add_argument("--rehacer", action="store_true", help="vaciar y volver a sembrar")
     args = ap.parse_args()
 
     con = conectar()
     cur = con.cursor()
     print(f"Base: {host_de(os.environ['DATABASE_URL'])}")
     if not args.aplicar:
-        que = "limpiaría" if args.limpiar else ("reharía" if args.rehacer else "sembraría")
-        print(f"ENSAYO — {que} el escenario de demo (7 facturas + intake). Corré con --aplicar.")
+        que = ("vaciaría la base (quedan los maestros)" if args.vaciar else
+               "limpiaría lo sembrado" if args.limpiar else
+               "vaciaría y volvería a sembrar" if args.rehacer else "sembraría")
+        print(f"ENSAYO — {que}. Corré con --aplicar.")
         return 0
     try:
-        if args.limpiar or args.rehacer:
+        if args.vaciar or args.rehacer:
+            vaciar(cur)
+        elif args.limpiar:
             limpiar(cur)
-        if not args.limpiar:
+        if not (args.limpiar or args.vaciar):
             sembrar(cur)
         con.commit()
     except Exception as e:

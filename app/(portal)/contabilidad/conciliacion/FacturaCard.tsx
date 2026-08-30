@@ -5,8 +5,9 @@ import { type Estado } from "@/lib/estados";
 import { Combobox } from "./Combobox";
 import { semanaISO } from "@/lib/orden-facturas";
 import { CuentaDestinoModal } from "./CuentaDestinoModal";
-import { guardarClasificacion, marcarTipoPago } from "./actions";
+import { guardarClasificacion, marcarTipoPago , devolverUnPaso } from "./actions";
 import { RetencionesModal } from "./RetencionesModal";
+import { EN_PRUEBAS_CLIENTE } from "@/lib/ambiente";
 
 export type FacturaRow = {
   cufe: string;
@@ -341,6 +342,27 @@ export const FacturaCard = memo(function FacturaCard({
       >
         {f.cta_dest_numero ? "↪ Cuenta" : "Cuenta"}
       </button>
+
+      {/* SOLO EN PRUEBAS: devolver la factura un paso atrás, las veces que haga
+          falta. El servidor lo rechaza si el despliegue no es el de pruebas —la
+          interfaz no es la defensa— y la bitácora conserva el evento: devolverse
+          se registra, no se borra. */}
+      {EN_PRUEBAS_CLIENTE && (
+        <button
+          type="button"
+          className="c-btn ghost c-devolver"
+          disabled={pending}
+          onClick={() => start(async () => {
+            const fd = new FormData();
+            fd.set("cufe", f.cufe);
+            const r = await devolverUnPaso(fd);
+            if (!r.ok) alert(r.error ?? "No se pudo devolver.");
+          })}
+          title="Ambiente de pruebas: devolver esta factura un paso atrás (deshace lo que ese paso escribió)"
+        >
+          ↩ Atrás
+        </button>
+      )}
 
       <div className="c-docs">
         <a

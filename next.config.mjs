@@ -25,7 +25,12 @@ const nextConfig = {
   // El navegador también necesita el prefijo (los `<a href>` pelados lo llevan a
   // mano, ver lib/ruta.ts). Sale de la MISMA variable a propósito: dos variables
   // que hay que mantener iguales terminan distintas justo el día que importa.
-  env: { NEXT_PUBLIC_BASE_PATH: BASE_PATH },
+  env: {
+    NEXT_PUBLIC_BASE_PATH: BASE_PATH,
+    // El navegador no ve `AMBIENTE`; esta copia sale de la MISMA variable, no de
+    // otra que haya que acordarse de poner igual.
+    NEXT_PUBLIC_AMBIENTE: process.env.AMBIENTE || "",
+  },
 
   async redirects() {
     if (!PRUEBAS_ORIGIN || process.env.AMBIENTE === "pruebas") return [];

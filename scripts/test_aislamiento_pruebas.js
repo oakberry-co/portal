@@ -63,5 +63,20 @@ check(/Esa es la base de PRODUCCIÓN/.test(sem), "se niega contra la base del .e
 check(!/os\.environ\.get\("DATABASE_URL"\) or url_del_env_local\(\)/.test(sem),
       "y NO cae al .env.local si falta la variable");
 
+console.log("\n5) El botón de devolverse NO existe en producción");
+const acc = fs.readFileSync(path.join(RAIZ, "app/(portal)/contabilidad/conciliacion/actions.ts"), "utf8");
+const i = acc.indexOf("export async function devolverUnPaso");
+check(i > 0, "la acción existe");
+const cuerpo = acc.slice(i, i + 600);
+check(/if \(!EN_PRUEBAS\)/.test(cuerpo),
+      "y lo PRIMERO que hace es rechazar si el despliegue no es el de pruebas",
+      "esconder el botón no es una defensa: una pantalla se manipula desde la consola");
+check(!/DELETE FROM eventos/.test(acc), "no borra eventos: devolverse se registra, no se borra");
+
+console.log("\n6) La carpeta de Drive del ambiente va aparte");
+const intake = fs.readFileSync(path.join(RAIZ, "lib/intake.ts"), "utf8");
+check(/AMBIENTE === "pruebas"\) fd\.set\("ambiente", "pruebas"\)/.test(intake),
+      "el portal le dice al relay que es pruebas", "de ahí sale CONTABILIDAD/PRUEBAS/");
+
 console.log(fallos.length ? `\n❌ ${fallos.length} fallo(s): ${fallos.join(", ")}\n` : "\n🟢 todo OK\n");
 process.exit(fallos.length ? 1 : 0);

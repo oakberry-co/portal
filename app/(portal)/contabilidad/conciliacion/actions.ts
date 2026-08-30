@@ -10,6 +10,7 @@ import { intentar, type Resultado } from "@/lib/resultado";
 import { limpiarTextoHumano } from "@/lib/texto";
 import { esBancoConocido } from "@/lib/bancos";
 import { revisarTitularDestino } from "@/lib/cuenta-destino";
+import { EN_PRUEBAS } from "@/lib/ambiente";
 import { asegurarConcepto, asegurarDestino } from "@/lib/maestros";
 import type { PoolClient } from "pg";
 
@@ -441,6 +442,98 @@ export async function cambiarCuentaDestino(fd: FormData): Promise<Resultado> {
                       banco, tipo_cuenta: tipoCuenta, num_cuenta: numero,
                       titular, tipo_doc: tipoDoc, doc: rev.doc,
                       motivo, solo_esta_factura: true },
+        actor: user.email, actorRol: user.rol, origen: "web",
+      });
+    });
+    revalidatePath("/contabilidad/conciliacion");
+    revalidatePath("/contabilidad/pagos");
+  });
+}
+
+
+/** DEVOLVER LA FACTURA UN PASO ATRÁS — SOLO EN EL AMBIENTE DE PRUEBAS.
+ *
+ *  Existe para poder recorrer el flujo veinte veces sin volver a sembrar. Tres
+ *  cosas que NO hace, y son el diseño entero:
+ *
+ *   1. NO borra el evento. La bitácora es append-only encadenada por hash y así
+ *      debe seguir: devolverse deja su PROPIO evento, que es la verdad de lo que
+ *      pasó ("alguien devolvió esto en pruebas"). Borrar para "dejarlo limpio"
+ *      es exactamente lo que vuelve inútil una bitácora.
+ *   2. NO existe en producción. No es que esté escondida en la interfaz: el
+ *      servidor la rechaza si `AMBIENTE` no dice `pruebas`. Una pantalla se
+ *      manipula desde la consola en dos líneas; esto no.
+ *   3. NO adivina. Borra lo que el paso que se deshace había escrito —la cuenta
+ *      de pago, el pago, la marca de retención, la clasificación— porque si lo
+ *      dejara a medias el siguiente intento arrancaría con datos de la corrida
+ *      anterior y la prueba no diría nada.
+ */
+export async function devolverUnPaso(fd: FormData): Promise<Resultado> {
+  return intentar(async () => {
+    if (!EN_PRUEBAS) {
+      throw new Error("Devolverse solo existe en el ambiente de pruebas.");
+    }
+    const user = await exigirCap("clasificar");
+    const cufe = String(fd.get("cufe") ?? "").trim();
+    if (!cufe) throw new Error("Falta la factura.");
+
+    await withTx(async (c) => {
+      const r = await c.query<{ estado: string; numero: string }>(
+        `SELECT e.estado, f.numero FROM factura_estado e JOIN facturas f USING (cufe)
+          WHERE e.cufe = $1 FOR UPDATE`, [cufe]);
+      if (!r.rowCount) throw new Error("Factura no encontrada.");
+      const actual = r.rows[0].estado;
+
+      // Cada paso deshace lo SUYO. El orden importa: primero se borra el pago
+      // (que apunta a la factura), después se baja el estado.
+      let nuevo: string;
+      if (actual === "causada") {
+        nuevo = "pagada";
+        await c.query(`UPDATE factura_estado
+                          SET causada_en = NULL, causacion_autorizada_por = NULL, siigo_id = NULL
+                        WHERE cufe = $1`, [cufe]);
+      } else if (actual === "pagada") {
+        nuevo = "aprobada_pago";
+        await c.query("DELETE FROM pago_facturas WHERE cufe = $1", [cufe]);
+        await c.query(`DELETE FROM pagos p WHERE NOT EXISTS
+                         (SELECT 1 FROM pago_facturas pf WHERE pf.pago_id = p.id)
+                         AND p.origen = 'factura'`);
+        await c.query(`UPDATE factura_estado
+                          SET pago_estado = 'pendiente', pago_monto = 0,
+                              pago_tipo = NULL, fecha_pago = NULL
+                        WHERE cufe = $1`, [cufe]);
+      } else if (actual === "aprobada_pago") {
+        nuevo = "retenciones_ok";
+        await c.query(`UPDATE factura_estado
+                          SET cuenta_pago = NULL, aprobado_pago_por = NULL, aprobado_pago_en = NULL
+                        WHERE cufe = $1`, [cufe]);
+      } else if (actual === "retenciones_ok") {
+        nuevo = "clasificada";
+        // Se baja la MARCA y se borran los valores confirmados: si quedaran, el
+        // siguiente intento arrancaría con los números de la corrida anterior y
+        // la prueba no diría nada.
+        await c.query(`UPDATE factura_estado
+                          SET retencion_ok = FALSE, retefuente = NULL, reteiva = NULL,
+                              reteica = NULL, reten_total = NULL, valor_a_pagar = NULL,
+                              otros_valor = 0, otros_concepto = NULL, observaciones = NULL
+                        WHERE cufe = $1`, [cufe]);
+      } else if (actual === "clasificada") {
+        nuevo = "capturada";
+        await c.query(`UPDATE factura_estado
+                          SET concepto = NULL, concepto_fuente = NULL,
+                              destino = NULL, destino_fuente = NULL, plazo_dias = NULL,
+                              fecha_vencimiento = NULL, fecha_pago_prog = NULL
+                        WHERE cufe = $1`, [cufe]);
+      } else {
+        throw new Error("Ya está en el primer paso: acaba de llegar y no se ha clasificado.");
+      }
+
+      await c.query("UPDATE factura_estado SET estado = $2, actualizado_en = now() WHERE cufe = $1",
+                    [cufe, nuevo]);
+      await registrarEvento(c, {
+        cufe, tipo: "devuelve_paso", campo: "estado",
+        valorAnterior: { estado: actual },
+        valorNuevo: { estado: nuevo, factura: r.rows[0].numero, ambiente: "pruebas" },
         actor: user.email, actorRol: user.rol, origen: "web",
       });
     });

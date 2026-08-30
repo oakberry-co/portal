@@ -1614,3 +1614,9 @@ tr.desfasada td { background: #fff8e6; }
   color: #fff; text-align: center; font-weight: 800; font-size: 12px;
   letter-spacing: .04em; padding: 7px 12px; font-family: var(--sans);
 }
+
+/* Botón de devolverse — solo existe en el ambiente de pruebas. Se ve distinto de
+   los botones de trabajo a propósito: no es parte del flujo, es una herramienta
+   del ambiente. */
+.c-btn.c-devolver { border-color: var(--coral); color: var(--coral); font-weight: 700; }
+.c-btn.c-devolver:hover:not(:disabled) { background: #fff1ed; }
