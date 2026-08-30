@@ -50,22 +50,25 @@ check(/NEXT_PUBLIC_BASE_PATH/.test(rutaTs), "lib/ruta.ts usa esa misma variable"
 
 console.log("\n3) El ambiente de pruebas se anuncia solo");
 const franja = fs.readFileSync(path.join(RAIZ, "app/FranjaPruebas.tsx"), "utf8");
-check(/process\.env\.BASE_PATH/.test(franja), "la franja se enciende con BASE_PATH (no con un interruptor aparte)");
+check(/AMBIENTE !== "pruebas"/.test(franja), "la franja se enciende con AMBIENTE=pruebas");
 const layout = fs.readFileSync(path.join(RAIZ, "app/layout.tsx"), "utf8");
 check(/<FranjaPruebas \/>/.test(layout), "y está en el layout raíz (también sobre las landings públicas)");
 
 console.log("\n4) La sesión de pruebas no pisa la de producción");
 const auth = fs.readFileSync(path.join(RAIZ, "auth.config.ts"), "utf8");
 check(/session-token\.pruebas/.test(auth), "la cookie de pruebas tiene otro nombre");
-check(/path: EN_PRUEBAS \? "\/pruebas"/.test(auth), "y vive bajo /pruebas");
+check(/AMBIENTE === "pruebas"/.test(auth), "y se decide con la MISMA variable que la franja");
 
 console.log("\n5) El candado del ambiente");
 const mw = fs.readFileSync(path.join(RAIZ, "middleware.ts"), "utf8");
-// Con basePath, el matcher queda prefijado y `/pruebas` (sin barra) no casa con
-// el patrón general: la portada del ambiente quedaría abierta a internet.
-check(/matcher: \[\s*"\/"/.test(mw), 'el matcher incluye el "/" suelto (la portada del ambiente)');
-check(/signIn: \(process\.env\.BASE_PATH/.test(auth),
-      "el login al que manda es el del ambiente, no el de producción");
+check(/matcher: \[\s*"\/"/.test(mw), 'el matcher cubre la portada ("/" suelto)');
+
+console.log("\n6) Producción NO sirve el ambiente por dentro: lo REDIRIGE");
+const cfg2 = fs.readFileSync(path.join(RAIZ, "next.config.mjs"), "utf8");
+check(!/async rewrites\(\)/.test(cfg2),
+      "no queda un rewrite de /pruebas", "servirlo por dentro rompe el login de Google");
+check(/async redirects\(\)/.test(cfg2) && /PRUEBAS_ORIGIN/.test(cfg2),
+      "/pruebas redirige al host del ambiente");
 
 console.log(fallos.length ? `\n❌ ${fallos.length} fallo(s): ${fallos.join(", ")}\n` : "\n🟢 todo OK\n");
 process.exit(fallos.length ? 1 : 0);

@@ -1,15 +1,20 @@
-// AMBIENTE DE PRUEBAS — el MISMO repo sirve los dos despliegues.
+// AMBIENTE DE PRUEBAS — el MISMO repo, DOS despliegues con DOS bases.
 //
-//   producción  →  www.manelfoods.co            (sin BASE_PATH)
-//   pruebas     →  www.manelfoods.co/pruebas    (BASE_PATH=/pruebas, otra base)
+//   producción  →  www.manelfoods.co
+//   pruebas     →  su propio host (AMBIENTE=pruebas, otra base)
 //
-// Son DOS despliegues con DOS bases. La separación NO es un `if` dentro de la
-// app: si /pruebas fuera una ruta más del mismo deploy compartiría el pool de
-// conexiones, y un solo camino que se olvide escribe la factura de mentiras en
-// los libros de verdad. Acá lo único compartido es el código.
+// La separación NO es un `if` dentro de la app: si pruebas fuera una ruta más del
+// mismo deploy compartiría el pool de conexiones, y un solo camino que se olvide
+// escribe la factura de mentiras en los libros de verdad.
 //
-// El deploy de producción REESCRIBE /pruebas/* hacia el otro origen; el de
-// pruebas no reescribe nada (si lo hiciera, se llamaría a sí mismo en bucle).
+// `www.manelfoods.co/pruebas` sigue siendo la puerta que el equipo recuerda, pero
+// REDIRIGE al ambiente en vez de servirlo por dentro. Se intentó servirlo bajo la
+// ruta (rewrite + `basePath`) y el muro es el LOGIN: Auth.js arma sus URLs desde
+// la ruta que recibe —a la que Next ya le quitó el prefijo— así que el callback de
+// Google apuntaba a `/api/auth/callback/google` del portal REAL. Probado en las
+// tres variantes de AUTH_URL: o responde "Bad request" a todo, o el login del
+// ambiente aterriza en producción. Un ambiente de pruebas cuyo login te deja en
+// producción es peor que no tenerlo.
 const BASE_PATH = process.env.BASE_PATH || "";
 const PRUEBAS_ORIGIN = process.env.PRUEBAS_ORIGIN || "";
 
@@ -22,11 +27,11 @@ const nextConfig = {
   // que hay que mantener iguales terminan distintas justo el día que importa.
   env: { NEXT_PUBLIC_BASE_PATH: BASE_PATH },
 
-  async rewrites() {
-    if (BASE_PATH || !PRUEBAS_ORIGIN) return [];   // solo el deploy de producción reescribe
+  async redirects() {
+    if (!PRUEBAS_ORIGIN || process.env.AMBIENTE === "pruebas") return [];
     return [
-      { source: "/pruebas", destination: `${PRUEBAS_ORIGIN}/pruebas` },
-      { source: "/pruebas/:path*", destination: `${PRUEBAS_ORIGIN}/pruebas/:path*` },
+      { source: "/pruebas", destination: PRUEBAS_ORIGIN, permanent: false },
+      { source: "/pruebas/:path*", destination: `${PRUEBAS_ORIGIN}/:path*`, permanent: false },
     ];
   },
 
