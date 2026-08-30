@@ -45,7 +45,12 @@ const COOKIE_SESION = EN_PRUEBAS ? "authjs.session-token.pruebas" : "authjs.sess
 export const authConfig = {
   providers: [Google],
   session: { strategy: "jwt" }, // JWT: el middleware (edge) verifica la sesión sin DB
-  pages: { signIn: "/login" },
+  // El login del AMBIENTE, no el de producción. `signIn` es una ruta relativa y
+  // Auth.js le pega el origen público (AUTH_URL) pero NO el prefijo: sin esto,
+  // entrar a /pruebas mandaba a www.manelfoods.co/login —el portal REAL—, y de
+  // vuelta al ambiente la sesión no servía (su cookie se llama distinto). Un
+  // bucle sin error visible: el usuario cree que el login está roto.
+  pages: { signIn: (process.env.BASE_PATH ?? "") + "/login" },
   cookies: {
     sessionToken: {
       name: (process.env.VERCEL ? "__Secure-" : "") + COOKIE_SESION,

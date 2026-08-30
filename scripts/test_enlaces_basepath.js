@@ -59,5 +59,13 @@ const auth = fs.readFileSync(path.join(RAIZ, "auth.config.ts"), "utf8");
 check(/session-token\.pruebas/.test(auth), "la cookie de pruebas tiene otro nombre");
 check(/path: EN_PRUEBAS \? "\/pruebas"/.test(auth), "y vive bajo /pruebas");
 
+console.log("\n5) El candado del ambiente");
+const mw = fs.readFileSync(path.join(RAIZ, "middleware.ts"), "utf8");
+// Con basePath, el matcher queda prefijado y `/pruebas` (sin barra) no casa con
+// el patrón general: la portada del ambiente quedaría abierta a internet.
+check(/matcher: \[\s*"\/"/.test(mw), 'el matcher incluye el "/" suelto (la portada del ambiente)');
+check(/signIn: \(process\.env\.BASE_PATH/.test(auth),
+      "el login al que manda es el del ambiente, no el de producción");
+
 console.log(fallos.length ? `\n❌ ${fallos.length} fallo(s): ${fallos.join(", ")}\n` : "\n🟢 todo OK\n");
 process.exit(fallos.length ? 1 : 0);

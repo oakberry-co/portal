@@ -35,8 +35,15 @@ export const { auth: middleware } = NextAuth(authConfig);
 // middleware corre ANTES que los rewrites. Si lo interceptara, mandaría a /login
 // del portal real una petición que iba para el otro ambiente —que tiene su
 // propio candado— y el ambiente de pruebas nunca abriría.
+//
+// El "/" suelto NO sobra: con `basePath`, Next le pega el prefijo al matcher, y
+// el patrón de abajo pasa a exigir `/pruebas/` + algo. La portada `/pruebas` (sin
+// barra final) no casaba con nada y quedaba SIN CANDADO: una pantalla del portal
+// abierta a internet, sobre una copia de los libros reales. Verificado en el
+// despliegue de pruebas antes de conectarlo (2026-08-29).
 export const config = {
   matcher: [
+    "/",
     "/((?!api/auth|pruebas|cuentas-de-cobro|cotizaciones|completar|robots.txt|sitemap.xml|og/|oakberry-logo|_next/static|_next/image|favicon.ico).*)",
   ],
 };
