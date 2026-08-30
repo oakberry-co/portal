@@ -127,6 +127,10 @@ export const FacturaCard = memo(function FacturaCard({
   const pend = f.estado === "capturada";
   const clasificada = f.estado !== "capturada";
   const locked = ["aprobada_pago", "pagada", "causada"].includes(f.estado);
+  // RECLASIFICAR SE PUEDE SIEMPRE (2026-08-27). Concepto y destino dicen a qué
+  // centro de costo cayó el gasto, no cuánto salió del banco: corregirlos
+  // después de pagar es normal, y el documento se reacomoda solo en Drive.
+  // El PLAZO no: esa fecha ordenó una transferencia que ya salió.
   // Clasificación y retenciones son INDEPENDIENTES: se pueden hacer al tiempo,
   // una no desbloquea la otra. Semáforos separados (al final de la fila).
   const retEditable = !locked;
@@ -271,7 +275,7 @@ export const FacturaCard = memo(function FacturaCard({
           <input name="plazo_dias" type="number" min={0} defaultValue={f.plazo_dias ?? f.plazo_sug ?? ""} placeholder="días" disabled={locked} title={f.plazo_sug != null && f.plazo_dias == null ? `Plazo sugerido del proveedor: ${f.plazo_sug} días` : "Plazo (días)"} />
           {venc && <span className={"venc" + (paraPago ? " due" : "")} title={paraPago ? "Ya vencido — para pago" : "Día de pago (recepción + plazo)"}>{paraPago ? "⏰ " : "→ "}{ddmm(venc)}</span>}
         </div>
-        <button type="submit" className="c-btn" disabled={locked || pending || !puedeClasificar} title={puedeClasificar ? "Confirmar clasificación" : "Solo lectura para tu rol (contador)"}>{pending ? "…" : "Clasif."}</button>
+        <button type="submit" className="c-btn" disabled={pending || !puedeClasificar} title={!puedeClasificar ? "Solo lectura para tu rol (contador)" : locked ? "Reclasificar (ya pagada): corrige concepto/destino y el documento se mueve a la carpeta que le toque" : "Confirmar clasificación"}>{pending ? "…" : locked ? "Reclas." : "Clasif."}</button>
       </form>
 
       {/* PASAR POR ENCIMA muestra el desglose de lo retenido. Un total pelado no

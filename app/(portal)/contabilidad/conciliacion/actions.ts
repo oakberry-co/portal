@@ -79,22 +79,38 @@ export async function guardarClasificacion(formData: FormData) {
       vencimiento = d.toISOString().slice(0, 10);
     }
 
-    // Independiente de retenciones: si quedó completa y la retención YA estaba
-    // hecha, salta directo a 'retenciones_ok' (el orden no importa).
+    // RECLASIFICAR DESPUÉS DE PAGAR SE PUEDE (decisión de Daniel, 2026-08-27).
+    // Concepto y destino dicen a qué centro de costo cayó el gasto, no cuánto
+    // salió del banco: corregirlos tarde es normal en contabilidad y el archivo
+    // de Drive se reacomoda solo con el barrido nocturno.
+    //
+    // Lo que NO se puede es que la factura RETROCEDA de estado. Si una pagada
+    // volviera a 'retenciones_ok' reaparecería en la columna Pendientes de
+    // Pagos, alguien le asignaría cuenta y se pagaría DOS VECES. Por eso el
+    // estado solo avanza desde los estados previos al pago, nunca al revés.
+    const yaPasoPorPagos = ["aprobada_pago", "pagada", "causada"].includes(antes.estado);
     const completa = !!nConcepto && !!nDestino && nPlazo != null;
     let nuevoEstado = antes.estado;
-    if (completa && ["capturada", "clasificada"].includes(antes.estado)) {
+    if (!yaPasoPorPagos && completa && ["capturada", "clasificada"].includes(antes.estado)) {
       nuevoEstado = antes.retencion_ok ? "retenciones_ok" : "clasificada";
     }
+
+    // Y tampoco se recalcula el día de pago de algo ya pagado: esa fecha ordenó
+    // una transferencia que ya salió, moverla haría mentir al histórico.
+    const nVencimiento = yaPasoPorPagos ? undefined : vencimiento;
+    const nPlazoFinal = yaPasoPorPagos ? antes.plazo_dias : nPlazo;
 
     await c.query(
       `UPDATE factura_estado
           SET concepto = $2, concepto_fuente = 'humano',
               destino = $3, destino_fuente = 'humano',
-              plazo_dias = $4, fecha_vencimiento = $5,
+              plazo_dias = $4,
+              -- COALESCE con lo que ya había: en una factura ya pagada
+              -- nVencimiento viene en null y esto la deja intacta.
+              fecha_vencimiento = COALESCE($5, factura_estado.fecha_vencimiento),
               estado = $6, actualizado_en = now()
         WHERE cufe = $1`,
-      [cufe, nConcepto, nDestino, nPlazo, vencimiento, nuevoEstado]
+      [cufe, nConcepto, nDestino, nPlazoFinal, nVencimiento ?? null, nuevoEstado]
     );
 
     // APRENDIZAJE: el proveedor aprende de esta clasificación humana → la próxima
@@ -116,10 +132,10 @@ export async function guardarClasificacion(formData: FormData) {
 
     await registrarEvento(c, {
       cufe,
-      tipo: "set_clasificacion",
+      tipo: yaPasoPorPagos ? "reclasificacion_post_pago" : "set_clasificacion",
       campo: "concepto/destino/plazo",
       valorAnterior: { concepto: antes.concepto, destino: antes.destino, plazo_dias: antes.plazo_dias, estado: antes.estado },
-      valorNuevo: { concepto: nConcepto, destino: nDestino, plazo_dias: nPlazo, estado: nuevoEstado },
+      valorNuevo: { concepto: nConcepto, destino: nDestino, plazo_dias: nPlazoFinal, estado: nuevoEstado },
       actor: user.email,
       actorRol: user.rol,
       origen: "web",
