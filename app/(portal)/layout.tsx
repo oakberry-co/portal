@@ -4,6 +4,7 @@ import { MenuPortal, type GrupoMenu } from "./MenuPortal";
 import { signOut } from "@/auth";
 import { AsistenteFloating } from "./AsistenteFloating";
 import { ruta } from "@/lib/ruta";
+import { SelectorRolPruebas } from "./SelectorRolPruebas";
 
 // El portal interno: menú + sesión. Las landings públicas (/cuentas-de-cobro y
 // /cotizaciones) quedan FUERA de este grupo y por eso no lo heredan.
@@ -73,6 +74,7 @@ export default async function PortalLayout({ children }: { children: React.React
           </a>
           <MenuPortal grupos={menuPara(user.rol)} />
           <div className="nav-user">
+            <SelectorRolPruebas rol={user.rol} />
             <span className="nav-who"><b>{user.email}</b><i>{user.rol}</i></span>
             <form action={async () => { "use server"; await signOut({ redirectTo: "/login" }); }}>
               <button className="nav-out" type="submit">Salir</button>

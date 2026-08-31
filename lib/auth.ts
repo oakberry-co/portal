@@ -8,6 +8,7 @@
 import { auth } from "@/auth";
 import { getPool } from "@/lib/db";
 import { puede, type Cap } from "@/lib/permisos";
+import { rolElegidoEnPruebas } from "@/lib/rol_pruebas";
 
 export type Rol = "conciliador" | "pagador" | "causador" | "admin";
 export type Usuario = { email: string; rol: Rol };
@@ -31,14 +32,20 @@ export async function getCurrentUserOrNull(): Promise<Usuario | null> {
   if (mode === "dev") {
     return {
       email: process.env.DEV_USER_EMAIL ?? "dev@localhost",
-      rol: (process.env.DEV_USER_ROL as Rol) ?? "admin",
+      // El selector del ambiente manda también en local: así se prueba lo mismo
+      // que se despliega, en vez de un camino que solo existe en la máquina.
+      rol: (await rolElegidoEnPruebas()) ?? (process.env.DEV_USER_ROL as Rol) ?? "admin",
     };
   }
 
   const session = await auth();
   const email = session?.user?.email?.toLowerCase();
   if (!email) return null;
-  return { email, rol: await rolDe(email) };
+  // SOLO en el ambiente de pruebas se puede mirar el portal con otro rol (ver
+  // lib/rol_pruebas.ts). En producción devuelve null sin siquiera leer la
+  // cookie, así que esta línea no cambia nada de lo que ya pasaba.
+  const elegido = await rolElegidoEnPruebas();
+  return { email, rol: elegido ?? (await rolDe(email)) };
 }
 
 /** Rol del correo. (1) Si está en `usuarios`, ese rol MANDA. (2) Si no, todo

@@ -1620,3 +1620,31 @@ tr.desfasada td { background: #fff8e6; }
    del ambiente. */
 .c-btn.c-devolver { border-color: var(--coral); color: var(--coral); font-weight: 700; }
 .c-btn.c-devolver:hover:not(:disabled) { background: #fff1ed; }
+
+/* Selector de rol — solo existe en el ambiente de pruebas. Se ve como una
+   herramienta del ambiente (coral, la misma familia de la franja) y no como
+   parte del portal, para que nadie lo confunda con una función del producto.
+   En pantalla angosta la barra ya envuelve: los cuatro botones bajan a su
+   propia línea antes que empujar el correo fuera de la pantalla. */
+.rolp { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; }
+.rolp-lbl {
+  font-family: var(--mono); font-size: 9px; text-transform: uppercase;
+  letter-spacing: .1em; color: var(--lav); margin-right: 2px;
+}
+.rolp-btn {
+  font-family: var(--sans); font-size: 11px; font-weight: 700; cursor: pointer;
+  padding: 4px 10px; border-radius: 999px;
+  background: #fff; color: var(--lav); border: 1px solid var(--border-lav);
+}
+.rolp-btn:hover { border-color: var(--coral); color: var(--coral); }
+.rolp-btn.on { background: var(--coral); border-color: var(--coral); color: #fff; }
+
+@media (max-width: 700px) {
+  .nav { flex-wrap: wrap; height: auto; padding: 8px 14px; gap: 8px 14px; }
+  .nav-user { flex-wrap: wrap; gap: 8px; }
+  /* Los cuatro en UNA línea: si el selector se parte en dos, se come media
+     pantalla de un celular y empuja el trabajo hacia abajo. */
+  .rolp { order: 3; width: 100%; gap: 3px; }
+  .rolp-lbl { display: none; }
+  .rolp-btn { padding: 4px 8px; font-size: 10.5px; }
+}
