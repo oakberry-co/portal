@@ -108,22 +108,50 @@ SELECT (bool_or(nullif(btrim(cb.num_cuenta), '') IS NOT NULL) OR bool_and(p.desv
  GROUP BY p.nit"""
 
 
+def revision(cur, nit):
+    """El booleano de «Actualizar cuentas bancarias» para un proveedor.
+
+    Devuelve None si la consulta no lo incluye (p. ej. pago débito). Antes se
+    hacía `cur.fetchone()[0]` y eso reventaba con un TypeError que no decía
+    nada: un centinela que se cae sin explicar por qué se deja de mirar.
+    """
+    cur.execute(SQL_REVISION, (nit,))
+    fila = cur.fetchone()
+    return None if fila is None else fila[0]
+
 def main():
     con = psycopg2.connect(dsn())
     cur = con.cursor()
     try:
         # Se busca un proveedor REAL con 2+ facturas en validación: probar con
         # datos inventados no diría nada sobre el archivo que se baja mañana.
+        # NO SIRVE UN PROVEEDOR DE PAGO DÉBITO. El débito automático ya salió
+        # del banco solo, así que el tablero y «Actualizar cuentas bancarias» lo
+        # excluyen a propósito (pagos/page.tsx y pagos/actions.ts). Si el ejemplo
+        # cae en uno, el paso 6 pregunta por un proveedor que esas consultas no
+        # devuelven y el centinela se cae por los DATOS del día, no por un bug
+        # (pasó el 2026-08-30 con 830111876). El filtro va idéntico al de allá.
         cur.execute("""SELECT f.nit_proveedor, count(*)
                          FROM factura_estado e JOIN facturas f USING (cufe)
+                         LEFT JOIN maestro_proveedores mp ON mp.nit = f.nit_proveedor
                         WHERE e.estado = 'aprobada_pago' AND e.cuenta_pago IS NOT NULL
                           AND coalesce(e.pago_estado,'pendiente') <> 'pagado'
+                          AND coalesce(e.tipo_pago, mp.tipo_pago_default, 'credito') <> 'debito'
                         GROUP BY 1 HAVING count(*) >= 2 LIMIT 1""")
         fila = cur.fetchone()
         if not fila:
             # Se arma el caso: dos facturas de un proveedor, una cuenta propia.
+            # Y TIENEN QUE VALER ALGO. El archivo del banco agrupa con
+            # `HAVING sum(monto) > 0`: una factura en cero no arma línea, así que
+            # al desviarla el proveedor seguiría saliendo en UNA sola y el paso 2
+            # fallaría sin que nada esté roto (2026-08-30: FE109303, en cero).
             cur.execute("""SELECT e.cufe, f.nit_proveedor FROM factura_estado e JOIN facturas f USING (cufe)
-                            WHERE e.estado = 'retenciones_ok' ORDER BY f.nit_proveedor LIMIT 2""")
+                             LEFT JOIN maestro_proveedores mp ON mp.nit = f.nit_proveedor
+                            WHERE e.estado = 'retenciones_ok'
+                              AND coalesce(e.tipo_pago, mp.tipo_pago_default, 'credito') <> 'debito'
+                              AND coalesce(e.valor_a_pagar, f.total)
+                                  - coalesce(e.pago_monto,0) - coalesce(e.abono_aplicado,0) > 0
+                            ORDER BY f.nit_proveedor LIMIT 2""")
             par = cur.fetchall()
             if len(par) < 2:
                 check(False, "hay facturas con las que probar")
@@ -144,6 +172,7 @@ def main():
 
         cur.execute("SELECT cuenta_pago FROM factura_estado WHERE cufe = %s", (cufes[0],))
         cuenta_propia = cur.fetchone()[0]
+        print(f"\n(se prueba con el proveedor {nit}, cuenta propia {cuenta_propia})")
 
         # PUNTO DE PARTIDA LIMPIO. El proveedor que elige la consulta de arriba
         # puede tener HOY sus facturas desviadas de verdad (pasó con MTS
@@ -217,9 +246,10 @@ def main():
                           AND coalesce(e.pago_estado,'pendiente') <> 'pagado'""", (nit,))
         cur.execute(SQL_TABLERO, (cufes[0],))
         check(cur.fetchone()[1] is True, "la factura desviada se ve pagable en el tablero")
-        cur.execute(SQL_REVISION, (nit,))
-        check(cur.fetchone()[0] is True,
-              "y «Actualizar cuentas bancarias» NO la manda a cargar en Maestros")
+        rev = revision(cur, nit)
+        check(rev is True,
+              "y «Actualizar cuentas bancarias» NO la manda a cargar en Maestros",
+              "el proveedor no sale en la revisión (¿pago débito?)" if rev is None else "")
 
         # Y el aviso sigue sirviendo cuando de verdad falta: se le quita el
         # desvío a UNA y el proveedor vuelve a quedar incompleto.
@@ -228,8 +258,9 @@ def main():
                          WHERE cufe = %s""", (cufes[0],))
         cur.execute(SQL_TABLERO, (cufes[0],))
         check(cur.fetchone()[1] is False, "sin desvío y sin maestro, sí dice «sin cuenta»")
-        cur.execute(SQL_REVISION, (nit,))
-        check(cur.fetchone()[0] is False, "y el botón vuelve a pedir la cuenta del proveedor")
+        rev = revision(cur, nit)
+        check(rev is False, "y el botón vuelve a pedir la cuenta del proveedor",
+              "el proveedor no sale en la revisión (¿pago débito?)" if rev is None else "")
     finally:
         con.rollback()
         cur.close()
