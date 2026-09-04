@@ -35,7 +35,7 @@ const MENU: Grupo[] = [
       { label: "Pagos internacionales", cap: "pagos" },
     ],
   },
-  { label: "Causaciones", items: [{ label: "Causaciones", cap: "clasificar" }] },
+  { label: "Causaciones", items: [{ label: "Causaciones", href: "/contabilidad/causaciones", cap: "causar" }] },
   {
     label: "Configuraciones",
     items: [

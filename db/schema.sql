@@ -128,6 +128,40 @@ ALTER TABLE factura_estado
   ADD COLUMN IF NOT EXISTS reteiva    NUMERIC(16,2),
   ADD COLUMN IF NOT EXISTS reteica    NUMERIC(16,2);
 
+-- CAUSACIÓN. `causada_en`/`siigo_id` ya existían pero nadie los llenaba: hasta el
+-- 4-sep-2026 no se había causado una sola factura desde acá.
+--
+-- El botón "Causar" del portal APRUEBA, no ejecuta. Quien escribe en Siigo es un
+-- cron de la VM (datawarehouse/contabilidad/facturacion/ejecutar_causaciones.py),
+-- por dos razones: las credenciales de Siigo no viven en Vercel, y ese motor ya
+-- tiene probado el candado que impide causar dos veces (reserva en el log ANTES
+-- del POST, y un POST sin respuesta NUNCA se reintenta a ciegas).
+--
+-- La cuenta PUC y el centro de costo se CONGELAN al aprobar. Si se resolvieran
+-- al ejecutar, un cambio en los maestros entre la aprobación y el cron haría que
+-- el asiento no fuera el que alguien aprobó — y el centro de costo es la tienda
+-- del P&L, así que ese asiento movería plata de una tienda a otra sin que nadie
+-- lo hubiera decidido.
+ALTER TABLE factura_estado
+  ADD COLUMN IF NOT EXISTS causacion_estado       TEXT,
+  ADD COLUMN IF NOT EXISTS causacion_aprobada_en  TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS causacion_cuenta_puc   TEXT,
+  ADD COLUMN IF NOT EXISTS causacion_centro_costo TEXT,
+  ADD COLUMN IF NOT EXISTS causacion_error        TEXT,
+  ADD COLUMN IF NOT EXISTS siigo_numero           INT;
+
+-- aprobada -> causada | error. NULL = nadie la ha aprobado todavía.
+-- 'error' NO es final: Siigo rechazó y no escribió nada, así que se corrige y
+-- se vuelve a aprobar. Lo que nunca vuelve atrás es 'causada'.
+ALTER TABLE factura_estado DROP CONSTRAINT IF EXISTS ck_causacion_estado;
+ALTER TABLE factura_estado ADD CONSTRAINT ck_causacion_estado
+  CHECK (causacion_estado IS NULL OR causacion_estado IN ('aprobada','causada','error'));
+
+-- El cron pregunta "¿qué hay aprobado?" cada vez que corre; sin índice eso es un
+-- barrido de las 4.000 facturas.
+CREATE INDEX IF NOT EXISTS ix_estado_causacion ON factura_estado (causacion_estado)
+  WHERE causacion_estado IS NOT NULL;
+
 -- -----------------------------------------------------------------------------
 -- 4) EVENTOS — LA BITÁCORA. Append-only, encadenada por hash. Verdad de auditoría.
 --    Cada acción (humana o de sistema) deja aquí su rastro: quién, cuándo,

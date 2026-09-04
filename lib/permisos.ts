@@ -7,14 +7,14 @@ import type { Rol } from "@/lib/auth";
 
 export type Cap =
   | "ver_conciliacion" | "clasificar" | "retenciones" | "tipo_pago"
-  | "ver_pagos" | "pagos" | "export_historial"
+  | "ver_pagos" | "pagos" | "export_historial" | "causar"
   | "maestros" | "maestro_retenciones"
   | "ver_intake" | "intake"
   | "dashboard" | "asistente" | "usuarios";
 
 const TODAS: Cap[] = [
   "ver_conciliacion", "clasificar", "retenciones", "tipo_pago",
-  "ver_pagos", "pagos", "export_historial", "maestros", "maestro_retenciones",
+  "ver_pagos", "pagos", "export_historial", "causar", "maestros", "maestro_retenciones",
   "ver_intake", "intake", "dashboard", "asistente", "usuarios",
 ];
 
@@ -37,8 +37,10 @@ const MATRIZ: Record<Rol, Cap[]> = {
   // rectificarlas o ponerlas a mano donde sea que aparezcan —en la conciliación,
   // en las cuentas de cobro y en la tabla de tarifas—. Lo que NO puede es
   // aprobar, devolver ni tocar cuentas bancarias: ve el intake, no lo opera.
+  // "causar" APRUEBA que una factura se registre en Siigo — no la escribe (eso
+  // lo hace el proceso de la VM). Es del causador por definición y del admin.
   causador: ["ver_conciliacion", "retenciones", "ver_pagos", "export_historial",
-             "ver_intake", "maestro_retenciones"],
+             "ver_intake", "maestro_retenciones", "causar"],
   // Roles definidos por completitud (hoy nadie los usa; todos son admin o causador).
   conciliador: ["ver_conciliacion", "clasificar", "retenciones", "tipo_pago", "ver_pagos", "dashboard"],
   pagador: ["ver_pagos", "pagos", "export_historial", "dashboard"],
