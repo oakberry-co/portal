@@ -37,7 +37,15 @@ export function ConciliacionView({
       *  (ver DocsNoDian.tsx), con SIN FACTURA donde iría el número. */
      noDian: DocNoDianUI[];
      puedeClasificar: boolean; puedeExport: boolean; puedeRetenciones: boolean }) {
-  const [q, setQ] = useState("");
+  // El buscador arranca con lo que venga en ?q= — así Causaciones puede mandar
+  // a alguien DERECHO a la factura que hay que clasificar, en vez de decirle
+  // "anda a Conciliación y búscala" (Regla 18: el loop tiene que cerrar).
+  // Se lee de window y no de useSearchParams para no obligar a un <Suspense>
+  // alrededor de toda la pantalla.
+  const [q, setQ] = useState(() => {
+    if (typeof window === "undefined") return "";
+    return new URLSearchParams(window.location.search).get("q") ?? "";
+  });
   const [anio, setAnio] = useState("");
   const [mes, setMes] = useState("");
   const [sem, setSem] = useState("");

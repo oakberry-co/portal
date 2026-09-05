@@ -3,6 +3,7 @@
 import { useMemo, useState, useTransition } from "react";
 import { aprobarCausacion, retirarAprobacion, fijarCuentaProveedor } from "./actions";
 import { ModalPortal } from "../_ui/ModalPortal";
+import { ruta } from "@/lib/ruta";
 import type { Resultado } from "@/lib/resultado";
 
 export type CuentaPuc = { codigo: string; nombre: string };
@@ -222,6 +223,22 @@ export function CausacionesView({ filas, cuentas, puedeAprobar }:
                                 onClick={() => setCuentaDe(f)}>
                           Fijar cuenta
                         </button>
+                      )}
+                      {/* Clasificar NO se hace acá: se hace en Conciliación, que
+                          es donde el equipo ya trabaja y donde están los
+                          maestros. Decir "falta el concepto" sin llevar hasta
+                          donde se pone es el loop que no cierra. */}
+                      {(!f.concepto || !f.destino) && (
+                        <a className="pg-btn ghost"
+                           style={{ marginLeft: 8, fontSize: 11, display: "inline-block" }}
+                           href={ruta(`/contabilidad/conciliacion?q=${encodeURIComponent(f.numero)}`)}>
+                          Clasificar →
+                        </a>
+                      )}
+                      {!f.retencion_ok && f.concepto && f.destino && (
+                        <span className="hint" style={{ marginLeft: 8 }}>
+                          la confirma el contador en Conciliación
+                        </span>
                       )}
                     </td>
                   )}
