@@ -25,6 +25,10 @@ const SQL = `
          e.causacion_aprobada_en::text AS causacion_aprobada_en,
          e.causada_en::text AS causada_en, e.siigo_id, e.siigo_numero,
          e.causacion_error, e.causacion_cuenta_puc, e.causacion_centro_costo,
+         -- Poder ABRIR la factura sin salir de acá. Quien decide con qué cuenta
+         -- se causa necesita ver qué compró, y mandarlo a buscar el PDF a otra
+         -- pantalla es el viaje que hace que no la mire.
+         f.link_drive, sop.soporte_url, sop.n_soportes,
          md.centro_costo,
          mp.cuenta_puc_default AS cuenta_proveedor,
          mc.cuenta_puc         AS cuenta_concepto,
@@ -37,6 +41,7 @@ const SQL = `
     LEFT JOIN maestro_destinos   md ON md.nombre = e.destino AND md.activo
     LEFT JOIN maestro_proveedores mp ON mp.nit = f.nit_proveedor AND mp.activo
     LEFT JOIN maestro_conceptos   mc ON mc.nombre = e.concepto AND mc.activo
+    LEFT JOIN v_factura_soportes  sop ON sop.cufe = f.cufe
    WHERE f.doc_tipo = 'Invoice'
      AND f.fecha_emision >= $1::date AND f.fecha_emision <= $2::date
    ORDER BY f.fecha_emision DESC, f.total DESC

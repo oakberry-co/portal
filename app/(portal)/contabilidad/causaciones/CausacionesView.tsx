@@ -20,6 +20,9 @@ export type FilaCausacion = {
   causacion_estado: string | null; causacion_autorizada_por: string | null;
   causacion_aprobada_en: string | null; causada_en: string | null;
   siigo_id: string | null; siigo_numero: number | null; causacion_error: string | null;
+  /** Para poder ABRIR la factura desde acá: el documento oficial de la DIAN (por
+   *  CUFE), el PDF del proveedor y el soporte que archivó compras en Drive. */
+  link_drive: string | null; soporte_url: string | null; n_soportes: number | null;
 };
 
 const cop = new Intl.NumberFormat("es-CO", { style: "currency", currency: "COP", maximumFractionDigits: 0 });
@@ -187,7 +190,7 @@ export function CausacionesView({ filas, cuentas, meses, desde, hasta, truncado,
                     <input type="checkbox" checked={sel.size === seleccionables.length}
                            onChange={todas} />
                   </td>
-                  <td colSpan={7} className="hint">
+                  <td colSpan={8} className="hint">
                     Seleccionar las {seleccionables.length} que se pueden aprobar
                   </td>
                 </tr>
@@ -206,6 +209,7 @@ export function CausacionesView({ filas, cuentas, meses, desde, hasta, truncado,
                     <b>{f.nombre_proveedor ?? f.nit_proveedor}</b>
                     <div className="mono">{f.numero} · {dia(f.fecha_emision)}</div>
                   </td>
+                  <td style={{ whiteSpace: "nowrap" }}><Documentos f={f} /></td>
                   <td className="num">{$(f.total)}</td>
                   <td>
                     {f.concepto ?? <span style={{ color: "var(--coral)" }}>sin concepto</span>}
@@ -259,7 +263,7 @@ export function CausacionesView({ filas, cuentas, meses, desde, hasta, truncado,
                 </tr>
               ))}
               {!visibles.length && (
-                <tr><td colSpan={8}>
+                <tr><td colSpan={9}>
                   <div className="pg-empty sm">
                     {tab === "lista"
                       ? "Nada listo para causar. Lo que falta está en Incompletas, con el motivo."
@@ -434,5 +438,32 @@ function FiltroFechas({ meses, desde, hasta }: {
         </span>
       </div>
     </div>
+  );
+}
+
+
+/** Los tres documentos de una factura, con los MISMOS enlaces que Conciliación:
+ *  el oficial de la DIAN (por CUFE, siempre existe), el PDF del proveedor y el
+ *  soporte que archivó compras. No se duplica el criterio de cuál mostrar — se
+ *  muestran los que hay y se dice cuál falta, porque quien va a causar necesita
+ *  ver QUÉ se compró para decidir la cuenta. */
+function Documentos({ f }: { f: FilaCausacion }) {
+  return (
+    <span className="c-docs" style={{ display: "inline-flex", gap: 4 }}>
+      <a className="ic dian" target="_blank" rel="noopener noreferrer"
+         href={`https://catalogo-vpfe.dian.gov.co/document/searchqr?documentkey=${encodeURIComponent(f.cufe)}`}
+         title="Ver el documento oficial en la DIAN (por CUFE)">DIAN</a>
+      {f.link_drive
+        ? <a className="ic pdf" href={f.link_drive} target="_blank" rel="noopener noreferrer"
+             title="PDF de la factura del proveedor">PDF</a>
+        : <span className="ic pdf off" title="Sin PDF del proveedor — usa el documento DIAN">PDF</span>}
+      {f.soporte_url && (
+        <a className="ic sop" href={f.soporte_url} target="_blank" rel="noopener noreferrer"
+           title={`Soporte archivado por compras${f.n_soportes && f.n_soportes > 1
+                    ? ` (${f.n_soportes} archivos)` : ""}`}>
+          📎{f.n_soportes && f.n_soportes > 1 ? f.n_soportes : ""}
+        </a>
+      )}
+    </span>
   );
 }
