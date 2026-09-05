@@ -1,7 +1,7 @@
 import { getPool } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { puede } from "@/lib/permisos";
-import { carrilDe, faltaParaCausar, resolverCuenta, explicarCuenta } from "@/lib/causacion";
+import { carrilDe, faltaParaCausar, resolverCuenta, explicarCuenta, finDeMes } from "@/lib/causacion";
 import { CausacionesView, type FilaCausacion, type CuentaPuc } from "./CausacionesView";
 
 export const dynamic = "force-dynamic";
@@ -53,6 +53,19 @@ const SQL_MESES = `
 
 function mesDe(d: Date) { return d.toISOString().slice(0, 7); }
 
+/** Una fecha de la URL solo se usa si es una fecha DE VERDAD.
+ *
+ *  Lo que viene en `?desde=` lo escribe cualquiera —un enlace viejo, un dedo
+ *  torcido, un bot— y va derecho a un `::date` de Postgres. Con `2026-09-31` la
+ *  página entera se cayó: la consulta lanza «out of range», Next lo convierte en
+ *  un digest y el humano ve "Se nos cayó la página" sin saber por qué. Un
+ *  parámetro torcido degrada al rango por defecto, no tumba la pantalla. */
+function fechaValida(s: string | undefined): string | null {
+  if (!s || !/^\d{4}-\d{2}-\d{2}$/.test(s)) return null;
+  const d = new Date(`${s}T00:00:00Z`);
+  return !isNaN(d.getTime()) && d.toISOString().slice(0, 10) === s ? s : null;
+}
+
 export default async function Page({ searchParams }: {
   searchParams: Promise<{ desde?: string; hasta?: string }>;
 }) {
@@ -66,8 +79,8 @@ export default async function Page({ searchParams }: {
   // (~130 facturas por mes sin causar desde enero).
   const hoy = new Date();
   const anterior = new Date(hoy.getFullYear(), hoy.getMonth() - 1, 1);
-  const desde = sp.desde || `${mesDe(anterior)}-01`;
-  const hasta = sp.hasta || `${mesDe(hoy)}-31`;
+  const desde = fechaValida(sp.desde) ?? `${mesDe(anterior)}-01`;
+  const hasta = fechaValida(sp.hasta) ?? finDeMes(mesDe(hoy));
 
   const pool = getPool();
   const [{ rows }, { rows: cuentas }, { rows: meses }] = await Promise.all([

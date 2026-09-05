@@ -35,7 +35,7 @@ try {
   execFileSync("npx", ["tsc", "lib/causacion.ts", "--outDir", tmp, "--module", "commonjs",
                        "--target", "es2020", "--skipLibCheck"], { cwd: RAIZ, stdio: "pipe" });
 } catch {}
-const { resolverCuenta, faltaParaCausar, carrilDe } = require(path.join(tmp, "causacion.js"));
+const { resolverCuenta, faltaParaCausar, carrilDe, finDeMes } = require(path.join(tmp, "causacion.js"));
 
 // Una factura que SÍ se puede causar. Cada prueba le rompe una cosa.
 const OK = {
@@ -90,6 +90,17 @@ check(carrilDe({ ...OK, causacion_estado: "causada" }) === "causada",
 const roto = { ...OK, concepto: null, destino: null, retencion_ok: false };
 check(faltaParaCausar(roto).length >= 3, "lista TODO lo que falta, no solo lo primero",
       `${faltaParaCausar(roto).length} motivos`);
+
+// EL FIN DE MES. Tumbó la pantalla en producción: los atajos armaban el rango
+// pegándole "-31" al mes y `2026-09-31` no existe — Postgres responde «out of
+// range» y la página se cae entera con un digest. Cuatro meses del año tienen
+// 30 días y febrero cambia con los bisiestos.
+for (const [mes, esperado] of [["2026-09", "2026-09-30"], ["2026-04", "2026-04-30"],
+                               ["2026-06", "2026-06-30"], ["2026-11", "2026-11-30"],
+                               ["2026-02", "2026-02-28"], ["2024-02", "2024-02-29"],
+                               ["2026-01", "2026-01-31"], ["2026-12", "2026-12-31"]]) {
+  check(finDeMes(mes) === esperado, `fin de ${mes}`, finDeMes(mes));
+}
 
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log(fallos.length ? `\n❌ ${fallos.length} fallo(s): ${fallos.join(", ")}\n`

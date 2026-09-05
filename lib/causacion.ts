@@ -81,3 +81,22 @@ export function explicarCuenta(f: FuenteCuenta): string {
   if (f === "concepto") return "según el concepto";
   return "sin resolver";
 }
+
+
+/** Último día real de un mes `YYYY-MM`, como `YYYY-MM-DD`.
+ *
+ *  Nació de tumbar la pantalla: los atajos de fecha armaban el fin de rango
+ *  pegándole "-31" al mes, y `2026-09-31` NO EXISTE — Postgres responde
+ *  «date/time field value out of range» y la página entera se cae con un
+ *  digest, sin decir qué pasó. Pasa en abril, junio, septiembre, noviembre y
+ *  todos los febreros.
+ *
+ *  `new Date(año, mes, 0)` es el día 0 del mes siguiente = el último del mes
+ *  pedido, y ya sabe de años bisiestos. Se arma con partes locales (no ISO)
+ *  para que la zona horaria no lo corra un día. */
+export function finDeMes(mes: string): string {
+  const [a, m] = mes.split("-").map(Number);
+  if (!a || !m) return mes;
+  const d = new Date(a, m, 0);          // día 0 del mes siguiente
+  return `${a}-${String(m).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
