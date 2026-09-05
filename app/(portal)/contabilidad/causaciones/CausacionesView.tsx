@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
-import { aprobarCausacion, retirarAprobacion, fijarCuentaProveedor } from "./actions";
+import { aprobarCausacion, retirarAprobacion } from "./actions";
 import type { Resultado } from "@/lib/resultado";
 
 export type FilaCausacion = {
@@ -18,8 +18,11 @@ export type FilaCausacion = {
 
 const cop = new Intl.NumberFormat("es-CO", { style: "currency", currency: "COP", maximumFractionDigits: 0 });
 const $ = (n: number) => cop.format(Math.round(n || 0));
-const fecha = (s: string | null) => (s ? s.slice(0, 10) : "—");
+const dia = (s: string | null) => (s ? s.slice(0, 10) : "—");
+const suma = (f: FilaCausacion[]) => f.reduce((a, x) => a + (x.total || 0), 0);
 
+// El orden de las pestañas ES el paso a paso: se entra por la izquierda y se
+// sale por la derecha. Igual que Pagos (pendientes → validación → confirmados).
 const TABS = [
   { id: "incompleta", label: "Incompletas" },
   { id: "lista", label: "Listas para causar" },
@@ -34,17 +37,19 @@ export function CausacionesView({ filas, puedeAprobar }:
   const [msg, setMsg] = useState<string | null>(null);
   const [pend, start] = useTransition();
 
-  const porCarril = useMemo(() => ({
+  const grupos = useMemo(() => ({
     incompleta: filas.filter((f) => f.carril === "incompleta"),
     lista: filas.filter((f) => f.carril === "lista"),
     causada: filas.filter((f) => f.carril === "causada"),
   }), [filas]);
 
-  const visibles = porCarril[tab];
-  // Las aprobadas esperando al cron: no son un cuarto carril, son las "listas"
-  // que ya alguien mandó. Se marcan aparte para que nadie las apruebe dos veces
-  // ni crea que el botón no hizo nada.
-  const aprobadas = porCarril.lista.filter((f) => f.causacion_estado === "aprobada");
+  const visibles = grupos[tab];
+  // Aprobadas esperando al proceso de la VM. No son un cuarto carril: son las
+  // listas que alguien YA mandó. Sin distinguirlas, quien aprobó vuelve, las ve
+  // en el mismo sitio y cree que el botón no hizo nada.
+  const aprobadas = grupos.lista.filter((f) => f.causacion_estado === "aprobada");
+  const conError = filas.filter((f) => f.causacion_estado === "error");
+  const seleccionables = grupos.lista.filter((f) => f.causacion_estado !== "aprobada");
 
   function correr(fn: (fd: FormData) => Promise<Resultado>, fd: FormData) {
     setMsg(null);
@@ -55,125 +60,183 @@ export function CausacionesView({ filas, puedeAprobar }:
     });
   }
 
-  const toggle = (cufe: string) => setSel((s) => {
+  const marcar = (cufe: string) => setSel((s) => {
     const n = new Set(s);
-    n.has(cufe) ? n.delete(cufe) : n.add(cufe);
+    if (n.has(cufe)) n.delete(cufe); else n.add(cufe);
     return n;
   });
+  const todas = () => setSel((s) =>
+    s.size === seleccionables.length ? new Set() : new Set(seleccionables.map((f) => f.cufe)));
 
   return (
-    <main style={{ padding: 24, maxWidth: 1400, margin: "0 auto" }}>
-      <h1 style={{ fontSize: 22, marginBottom: 4 }}>Causaciones</h1>
-      <p style={{ color: "#666", fontSize: 13, marginTop: 0 }}>
-        Causar registra la factura en Siigo. El botón <b>aprueba</b>; la escritura
-        la hace el proceso de la VM, que es el que sabe no causar nada dos veces.
+    <main className="pagos">
+      <h1>🧾 Causaciones</h1>
+      <p className="sub">
+        Paso a paso: <strong>Incompletas</strong> (les falta algo para poder causarse) →{" "}
+        <strong>Listas para causar</strong> (las apruebas acá) →{" "}
+        <strong>Causadas</strong> (ya quedaron registradas en Siigo).
+      </p>
+      <p className="hint">
+        El botón <b>Causar</b> aprueba y deja fija la cuenta contable y el centro de costo.
+        Quien escribe en Siigo es el proceso de la VM, que es el que sabe no causar nada dos veces.
       </p>
 
-      <nav style={{ display: "flex", gap: 4, margin: "16px 0", borderBottom: "1px solid #e5e5e5" }}>
+      <div className="pg-kpis">
+        <div className="pg-kpi due">
+          <i>Listas para causar</i>
+          <b>{$(suma(grupos.lista))}</b>
+          <span>{grupos.lista.length} factura(s)</span>
+        </div>
+        <div className="pg-kpi">
+          <i>Esperando al proceso</i>
+          <b>{aprobadas.length}</b>
+          <span>{aprobadas.length ? "aprobadas, se causan en la próxima corrida" : "nada en cola"}</span>
+        </div>
+        <div className="pg-kpi">
+          <i>Incompletas</i>
+          <b>{$(suma(grupos.incompleta))}</b>
+          <span>{grupos.incompleta.length} factura(s) sin poder causarse</span>
+        </div>
+        <div className="pg-kpi paid">
+          <i>Causadas</i>
+          <b>{grupos.causada.length}</b>
+          <span>{$(suma(grupos.causada))}</span>
+        </div>
+      </div>
+
+      <div className="pg-tabs">
         {TABS.map((t) => (
-          <button key={t.id} onClick={() => { setTab(t.id); setSel(new Set()); }}
-            style={{
-              padding: "8px 14px", border: "none", cursor: "pointer", fontSize: 14,
-              background: tab === t.id ? "#f3f0ff" : "transparent",
-              borderBottom: tab === t.id ? "2px solid #6d4aff" : "2px solid transparent",
-              fontWeight: tab === t.id ? 600 : 400,
-            }}>
-            {t.label} <span style={{ color: "#888" }}>({porCarril[t.id].length})</span>
+          <button key={t.id} className={tab === t.id ? "on" : ""}
+                  onClick={() => { setTab(t.id); setSel(new Set()); }}>
+            {t.label}<i>{grupos[t.id].length}</i>
           </button>
         ))}
-      </nav>
+      </div>
 
-      {msg && (
-        <div style={{ background: "#fff4f4", border: "1px solid #f5c2c2", padding: "10px 12px",
-                      borderRadius: 6, marginBottom: 12, fontSize: 13 }}>{msg}</div>
+      {msg && <div className="pg-empty sm" style={{ color: "var(--coral)" }}>{msg}</div>}
+
+      {conError.length > 0 && tab !== "causada" && (
+        <div className="pg-empty sm">
+          {conError.length} factura(s) que Siigo rechazó. <b>No se escribió nada</b> allá:
+          se corrige el motivo y se vuelven a aprobar. Motivo de la primera:{" "}
+          <b>{conError[0].causacion_error?.slice(0, 140)}</b>
+        </div>
       )}
 
       {tab === "lista" && puedeAprobar && (
-        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
-          <button disabled={!sel.size || pend}
-            onClick={() => {
-              const fd = new FormData();
-              fd.set("cufes", [...sel].join(","));
-              correr(aprobarCausacion, fd);
-            }}
-            style={{ padding: "8px 16px", background: sel.size ? "#6d4aff" : "#ccc",
-                     color: "#fff", border: "none", borderRadius: 6,
-                     cursor: sel.size ? "pointer" : "default", fontSize: 14 }}>
-            Causar {sel.size ? `(${sel.size})` : ""}
+        <div className="pg-assign">
+          <button className="pg-btn" disabled={!sel.size || pend}
+                  onClick={() => {
+                    const fd = new FormData();
+                    fd.set("cufes", [...sel].join(","));
+                    correr(aprobarCausacion, fd);
+                  }}>
+            {pend ? "Aprobando…" : `Causar${sel.size ? ` (${sel.size})` : ""}`}
           </button>
-          {aprobadas.length > 0 && (
-            <span style={{ fontSize: 13, color: "#666" }}>
-              {aprobadas.length} aprobada(s) esperando al proceso que las escribe en Siigo.
+          {sel.size > 0 && (
+            <span className="hint" style={{ marginLeft: 10 }}>
+              {$(visibles.filter((f) => sel.has(f.cufe)).reduce((a, x) => a + x.total, 0))} en total
             </span>
+          )}
+          {aprobadas.length > 0 && (
+            <button className="pg-btn ghost" disabled={pend}
+                    style={{ marginLeft: "auto" }}
+                    onClick={() => {
+                      const fd = new FormData();
+                      fd.set("cufes", aprobadas.map((f) => f.cufe).join(","));
+                      correr(retirarAprobacion, fd);
+                    }}>
+              Retirar las {aprobadas.length} aprobadas
+            </button>
           )}
         </div>
       )}
 
-      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-        <thead>
-          <tr style={{ textAlign: "left", borderBottom: "1px solid #e5e5e5", color: "#666" }}>
-            {tab === "lista" && puedeAprobar && <th style={{ width: 28 }} />}
-            <th style={{ padding: "8px 6px" }}>Proveedor</th>
-            <th>Factura</th>
-            <th>Fecha</th>
-            <th style={{ textAlign: "right" }}>Valor</th>
-            <th>Concepto</th>
-            <th>Destino</th>
-            {tab === "causada"
-              ? <><th>Siigo</th><th>Causada</th></>
-              : <><th>Cuenta</th><th>C. costo</th></>}
-            {tab === "incompleta" && <th>Qué falta</th>}
-          </tr>
-        </thead>
-        <tbody>
-          {visibles.map((f) => (
-            <tr key={f.cufe} style={{ borderBottom: "1px solid #f2f2f2" }}>
-              {tab === "lista" && puedeAprobar && (
-                <td>
-                  <input type="checkbox" checked={sel.has(f.cufe)}
-                         disabled={f.causacion_estado === "aprobada"}
-                         onChange={() => toggle(f.cufe)} />
-                </td>
-              )}
-              <td style={{ padding: "8px 6px" }}>{f.nombre_proveedor ?? f.nit_proveedor}</td>
-              <td>{f.numero}</td>
-              <td>{fecha(f.fecha_emision)}</td>
-              <td style={{ textAlign: "right" }}>{$(f.total)}</td>
-              <td>{f.concepto ?? <i style={{ color: "#c00" }}>—</i>}</td>
-              <td>{f.destino ?? <i style={{ color: "#c00" }}>—</i>}</td>
-              {tab === "causada" ? (
-                <>
-                  <td>{f.siigo_numero ? `FC ${f.siigo_numero}` : "—"}</td>
-                  <td title={`aprobó ${f.causacion_autorizada_por ?? "—"}`}>{fecha(f.causada_en)}</td>
-                </>
-              ) : (
-                <>
-                  <td title={f.cuenta_origen}>
-                    {f.cuenta ?? <i style={{ color: "#c00" }}>sin cuenta</i>}
-                    {f.cuenta && <span style={{ color: "#999", fontSize: 11, marginLeft: 6 }}>
-                      {f.cuenta_origen}</span>}
+      <div className="pg-col">
+        <div className="pg-col-head">
+          <span className="pg-col-tag">
+            {TABS.find((t) => t.id === tab)!.label} · {visibles.length}
+          </span>
+          <span className="hint">{$(suma(visibles))}</span>
+        </div>
+        <div className="pg-col-body">
+          <table className="pg-tabla">
+            <tbody>
+              {tab === "lista" && puedeAprobar && seleccionables.length > 0 && (
+                <tr>
+                  <td className="pg-chk">
+                    <input type="checkbox" checked={sel.size === seleccionables.length}
+                           onChange={todas} />
                   </td>
-                  <td>{f.centro_costo ?? <i style={{ color: "#c00" }}>—</i>}</td>
-                </>
+                  <td colSpan={7} className="hint">
+                    Seleccionar las {seleccionables.length} que se pueden aprobar
+                  </td>
+                </tr>
               )}
-              {tab === "incompleta" && (
-                <td style={{ color: "#a15", fontSize: 12 }}>{f.falta.join(" · ")}</td>
+              {visibles.map((f) => (
+                <tr key={f.cufe}>
+                  {tab === "lista" && puedeAprobar && (
+                    <td className="pg-chk">
+                      {f.causacion_estado === "aprobada"
+                        ? <span title="ya aprobada, esperando al proceso">⏳</span>
+                        : <input type="checkbox" checked={sel.has(f.cufe)}
+                                 onChange={() => marcar(f.cufe)} />}
+                    </td>
+                  )}
+                  <td>
+                    <b>{f.nombre_proveedor ?? f.nit_proveedor}</b>
+                    <div className="mono">{f.numero} · {dia(f.fecha_emision)}</div>
+                  </td>
+                  <td className="num">{$(f.total)}</td>
+                  <td>
+                    {f.concepto ?? <span style={{ color: "var(--coral)" }}>sin concepto</span>}
+                    <div className="hint">{f.destino ?? "sin destino"}</div>
+                  </td>
+                  {tab === "causada" ? (
+                    <td colSpan={2}>
+                      <b>{f.siigo_numero ? `FC ${f.siigo_numero}` : "en Siigo"}</b>
+                      <div className="hint">
+                        {dia(f.causada_en)}
+                        {f.causacion_autorizada_por ? ` · aprobó ${f.causacion_autorizada_por}` : ""}
+                      </div>
+                    </td>
+                  ) : (
+                    <td colSpan={2}>
+                      {f.cuenta
+                        ? <><span className="mono">{f.cuenta}</span>
+                            <div className="hint">{f.cuenta_origen}
+                              {f.centro_costo ? ` · centro ${f.centro_costo}` : ""}</div></>
+                        : <span style={{ color: "var(--coral)" }}>sin cuenta contable</span>}
+                    </td>
+                  )}
+                  {tab === "incompleta" && (
+                    <td style={{ color: "var(--coral)", fontSize: 11.5 }}>
+                      {f.falta.join(" · ")}
+                    </td>
+                  )}
+                </tr>
+              ))}
+              {!visibles.length && (
+                <tr><td colSpan={8}>
+                  <div className="pg-empty sm">
+                    {tab === "lista"
+                      ? "Nada listo para causar. Lo que falta está en Incompletas, con el motivo."
+                      : tab === "incompleta"
+                        ? "🎉 Ninguna factura trabada."
+                        : "Todavía no se ha causado nada desde el portal."}
+                  </div>
+                </td></tr>
               )}
-            </tr>
-          ))}
-          {!visibles.length && (
-            <tr><td colSpan={10} style={{ padding: 24, color: "#888", textAlign: "center" }}>
-              Nada por acá.
-            </td></tr>
-          )}
-        </tbody>
-      </table>
+            </tbody>
+          </table>
+        </div>
+      </div>
 
       {tab === "causada" && (
-        <p style={{ color: "#888", fontSize: 12, marginTop: 16 }}>
-          Una factura causada no se retira desde el portal: el asiento existe en
-          Siigo y borrarle la marca acá no lo borra allá — solo haría que se
-          causara otra vez. Se anula en Siigo y después se corrige acá.
+        <p className="hint" style={{ marginTop: 14 }}>
+          Una factura causada no se retira desde acá: el asiento existe en Siigo y
+          borrarle la marca no lo borra allá — solo haría que se causara otra vez.
+          Se anula en Siigo y después se corrige acá.
         </p>
       )}
     </main>
