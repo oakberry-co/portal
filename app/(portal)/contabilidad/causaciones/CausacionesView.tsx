@@ -7,6 +7,7 @@ import { ruta } from "@/lib/ruta";
 import type { Resultado } from "@/lib/resultado";
 
 export type CuentaPuc = { codigo: string; nombre: string };
+export type MesCausacion = { mes: string; n: number; sin_causar: number };
 
 export type FilaCausacion = {
   cufe: string; numero: string; nombre_proveedor: string | null; nit_proveedor: string;
@@ -34,8 +35,10 @@ const TABS = [
 ] as const;
 type TabId = (typeof TABS)[number]["id"];
 
-export function CausacionesView({ filas, cuentas, puedeAprobar }:
-  { filas: FilaCausacion[]; cuentas: CuentaPuc[]; puedeAprobar: boolean }) {
+export function CausacionesView({ filas, cuentas, meses, desde, hasta, truncado, tope, puedeAprobar }: {
+  filas: FilaCausacion[]; cuentas: CuentaPuc[]; meses: MesCausacion[];
+  desde: string; hasta: string; truncado: boolean; tope: number; puedeAprobar: boolean;
+}) {
   const [tab, setTab] = useState<TabId>("lista");
   const [sel, setSel] = useState<Set<string>>(new Set());
   const [msg, setMsg] = useState<string | null>(null);
@@ -85,6 +88,16 @@ export function CausacionesView({ filas, cuentas, puedeAprobar }:
         El botón <b>Causar</b> aprueba y deja fija la cuenta contable y el centro de costo.
         Quien escribe en Siigo es el proceso de la VM, que es el que sabe no causar nada dos veces.
       </p>
+
+      <FiltroFechas meses={meses} desde={desde} hasta={hasta} />
+
+      {truncado && (
+        <div className="pg-empty sm">
+          Este rango tiene más de {tope.toLocaleString("es-CO")} facturas y solo se
+          están mostrando las más recientes. <b>Los conteos de abajo son de lo que se
+          ve, no de todo el rango</b> — acota las fechas para que cuadren.
+        </div>
+      )}
 
       <div className="pg-kpis">
         <div className="pg-kpi due">
@@ -366,5 +379,58 @@ function ModalCuenta({ fila, cuentas, pend, onClose, onGuardar }: {
         </div>
       </div>
     </ModalPortal>
+  );
+}
+
+
+/** El rango de fechas, resuelto en la BASE. Los meses vienen con cuántas
+ *  facturas tienen y cuántas siguen sin causar, porque elegir un mes a ciegas
+ *  —y encontrarlo vacío— es hacer buscar a alguien sin brújula. */
+function FiltroFechas({ meses, desde, hasta }: {
+  meses: MesCausacion[]; desde: string; hasta: string;
+}) {
+  const hoy = new Date();
+  const mes = (d: Date) => d.toISOString().slice(0, 7);
+  const esteMes = mes(hoy);
+  const mesAnterior = mes(new Date(hoy.getFullYear(), hoy.getMonth() - 1, 1));
+  const primero = meses.length ? meses[meses.length - 1].mes : esteMes;
+  const pendientes = meses.reduce((a, m) => a + m.sin_causar, 0);
+
+  const link = (d: string, h: string) =>
+    ruta(`/contabilidad/causaciones?desde=${d}&hasta=${h}`);
+  const activo = (d: string, h: string) =>
+    desde === d && hasta === h ? "pg-btn" : "pg-btn ghost";
+
+  return (
+    <div className="pg-assign" style={{ flexWrap: "wrap", gap: 8, alignItems: "center" }}>
+      <a className={activo(`${esteMes}-01`, `${esteMes}-31`)}
+         href={link(`${esteMes}-01`, `${esteMes}-31`)}>Este mes</a>
+      <a className={activo(`${mesAnterior}-01`, `${esteMes}-31`)}
+         href={link(`${mesAnterior}-01`, `${esteMes}-31`)}>Últimos 2 meses</a>
+      <a className={activo(`${mesAnterior}-01`, `${mesAnterior}-31`)}
+         href={link(`${mesAnterior}-01`, `${mesAnterior}-31`)}>Solo {mesAnterior}</a>
+      <a className={activo(`${primero}-01`, `${esteMes}-31`)}
+         href={link(`${primero}-01`, `${esteMes}-31`)}>Todo</a>
+
+      <form style={{ display: "flex", gap: 6, alignItems: "center", marginLeft: "auto" }}>
+        <input type="date" name="desde" defaultValue={desde} aria-label="desde" />
+        <span className="hint">a</span>
+        <input type="date" name="hasta" defaultValue={hasta} aria-label="hasta" />
+        <button className="pg-btn ghost" type="submit">Filtrar</button>
+      </form>
+
+      <div style={{ width: "100%" }}>
+        <span className="hint">
+          Mes a mes, sin causar:{" "}
+          {meses.filter((m) => m.sin_causar > 0).slice(0, 10).map((m) => (
+            <a key={m.mes} href={link(`${m.mes}-01`, `${m.mes}-31`)}
+               style={{ marginRight: 10, whiteSpace: "nowrap" }}>
+              {m.mes} <b>{m.sin_causar}</b>
+            </a>
+          ))}
+          · total pendiente <b>{pendientes}</b>
+        </span>
+      </div>
+    </div>
   );
 }

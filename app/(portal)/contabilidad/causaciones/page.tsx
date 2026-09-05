@@ -6,13 +6,15 @@ import { CausacionesView, type FilaCausacion, type CuentaPuc } from "./Causacion
 
 export const dynamic = "force-dynamic";
 
-// Una fila por factura, con TODO lo que decide si se puede causar ya resuelto en
-// la base. La regla en sí NO se escribe acá: vive en lib/causacion.ts y la usan
-// también el server action y el centinela. Dos copias de un candado es cómo se
-// pagaron 5 cuentas de cobro sin destino en agosto.
+// EL RANGO SE FILTRA EN LA BASE, no en el navegador. Son 4.508 facturas y la
+// pantalla de Conciliación ya enseñó a dónde lleva mandarlas todas: 7,6 MB de
+// HTML y 1,8 s por carga.
 //
-// LIMIT: la pantalla no manda el universo al navegador. Conciliación sí lo hace
-// y son 7,6 MB de HTML por carga; acá se acota desde el principio.
+// Y por eso el tope tiene que AVISAR cuando muerde. La primera versión traía un
+// `LIMIT 800` mudo: los contadores de las pestañas sumaban exactamente 800 y
+// parecían el universo. Un número que miente es peor que no mostrarlo.
+const TOPE = 1200;
+
 const SQL = `
   SELECT f.cufe, f.numero, f.nombre_proveedor, f.nit_proveedor,
          f.fecha_emision::text AS fecha_emision, f.total::float AS total,
@@ -26,13 +28,8 @@ const SQL = `
          md.centro_costo,
          mp.cuenta_puc_default AS cuenta_proveedor,
          mc.cuenta_puc         AS cuenta_concepto,
-         -- ¿La cuenta que se va a usar existe en el plan? Una que no existe o la
-         -- rechaza Siigo, o —peor— entra y el gasto queda en el lugar equivocado
-         -- del balance, que es el P&L de una tienda.
          (SELECT count(*) > 0 FROM maestro_cuentas_puc p
            WHERE p.activo AND p.codigo = coalesce(mp.cuenta_puc_default, mc.cuenta_puc)) AS cuenta_valida,
-         -- Anulada por nota crédito: esa factura ya no existe y causarla sería
-         -- meter en los libros un gasto que el proveedor ya nos devolvió.
          EXISTS (SELECT 1 FROM facturas nc
                   WHERE nc.ref_cufe = f.cufe AND nc.doc_tipo = 'CreditNote') AS anulada
     FROM facturas f
@@ -41,22 +38,46 @@ const SQL = `
     LEFT JOIN maestro_proveedores mp ON mp.nit = f.nit_proveedor AND mp.activo
     LEFT JOIN maestro_conceptos   mc ON mc.nombre = e.concepto AND mc.activo
    WHERE f.doc_tipo = 'Invoice'
+     AND f.fecha_emision >= $1::date AND f.fecha_emision <= $2::date
    ORDER BY f.fecha_emision DESC, f.total DESC
-   LIMIT 800`;
+   LIMIT ${TOPE + 1}`;
 
-export default async function Page() {
+/** Los meses que existen, para que el selector ofrezca lo que hay y no un
+ *  calendario en blanco donde el equipo tenga que adivinar dónde hay facturas. */
+const SQL_MESES = `
+  SELECT to_char(fecha_emision, 'YYYY-MM') AS mes, count(*)::int AS n,
+         count(*) FILTER (WHERE e.causacion_estado IS DISTINCT FROM 'causada')::int AS sin_causar
+    FROM facturas f JOIN factura_estado e USING (cufe)
+   WHERE f.doc_tipo = 'Invoice'
+   GROUP BY 1 ORDER BY 1 DESC`;
+
+function mesDe(d: Date) { return d.toISOString().slice(0, 7); }
+
+export default async function Page({ searchParams }: {
+  searchParams: Promise<{ desde?: string; hasta?: string }>;
+}) {
   const user = await getCurrentUser();
   if (!user || !puede(user.rol, "causar")) {
     return <main style={{ padding: 24 }}>No tienes acceso a Causaciones.</main>;
   }
-  const { rows } = await getPool().query(SQL);
-  // El plan de cuentas, para poder resolver desde la bandeja al proveedor que no
-  // tiene cuenta — que es lo único que traba $18,5M de agosto (Parque Arauco,
-  // MTS). Se fija UNA vez y ese proveedor queda resuelto para siempre.
-  const { rows: cuentas } = await getPool().query<CuentaPuc>(
-    "SELECT codigo, nombre FROM maestro_cuentas_puc WHERE activo ORDER BY codigo");
+  const sp = await searchParams;
+  // Por defecto, este mes y el anterior: es donde está lo que se causa ahora.
+  // Lo viejo sigue accesible con el selector — y hay cola vieja de verdad
+  // (~130 facturas por mes sin causar desde enero).
+  const hoy = new Date();
+  const anterior = new Date(hoy.getFullYear(), hoy.getMonth() - 1, 1);
+  const desde = sp.desde || `${mesDe(anterior)}-01`;
+  const hasta = sp.hasta || `${mesDe(hoy)}-31`;
 
-  const filas: FilaCausacion[] = rows.map((r) => {
+  const pool = getPool();
+  const [{ rows }, { rows: cuentas }, { rows: meses }] = await Promise.all([
+    pool.query(SQL, [desde, hasta]),
+    pool.query<CuentaPuc>("SELECT codigo, nombre FROM maestro_cuentas_puc WHERE activo ORDER BY codigo"),
+    pool.query(SQL_MESES),
+  ]);
+
+  const truncado = rows.length > TOPE;
+  const filas: FilaCausacion[] = rows.slice(0, TOPE).map((r) => {
     const d = {
       concepto: r.concepto, destino: r.destino, retencion_ok: r.retencion_ok,
       centro_costo: r.centro_costo, cuenta_proveedor: r.cuenta_proveedor,
@@ -68,15 +89,15 @@ export default async function Page() {
       ...r,
       carril: carrilDe(d),
       falta: faltaParaCausar(d),
-      // Lo que YA se aprobó manda sobre lo que hoy dirían los maestros: el
-      // asiento tiene que ser el que alguien aprobó, no el que resultaría de
-      // los maestros de hoy.
+      // Lo APROBADO manda sobre lo que hoy dirían los maestros: el asiento tiene
+      // que ser el que alguien aprobó, no el que resultaría de los maestros de hoy.
       cuenta: r.causacion_cuenta_puc ?? cuenta,
       cuenta_origen: r.causacion_cuenta_puc ? "aprobada" : explicarCuenta(fuente),
       centro_costo: r.causacion_centro_costo ?? r.centro_costo,
     } as FilaCausacion;
   });
 
-  return <CausacionesView filas={filas} cuentas={cuentas}
+  return <CausacionesView filas={filas} cuentas={cuentas} meses={meses}
+                          desde={desde} hasta={hasta} truncado={truncado} tope={TOPE}
                           puedeAprobar={puede(user.rol, "causar")} />;
 }
