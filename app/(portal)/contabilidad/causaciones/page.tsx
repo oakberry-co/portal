@@ -2,7 +2,7 @@ import { getPool } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { puede } from "@/lib/permisos";
 import { carrilDe, faltaParaCausar, resolverCuenta, explicarCuenta } from "@/lib/causacion";
-import { CausacionesView, type FilaCausacion } from "./CausacionesView";
+import { CausacionesView, type FilaCausacion, type CuentaPuc } from "./CausacionesView";
 
 export const dynamic = "force-dynamic";
 
@@ -50,6 +50,11 @@ export default async function Page() {
     return <main style={{ padding: 24 }}>No tienes acceso a Causaciones.</main>;
   }
   const { rows } = await getPool().query(SQL);
+  // El plan de cuentas, para poder resolver desde la bandeja al proveedor que no
+  // tiene cuenta — que es lo único que traba $18,5M de agosto (Parque Arauco,
+  // MTS). Se fija UNA vez y ese proveedor queda resuelto para siempre.
+  const { rows: cuentas } = await getPool().query<CuentaPuc>(
+    "SELECT codigo, nombre FROM maestro_cuentas_puc WHERE activo ORDER BY codigo");
 
   const filas: FilaCausacion[] = rows.map((r) => {
     const d = {
@@ -72,5 +77,6 @@ export default async function Page() {
     } as FilaCausacion;
   });
 
-  return <CausacionesView filas={filas} puedeAprobar={puede(user.rol, "causar")} />;
+  return <CausacionesView filas={filas} cuentas={cuentas}
+                          puedeAprobar={puede(user.rol, "causar")} />;
 }

@@ -1,8 +1,11 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
-import { aprobarCausacion, retirarAprobacion } from "./actions";
+import { aprobarCausacion, retirarAprobacion, fijarCuentaProveedor } from "./actions";
+import { ModalPortal } from "../_ui/ModalPortal";
 import type { Resultado } from "@/lib/resultado";
+
+export type CuentaPuc = { codigo: string; nombre: string };
 
 export type FilaCausacion = {
   cufe: string; numero: string; nombre_proveedor: string | null; nit_proveedor: string;
@@ -30,11 +33,12 @@ const TABS = [
 ] as const;
 type TabId = (typeof TABS)[number]["id"];
 
-export function CausacionesView({ filas, puedeAprobar }:
-  { filas: FilaCausacion[]; puedeAprobar: boolean }) {
+export function CausacionesView({ filas, cuentas, puedeAprobar }:
+  { filas: FilaCausacion[]; cuentas: CuentaPuc[]; puedeAprobar: boolean }) {
   const [tab, setTab] = useState<TabId>("lista");
   const [sel, setSel] = useState<Set<string>>(new Set());
   const [msg, setMsg] = useState<string | null>(null);
+  const [cuentaDe, setCuentaDe] = useState<FilaCausacion | null>(null);
   const [pend, start] = useTransition();
 
   const grupos = useMemo(() => ({
@@ -212,6 +216,13 @@ export function CausacionesView({ filas, puedeAprobar }:
                   {tab === "incompleta" && (
                     <td style={{ color: "var(--coral)", fontSize: 11.5 }}>
                       {f.falta.join(" · ")}
+                      {puedeAprobar && !f.cuenta && (
+                        <button type="button" className="pg-btn ghost"
+                                style={{ marginLeft: 8, fontSize: 11 }}
+                                onClick={() => setCuentaDe(f)}>
+                          Fijar cuenta
+                        </button>
+                      )}
                     </td>
                   )}
                 </tr>
@@ -232,6 +243,12 @@ export function CausacionesView({ filas, puedeAprobar }:
         </div>
       </div>
 
+      {cuentaDe && (
+        <ModalCuenta fila={cuentaDe} cuentas={cuentas} pend={pend}
+                     onClose={() => setCuentaDe(null)}
+                     onGuardar={(fd) => { correr(fijarCuentaProveedor, fd); setCuentaDe(null); }} />
+      )}
+
       {tab === "causada" && (
         <p className="hint" style={{ marginTop: 14 }}>
           Una factura causada no se retira desde acá: el asiento existe en Siigo y
@@ -240,5 +257,97 @@ export function CausacionesView({ filas, puedeAprobar }:
         </p>
       )}
     </main>
+  );
+}
+
+
+/** Le fija la cuenta contable a UN PROVEEDOR, no a una factura.
+ *
+ *  Es a propósito: la cuenta es una propiedad del proveedor (acierta 96% contra
+ *  92% del concepto), y fijarla por factura obligaría a repetir la misma decisión
+ *  cada mes. Acá se decide una vez y ese proveedor deja de preguntar — que es lo
+ *  que rompe el círculo de "solo sé causar lo que ya se causó". */
+function ModalCuenta({ fila, cuentas, pend, onClose, onGuardar }: {
+  fila: FilaCausacion; cuentas: CuentaPuc[]; pend: boolean;
+  onClose: () => void; onGuardar: (fd: FormData) => void;
+}) {
+  const [q, setQ] = useState("");
+  const [sel, setSel] = useState<string>("");
+  const filtradas = useMemo(() => {
+    const t = q.trim().toLowerCase();
+    if (!t) return cuentas.slice(0, 40);
+    return cuentas.filter((c) =>
+      c.codigo.includes(t) || c.nombre.toLowerCase().includes(t)).slice(0, 40);
+  }, [q, cuentas]);
+
+  return (
+    <ModalPortal>
+      <div className="modal-backdrop" onMouseDown={onClose}>
+        <div className="modal" onMouseDown={(e) => e.stopPropagation()}>
+          <div className="modal-head">
+            <div>
+              <h3>Cuenta contable del proveedor</h3>
+              <p className="modal-sub">
+                {fila.nombre_proveedor ?? fila.nit_proveedor} · NIT {fila.nit_proveedor}
+              </p>
+            </div>
+            <button type="button" className="modal-x" onClick={onClose}>×</button>
+          </div>
+
+          <p className="modal-nota">
+            Se guarda para <b>este proveedor</b>, no solo para esta factura: todas
+            sus facturas —las de ahora y las que lleguen— se causan con esta cuenta.
+          </p>
+
+          <div className="pg-form">
+            <label>Buscar
+              <input value={q} onChange={(e) => setQ(e.target.value)} autoFocus
+                     placeholder="arriendo, 5220, energía…" />
+            </label>
+          </div>
+
+          <div style={{ maxHeight: 280, overflowY: "auto", margin: "4px 0 12px" }}>
+            <table className="pg-tabla">
+              <tbody>
+                {filtradas.map((c) => (
+                  <tr key={c.codigo} onClick={() => setSel(c.codigo)}
+                      style={{ cursor: "pointer",
+                               background: sel === c.codigo ? "var(--lav-soft)" : undefined }}>
+                    <td style={{ width: 28 }}>
+                      <input type="radio" name="cuenta_sel" checked={sel === c.codigo}
+                             onChange={() => setSel(c.codigo)} />
+                    </td>
+                    <td className="mono" style={{ width: 90 }}>{c.codigo}</td>
+                    <td>{c.nombre}</td>
+                  </tr>
+                ))}
+                {!filtradas.length && (
+                  <tr><td colSpan={3}>
+                    <div className="pg-empty sm">
+                      Ninguna cuenta coincide. Si es una cuenta nueva, cárgala primero
+                      en <b>Maestros</b>: una que Siigo no conoce hace fallar el asiento.
+                    </div>
+                  </td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="modal-foot">
+            <button type="button" className="ghost" onClick={onClose}>Cancelar</button>
+            <button type="button" disabled={!sel || pend}
+                    onClick={() => {
+                      const fd = new FormData();
+                      fd.set("nit", fila.nit_proveedor);
+                      fd.set("nombre", fila.nombre_proveedor ?? "");
+                      fd.set("cuenta", sel);
+                      onGuardar(fd);
+                    }}>
+              {pend ? "Guardando…" : "Fijar para este proveedor"}
+            </button>
+          </div>
+        </div>
+      </div>
+    </ModalPortal>
   );
 }

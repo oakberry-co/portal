@@ -129,11 +129,12 @@ asumiéndolo.
 ```bash
 for t in nit bancos candado_aprobacion permisos documentos retenciones_excel espina_dian \
          desvio_titular nombre_pago modal_portal enlaces_basepath \
-         aislamiento_pruebas; do
+         aislamiento_pruebas causacion; do
   node scripts/test_$t.js; done
 python3 scripts/test_enriquecimiento_xml.py   # base REAL, con ROLLBACK
 python3 scripts/test_intake_a_pagos.py     # contra la base REAL, con ROLLBACK
 python3 scripts/test_cuenta_destino.py     # el desvío de pago; base REAL, con ROLLBACK
+python3 scripts/test_causacion_cuenta.py   # la cuenta del proveedor destraba; base REAL, ROLLBACK
 python3 scripts/test_esquema_reconstruye.py # ¿schema.sql reconstruye la base? (Postgres local)
 ```
 
@@ -188,7 +189,8 @@ Los centinelas de datos (no de código) viven en el otro repo:
 
 | Dónde | Qué |
 |---|---|
-| `app/(portal)/contabilidad/` | el portal interno (conciliación, pagos, maestros, bandejas) |
+| `app/(portal)/contabilidad/` | el portal interno (conciliación, pagos, causaciones, maestros, bandejas) |
+| `lib/causacion.ts` | qué se puede causar y con qué cuenta (módulo puro) |
 | `app/cuentas-de-cobro/`, `app/cotizaciones/`, `app/completar/` | landings PÚBLICAS (fuera del middleware) |
 | `lib/permisos.ts` | capacidades por rol — `ver_*` es leer, el resto es operar |
 | `lib/certificaciones.ts` | el candado de aprobación del intake (módulo puro) |
