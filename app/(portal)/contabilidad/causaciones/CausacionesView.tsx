@@ -5,6 +5,7 @@ import { aprobarCausacion, retirarAprobacion, fijarCuentaProveedor } from "./act
 import { ModalPortal } from "../_ui/ModalPortal";
 import { ruta } from "@/lib/ruta";
 import { finDeMes } from "@/lib/causacion";
+import { isoWeek } from "@/lib/orden-facturas";
 import type { Resultado } from "@/lib/resultado";
 
 export type CuentaPuc = { codigo: string; nombre: string };
@@ -29,6 +30,8 @@ const cop = new Intl.NumberFormat("es-CO", { style: "currency", currency: "COP",
 const $ = (n: number) => cop.format(Math.round(n || 0));
 const dia = (s: string | null) => (s ? s.slice(0, 10) : "—");
 const suma = (f: FilaCausacion[]) => f.reduce((a, x) => a + (x.total || 0), 0);
+const MESES = ["ene", "feb", "mar", "abr", "may", "jun",
+               "jul", "ago", "sep", "oct", "nov", "dic"];
 
 // El orden de las pestañas ES el paso a paso: se entra por la izquierda y se
 // sale por la derecha. Igual que Pagos (pendientes → validación → confirmados).
@@ -48,12 +51,67 @@ export function CausacionesView({ filas, cuentas, meses, desde, hasta, truncado,
   const [msg, setMsg] = useState<string | null>(null);
   const [cuentaDe, setCuentaDe] = useState<FilaCausacion | null>(null);
   const [pend, start] = useTransition();
+  // Los mismos filtros de Conciliación. Aquí son de CLIENTE porque el rango de
+  // fechas ya acotó cuántas filas llegaron: filtrar de nuevo en la base sería
+  // un viaje al servidor por cada tecla.
+  const [q, setQ] = useState("");
+  const [anio, setAnio] = useState("");
+  const [mes, setMes] = useState("");
+  const [sem, setSem] = useState("");
+  const [concepto, setConcepto] = useState("");
+  const [destino, setDestino] = useState("");
+  const [prov, setProv] = useState("");
 
+  // Las opciones salen de lo que HAY en el rango cargado, no de los maestros
+  // completos: ofrecer un concepto que no aparece en ninguna factura de estas
+  // fechas es mandar a alguien a una lista vacía.
+  const opts = useMemo(() => {
+    const anios = new Set<string>(), meses = new Set<string>(), sems = new Set<string>();
+    const cs = new Set<string>(), ds = new Set<string>(), ps = new Set<string>();
+    for (const f of filas) {
+      const d = new Date(`${f.fecha_emision}T00:00:00`);
+      anios.add(f.fecha_emision.slice(0, 4));
+      meses.add(f.fecha_emision.slice(0, 7));
+      sems.add(isoWeek(d));
+      if (f.concepto) cs.add(f.concepto);
+      if (f.destino) ds.add(f.destino);
+      if (f.nombre_proveedor) ps.add(f.nombre_proveedor);
+    }
+    const orden = (x: Set<string>) => [...x].sort();
+    return { anios: orden(anios).reverse(), meses: orden(meses).reverse(),
+             sems: orden(sems).reverse(), conceptos: orden(cs),
+             destinos: orden(ds), provs: orden(ps) };
+  }, [filas]);
+
+  const filtradas = useMemo(() => {
+    const qq = q.trim().toLowerCase();
+    return filas.filter((f) => {
+      if (anio && !f.fecha_emision.startsWith(anio)) return false;
+      if (mes && !f.fecha_emision.startsWith(mes)) return false;
+      if (sem && isoWeek(new Date(`${f.fecha_emision}T00:00:00`)) !== sem) return false;
+      if (concepto && f.concepto !== concepto) return false;
+      if (destino && f.destino !== destino) return false;
+      if (prov && f.nombre_proveedor !== prov) return false;
+      if (qq) {
+        const hay = [f.nombre_proveedor, f.numero, f.nit_proveedor, f.concepto, f.destino]
+          .filter(Boolean).join(" ").toLowerCase();
+        if (!hay.includes(qq)) return false;
+      }
+      return true;
+    });
+  }, [filas, q, anio, mes, sem, concepto, destino, prov]);
+
+  const hayFiltro = !!(q || anio || mes || sem || concepto || destino || prov);
+  const limpiar = () => { setQ(""); setAnio(""); setMes(""); setSem("");
+                          setConcepto(""); setDestino(""); setProv(""); };
+
+  // Los contadores de las pestañas son de lo FILTRADO. Si mostraran el total
+  // mientras la tabla muestra un subconjunto, volveríamos al número que miente.
   const grupos = useMemo(() => ({
-    incompleta: filas.filter((f) => f.carril === "incompleta"),
-    lista: filas.filter((f) => f.carril === "lista"),
-    causada: filas.filter((f) => f.carril === "causada"),
-  }), [filas]);
+    incompleta: filtradas.filter((f) => f.carril === "incompleta"),
+    lista: filtradas.filter((f) => f.carril === "lista"),
+    causada: filtradas.filter((f) => f.carril === "causada"),
+  }), [filtradas]);
 
   const visibles = grupos[tab];
   // Aprobadas esperando al proceso de la VM. No son un cuarto carril: son las
@@ -94,6 +152,50 @@ export function CausacionesView({ filas, cuentas, meses, desde, hasta, truncado,
       </p>
 
       <FiltroFechas meses={meses} desde={desde} hasta={hasta} />
+
+      <div className="filtros">
+        <div className="filtro-search">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+               strokeWidth="2.2" strokeLinecap="round">
+            <circle cx="11" cy="11" r="7" /><path d="m21 21-4.3-4.3" />
+          </svg>
+          <input value={q} onChange={(e) => setQ(e.target.value)}
+                 placeholder="Buscar proveedor, factura, NIT…" />
+        </div>
+        <select value={anio} onChange={(e) => setAnio(e.target.value)}>
+          <option value="">Año</option>
+          {opts.anios.map((a) => <option key={a} value={a}>{a}</option>)}
+        </select>
+        <select value={mes} onChange={(e) => setMes(e.target.value)}>
+          <option value="">Mes</option>
+          {opts.meses.map((mm) => {
+            const [yy, m2] = mm.split("-");
+            return <option key={mm} value={mm}>{MESES[Number(m2) - 1]} {yy}</option>;
+          })}
+        </select>
+        <select value={sem} onChange={(e) => setSem(e.target.value)}>
+          <option value="">Semana</option>
+          {opts.sems.map((x) => {
+            const [yy, w] = x.split("-W");
+            return <option key={x} value={x}>Sem {w} · {yy}</option>;
+          })}
+        </select>
+        <select value={concepto} onChange={(e) => setConcepto(e.target.value)}>
+          <option value="">Concepto</option>
+          {opts.conceptos.map((c) => <option key={c} value={c}>{c}</option>)}
+        </select>
+        <select value={destino} onChange={(e) => setDestino(e.target.value)}>
+          <option value="">Destino</option>
+          {opts.destinos.map((d) => <option key={d} value={d}>{d}</option>)}
+        </select>
+        <select value={prov} onChange={(e) => setProv(e.target.value)}>
+          <option value="">Proveedor</option>
+          {opts.provs.map((p) => <option key={p} value={p}>{p}</option>)}
+        </select>
+        {hayFiltro && (
+          <button type="button" className="filtro-clear" onClick={limpiar}>Limpiar</button>
+        )}
+      </div>
 
       {truncado && (
         <div className="pg-empty sm">
