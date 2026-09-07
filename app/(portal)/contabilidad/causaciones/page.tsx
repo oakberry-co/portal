@@ -29,6 +29,10 @@ const SQL = `
          -- se causa necesita ver qué compró, y mandarlo a buscar el PDF a otra
          -- pantalla es el viaje que hace que no la mire.
          f.link_drive, sop.soporte_url, sop.n_soportes,
+         -- Sospecha de concepto mal puesto. La calcula revisar_clasificacion.py
+         -- en la VM (necesita las líneas del XML, que viven en BigQuery) y la
+         -- deja acá para que el portal solo tenga que mostrarla.
+         al.mensaje AS alerta, al.regla AS alerta_regla,
          md.centro_costo,
          mp.cuenta_puc_default AS cuenta_proveedor,
          mc.cuenta_puc         AS cuenta_concepto,
@@ -42,6 +46,7 @@ const SQL = `
     LEFT JOIN maestro_proveedores mp ON mp.nit = f.nit_proveedor AND mp.activo
     LEFT JOIN maestro_conceptos   mc ON mc.nombre = e.concepto AND mc.activo
     LEFT JOIN v_factura_soportes  sop ON sop.cufe = f.cufe
+    LEFT JOIN clasificacion_alerta al  ON al.cufe = f.cufe
    WHERE f.doc_tipo = 'Invoice'
      AND f.fecha_emision >= $1::date AND f.fecha_emision <= $2::date
    ORDER BY f.fecha_emision DESC, f.total DESC

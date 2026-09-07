@@ -37,12 +37,13 @@ const SQL_ESTADO = `
            WHERE p.activo AND p.codigo = coalesce(mp.cuenta_puc_default, mc.cuenta_puc)) AS cuenta_valida,
          EXISTS (SELECT 1 FROM facturas nc
                   WHERE nc.ref_cufe = e.cufe AND nc.doc_tipo = 'CreditNote') AS anulada,
-         f.numero
+         f.numero, al.mensaje AS alerta
     FROM factura_estado e
     JOIN facturas f ON f.cufe = e.cufe
     LEFT JOIN maestro_destinos    md ON md.nombre = e.destino AND md.activo
     LEFT JOIN maestro_proveedores mp ON mp.nit = f.nit_proveedor AND mp.activo
     LEFT JOIN maestro_conceptos   mc ON mc.nombre = e.concepto AND mc.activo
+    LEFT JOIN clasificacion_alerta al ON al.cufe = e.cufe
    WHERE e.cufe = $1
    FOR UPDATE OF e`;
 
@@ -84,8 +85,13 @@ export async function aprobarCausacion(fd: FormData): Promise<Resultado> {
         await registrarEvento(c, {
           cufe, tipo: "aprueba_causacion", campo: "causacion_estado",
           valorAnterior: { causacion_estado: r.causacion_estado },
+          // Si tenía sospecha de concepto mal puesto, queda ESCRITO que se
+          // aprobó igual. El aviso no bloquea, pero saltárselo no puede ser
+          // invisible: si después el gasto quedó en la línea equivocada del
+          // P&L, la bitácora dice que alguien lo vio y siguió.
           valorNuevo: { causacion_estado: "aprobada", cuenta_puc: cuenta,
-                        centro_costo: r.centro_costo },
+                        centro_costo: r.centro_costo,
+                        ...(r.alerta ? { aprobada_pese_a: r.alerta } : {}) },
           actor: user.email, actorRol: user.rol, origen: "web",
         });
       }

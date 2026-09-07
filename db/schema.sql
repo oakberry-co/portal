@@ -162,6 +162,25 @@ ALTER TABLE factura_estado ADD CONSTRAINT ck_causacion_estado
 CREATE INDEX IF NOT EXISTS ix_estado_causacion ON factura_estado (causacion_estado)
   WHERE causacion_estado IS NOT NULL;
 
+-- SOSPECHA DE CONCEPTO MAL PUESTO. La calcula `revisar_clasificacion.py` en la VM
+-- (necesita las líneas del XML, que viven en BigQuery) y la deja acá para que el
+-- portal solo tenga que mostrarla.
+--
+-- Existe porque causar no tiene reversa y el concepto decide la cuenta contable,
+-- o sea la línea del P&L de una tienda: una factura de agua clasificada como
+-- 'Papelería' no da ningún error, entra, cuadra, y queda mal para siempre.
+--
+-- Una fila por factura y se REESCRIBE en cada corrida: una alerta que ya no
+-- aplica —porque alguien reclasificó— tiene que desaparecer. Dejarla ahí es cómo
+-- un aviso se vuelve ruido que se cierra sin leer.
+CREATE TABLE IF NOT EXISTS clasificacion_alerta (
+  cufe      TEXT PRIMARY KEY REFERENCES facturas(cufe) ON DELETE CASCADE,
+  regla     TEXT NOT NULL,              -- 'proveedor' | 'lineas'
+  mensaje   TEXT NOT NULL,              -- redactado para leerse, con su evidencia
+  valor     NUMERIC(16,2),
+  creado_en TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 -- -----------------------------------------------------------------------------
 -- 4) EVENTOS — LA BITÁCORA. Append-only, encadenada por hash. Verdad de auditoría.
 --    Cada acción (humana o de sistema) deja aquí su rastro: quién, cuándo,

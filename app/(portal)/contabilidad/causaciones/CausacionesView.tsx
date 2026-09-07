@@ -24,6 +24,8 @@ export type FilaCausacion = {
   /** Para poder ABRIR la factura desde acá: el documento oficial de la DIAN (por
    *  CUFE), el PDF del proveedor y el soporte que archivó compras en Drive. */
   link_drive: string | null; soporte_url: string | null; n_soportes: number | null;
+  /** Sospecha de que el concepto está mal puesto. No bloquea: avisa. */
+  alerta: string | null; alerta_regla: string | null;
 };
 
 const cop = new Intl.NumberFormat("es-CO", { style: "currency", currency: "COP", maximumFractionDigits: 0 });
@@ -221,6 +223,11 @@ export function CausacionesView({ filas, cuentas, meses, desde, hasta, truncado,
           <b>{$(suma(grupos.incompleta))}</b>
           <span>{grupos.incompleta.length} factura(s) sin poder causarse</span>
         </div>
+        <div className="pg-kpi due">
+          <i>Concepto en duda</i>
+          <b>{filtradas.filter((f) => f.alerta && f.carril !== "causada").length}</b>
+          <span>revisar antes de causar</span>
+        </div>
         <div className="pg-kpi paid">
           <i>Causadas</i>
           <b>{grupos.causada.length}</b>
@@ -251,6 +258,16 @@ export function CausacionesView({ filas, cuentas, meses, desde, hasta, truncado,
         <div className="pg-assign">
           <button className="pg-btn" disabled={!sel.size || pend}
                   onClick={() => {
+                    // Con una sospecha adentro, se pregunta. Causar no tiene
+                    // reversa: el asiento queda en Siigo y anularlo es un
+                    // trámite a mano. No bloquea —el aviso se equivoca a
+                    // veces— pero tampoco deja aprobarlo sin haberlo leído.
+                    const dudosas = visibles.filter((f) => sel.has(f.cufe) && f.alerta);
+                    if (dudosas.length && !confirm(
+                        `${dudosas.length} de las seleccionadas tienen el concepto en duda:\n\n` +
+                        dudosas.slice(0, 5).map((f) => `· ${f.numero} — ${f.alerta}`).join("\n") +
+                        (dudosas.length > 5 ? `\n· …y ${dudosas.length - 5} más` : "") +
+                        `\n\nCausar no tiene reversa. ¿Seguir de todos modos?`)) return;
                     const fd = new FormData();
                     fd.set("cufes", [...sel].join(","));
                     correr(aprobarCausacion, fd);
@@ -315,7 +332,15 @@ export function CausacionesView({ filas, cuentas, meses, desde, hasta, truncado,
                   <td className="num">{$(f.total)}</td>
                   <td>
                     {f.concepto ?? <span style={{ color: "var(--coral)" }}>sin concepto</span>}
+                    {f.alerta && (
+                      <span title={f.alerta} style={{ marginLeft: 6, cursor: "help" }}>⚠️</span>
+                    )}
                     <div className="hint">{f.destino ?? "sin destino"}</div>
+                    {f.alerta && (
+                      <div style={{ color: "var(--coral)", fontSize: 11, maxWidth: 340 }}>
+                        {f.alerta}
+                      </div>
+                    )}
                   </td>
                   {tab === "causada" ? (
                     <td colSpan={2}>
