@@ -18,6 +18,9 @@ export type MesEmbudo = {
   con_concepto: number; con_destino: number; con_retencion: number;
   causadas: number; anuladas: number; por_fuera: number;
   por_fuera_valor: number; actualizado_en: string;
+  /** El sentido inverso, anclado a la fecha del documento EN SIIGO. */
+  siigo_causadas: number | null; siigo_sin_dian: number | null;
+  siigo_sin_dian_valor: number | null;
 };
 
 export type FilaCausacion = {
@@ -642,6 +645,9 @@ function Embudo({ filas }: { filas: MesEmbudo[] }) {
   };
   const tot = filas.reduce((a, f) => a + f.por_fuera, 0);
   const totV = filas.reduce((a, f) => a + (f.por_fuera_valor || 0), 0);
+  // El cruce inverso solo existe desde agosto: es cuando el proceso se empezó a
+  // operar con juicio, y antes el número diría más del desorden que de la realidad.
+  const inverso = filas.filter((f) => f.siigo_causadas != null);
 
   return (
     <div className="pg-col">
@@ -680,13 +686,46 @@ function Embudo({ filas }: { filas: MesEmbudo[] }) {
           </tbody>
         </table>
       </div>
+      {inverso.length > 0 && (
+        <>
+          <div className="pg-col-head" style={{ borderTop: "1px solid var(--border)" }}>
+            <span className="pg-col-tag">Al revés · de lo causado, ¿qué no tiene factura?</span>
+          </div>
+          <div className="pg-col-body">
+            <table className="pg-tabla">
+              <tbody>
+                {inverso.map((f) => (
+                  <tr key={f.mes}>
+                    <td style={{ padding: "8px 12px" }}><b>{f.mes}</b></td>
+                    <td className="num">{f.siigo_causadas}
+                      <div className="hint">causadas en Siigo</div></td>
+                    <td className="num"
+                        style={{ color: f.siigo_sin_dian ? "var(--coral)" : undefined }}>
+                      {f.siigo_sin_dian}
+                      <div className="hint">{$(f.siigo_sin_dian_valor || 0)} sin factura DIAN</div>
+                    </td>
+                    <td className="hint">
+                      Son cuentas de cobro legítimas —arriendos por fiducia— mezcladas
+                      con fuga de captura. Separarlas es lo que dice cuánto de esto es
+                      normal y cuánto es soporte que nos falta.
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+
       <div style={{ padding: "10px 14px" }}>
         <p className="hint" style={{ margin: 0 }}>
           <b>Capturadas</b> y <b>Causadas</b> se miden contra lo que dice la DIAN;
           concepto, destino y retención contra lo capturado — pedirle concepto a
           una factura cuyo XML no tenemos sería contar el mismo hueco dos veces.
           Las anuladas por nota crédito no entran en «por fuera»: no se causan.
-          El barrido DIAN empieza en mayo de 2026; antes no hay contra qué medir.
+          El barrido DIAN empieza en <b>mayo de 2026</b> y el proceso se empezó a
+          operar con juicio en <b>agosto</b>: los meses anteriores dicen más del
+          desorden de entonces que de cómo se trabaja hoy.
         </p>
       </div>
     </div>

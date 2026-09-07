@@ -102,6 +102,8 @@ export default async function Page({ searchParams }: {
     pool.query<MesEmbudo>(`SELECT mes, dian, dian_valor::float AS dian_valor, capturadas,
                                   con_concepto, con_destino, con_retencion, causadas,
                                   anuladas, por_fuera, por_fuera_valor::float AS por_fuera_valor,
+                                  siigo_causadas, siigo_sin_dian,
+                                  siigo_sin_dian_valor::float AS siigo_sin_dian_valor,
                                   actualizado_en::text AS actualizado_en
                              FROM dashboard_causacion_mes ORDER BY mes DESC`)
       .catch(() => ({ rows: [] as MesEmbudo[] })),

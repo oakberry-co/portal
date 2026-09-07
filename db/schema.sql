@@ -197,6 +197,14 @@ CREATE TABLE IF NOT EXISTS dashboard_causacion_mes (
   anuladas        INT NOT NULL DEFAULT 0,    -- por nota crédito: NO se causan
   por_fuera       INT NOT NULL DEFAULT 0,    -- el residuo real, sin las anuladas
   por_fuera_valor NUMERIC(18,2),
+  -- EL SENTIDO INVERSO: de lo que causamos, ¿qué NO tiene factura electrónica?
+  -- Son cuentas de cobro legítimas (arriendos por fiducia) mezcladas con fuga de
+  -- captura. Va anclado a la fecha del documento EN SIIGO, no a la de emisión
+  -- DIAN: mezclarlos en una fila sería una mentira sutil, porque una factura de
+  -- julio causada en agosto caería en dos meses según qué columna se lea.
+  siigo_causadas       INT,
+  siigo_sin_dian       INT,
+  siigo_sin_dian_valor NUMERIC(18,2),
   actualizado_en  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
