@@ -317,20 +317,52 @@ def fetch_maestros(tenant: str):
 def fetch_dashboard_semana(tenant: str):
     """Snapshot semanal para el Dashboard: universo DIAN vs capturado + causadas
     en Siigo, por semana ISO de emisión. La app NO se monta sobre BQ → esto lo
-    computa la VM y lo deja en Postgres."""
+    computa la VM y lo deja en Postgres.
+
+    CAUSADAS son las que están en SIIGO, no las que causó este sistema.
+    Hasta el 7-sep-2026 esta consulta cruzaba solo contra `causacion_log` —el log
+    de lo que causa el portal, que tenía CERO filas— y el tablero mostraba
+    «Causadas 0%» cuando el contador ya llevaba 615 de 640 en agosto. Un número
+    que dice 0 donde la realidad es 96% no es un dato incompleto: es una alarma
+    falsa que hace desconfiar del tablero entero.
+
+    El cruce es el mismo de todo el módulo y por las mismas razones: `purchases`
+    ∪ `journals` (muchas se causan como comprobante contable) ∪ el log propio (lo
+    de HOY todavía no está en el espejo, que se refresca una vez al día), y por
+    NIT + consecutivo NUMÉRICO porque Siigo reasigna el prefijo.
+
+    Además deduplica el universo DIAN por CUFE: `dian_recibidos` trae 3.384 filas
+    para 3.093 documentos y sin agrupar el denominador queda inflado.
+    """
     bq = bigquery.Client(project=PROJECT)
     return [dict(r) for r in bq.query(f"""
-        WITH cap  AS (SELECT DISTINCT cufe FROM `{PROJECT}.facturacion.facturas` WHERE tenant = '{tenant}'),
-             caus AS (SELECT DISTINCT cufe FROM `{PROJECT}.facturacion.causacion_log`)
-        SELECT FORMAT_DATE('%G-S%V', d.fecha_emision) AS semana,
+        WITH d AS (
+          SELECT cufe, ANY_VALUE(nit_emisor) AS nit,
+                 SAFE_CAST(REGEXP_REPLACE(ANY_VALUE(folio), r"\\D", "") AS INT64) AS num,
+                 FORMAT_DATE('%G-S%V', MIN(fecha_emision)) AS semana
+            FROM `{PROJECT}.facturacion.dian_recibidos`
+           WHERE tenant = '{tenant}' AND fecha_emision IS NOT NULL
+           GROUP BY cufe),
+        cap AS (SELECT DISTINCT cufe FROM `{PROJECT}.facturacion.facturas` WHERE tenant = '{tenant}'),
+        siigo AS (
+          SELECT DISTINCT JSON_VALUE(payload,"$.supplier.identification") AS nit,
+                 SAFE_CAST(REGEXP_REPLACE(JSON_VALUE(payload,"$.provider_invoice.number"), r"\\D", "") AS INT64) AS num
+            FROM `{PROJECT}.raw_siigo.purchases`
+          UNION DISTINCT
+          SELECT DISTINCT JSON_VALUE(it,"$.customer.identification"),
+                 SAFE_CAST(REGEXP_REPLACE(JSON_VALUE(it,"$.due.consecutive"), r"\\D", "") AS INT64)
+            FROM `{PROJECT}.raw_siigo.journals` j, UNNEST(JSON_EXTRACT_ARRAY(payload,"$.items")) it
+          UNION DISTINCT
+          SELECT DISTINCT nit, SAFE_CAST(REGEXP_REPLACE(numero, r"\\D", "") AS INT64)
+            FROM `{PROJECT}.facturacion.causacion_log` WHERE estado = 'causada')
+        SELECT d.semana,
                COUNT(*) AS dian,
                COUNTIF(c.cufe IS NOT NULL) AS capturadas,
-               COUNTIF(cz.cufe IS NOT NULL) AS causadas
-        FROM `{PROJECT}.facturacion.dian_recibidos` d
-        LEFT JOIN cap  c  ON c.cufe = d.cufe
-        LEFT JOIN caus cz ON cz.cufe = d.cufe
-        WHERE d.tenant = '{tenant}' AND d.fecha_emision IS NOT NULL
-        GROUP BY 1
+               COUNTIF(s.nit IS NOT NULL) AS causadas
+          FROM d
+          LEFT JOIN cap   c ON c.cufe = d.cufe
+          LEFT JOIN siigo s ON s.nit = d.nit AND s.num = d.num
+         GROUP BY 1
     """).result()]
 
 

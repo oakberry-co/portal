@@ -619,8 +619,10 @@ function Documentos({ f }: { f: FilaCausacion }) {
  *  la DIAN como piso, la fuga de captura se ve como lo que es — plata sin
  *  soporte del IVA ni deducción del costo.
  *
- *  Las anuladas por nota crédito salen del residuo: no se causan, así que
- *  contarlas como pendientes mostraría un hueco que no existe. */
+ *  Usa las mismas clases del Dashboard (dsh-*) y no unas propias: es la misma
+ *  clase de tabla y quien lee una tiene que poder leer la otra sin recalibrar
+ *  qué significa un verde.
+ */
 function Embudo({ filas }: { filas: MesEmbudo[] }) {
   if (!filas.length) {
     return (
@@ -631,83 +633,115 @@ function Embudo({ filas }: { filas: MesEmbudo[] }) {
     );
   }
   const p = (x: number, n: number) => (n ? Math.round((100 * x) / n) : 0);
-  const bar = (x: number, n: number) => {
-    const v = p(x, n);
-    return (
-      <div title={`${x} de ${n} · ${v}%`}>
-        <div style={{ background: "var(--lav-soft)", borderRadius: 3, height: 6, width: 76 }}>
-          <div style={{ background: v >= 90 ? "var(--ok)" : v >= 60 ? "var(--purple)" : "var(--coral)",
-                        width: `${v}%`, height: 6, borderRadius: 3 }} />
-        </div>
-        <span className="hint">{x} · {v}%</span>
-      </div>
-    );
-  };
-  const tot = filas.reduce((a, f) => a + f.por_fuera, 0);
-  const totV = filas.reduce((a, f) => a + (f.por_fuera_valor || 0), 0);
-  // El cruce inverso solo existe desde agosto: es cuando el proceso se empezó a
-  // operar con juicio, y antes el número diría más del desorden que de la realidad.
+  const heat = (v: number) => (v >= 75 ? "hi" : v >= 40 ? "mid" : "lo");
+  const M = (n: number) => (n >= 1_000_000 ? `$${(n / 1_000_000).toFixed(1)}M` : $(n));
+
+  const T = filas.reduce((a, f) => ({
+    dian: a.dian + f.dian, cap: a.cap + f.capturadas,
+    con: a.con + f.con_concepto, des: a.des + f.con_destino,
+    ret: a.ret + f.con_retencion, cau: a.cau + f.causadas,
+    fuera: a.fuera + f.por_fuera, fueraV: a.fueraV + (f.por_fuera_valor || 0),
+    sinDian: a.sinDian + (f.siigo_sin_dian || 0),
+    sinDianV: a.sinDianV + (f.siigo_sin_dian_valor || 0),
+  }), { dian: 0, cap: 0, con: 0, des: 0, ret: 0, cau: 0, fuera: 0, fueraV: 0,
+        sinDian: 0, sinDianV: 0 });
+  const maxVal = Math.max(1, ...filas.map((f) => f.dian_valor || 0));
   const inverso = filas.filter((f) => f.siigo_causadas != null);
 
   return (
-    <div className="pg-col">
-      <div className="pg-col-head">
-        <span className="pg-col-tag">Embudo mensual · contra el universo DIAN</span>
-        <span className="hint">sin causar en el período: {tot} facturas · {$(totV)}</span>
+    <div>
+      <p className="sub" style={{ marginTop: 4 }}>
+        El embudo <b>mes a mes</b>, medido contra <b>lo que dice la DIAN</b> y no
+        contra lo que alcanzamos a capturar: si el buzón deja de recibir, medirse
+        contra uno mismo hace <em>subir</em> el porcentaje.
+      </p>
+
+      <div className="dsh-cards">
+        <div className="dsh-card"><i>Universo DIAN</i><b>{T.dian.toLocaleString("es-CO")}</b>
+          <span>{M(filas.reduce((a, f) => a + (f.dian_valor || 0), 0))}</span></div>
+        <div className="dsh-card"><i>Captura</i><b>{p(T.cap, T.dian)}%</b>
+          <span>fuga {T.dian - T.cap}</span></div>
+        <div className="dsh-card"><i>Con concepto</i><b>{p(T.con, T.cap)}%</b>
+          <span>de lo capturado</span></div>
+        <div className="dsh-card"><i>Con destino</i><b>{p(T.des, T.cap)}%</b>
+          <span>tienda / c. de costo</span></div>
+        <div className="dsh-card"><i>Retención</i><b>{p(T.ret, T.cap)}%</b>
+          <span>confirmada por el contador</span></div>
+        <div className="dsh-card hl"><i>Causadas (Siigo)</i><b>{p(T.cau, T.dian)}%</b>
+          <span>del universo DIAN</span></div>
+        <div className="dsh-card"><i>Quedó por fuera</i><b>{T.fuera}</b>
+          <span>{M(T.fueraV)} sin causar</span></div>
+        {inverso.length > 0 && (
+          <div className="dsh-card"><i>Causado sin factura</i><b>{T.sinDian}</b>
+            <span>{M(T.sinDianV)} · cuentas de cobro + fuga</span></div>
+        )}
       </div>
-      <div className="pg-col-body">
-        <table className="pg-tabla">
-          <thead>
-            <tr>
-              <th style={{ padding: "8px 12px", textAlign: "left" }}>Mes</th>
-              <th style={{ textAlign: "right" }}>DIAN dice</th>
-              <th>Capturadas</th><th>Con concepto</th><th>Con destino</th>
-              <th>Retención</th><th>CAUSADAS</th>
-              <th style={{ textAlign: "right" }}>Quedó por fuera</th>
-            </tr>
-          </thead>
+
+      <div className="dsh-wrap">
+        <table className="dsh-tabla">
+          <thead><tr>
+            <th>Mes</th><th className="num">DIAN dice</th><th>Valor facturado</th>
+            <th className="num">Captura</th><th className="num">Concepto</th>
+            <th className="num">Destino</th><th className="num">Retención</th>
+            <th className="num">Causadas</th><th className="num">Por fuera</th>
+          </tr></thead>
           <tbody>
-            {filas.map((f) => (
-              <tr key={f.mes}>
-                <td style={{ padding: "8px 12px" }}><b>{f.mes}</b></td>
-                <td className="num">{f.dian}<div className="hint">{$(f.dian_valor)}</div></td>
-                <td>{bar(f.capturadas, f.dian)}</td>
-                <td>{bar(f.con_concepto, f.capturadas)}</td>
-                <td>{bar(f.con_destino, f.capturadas)}</td>
-                <td>{bar(f.con_retencion, f.capturadas)}</td>
-                <td>{bar(f.causadas, f.dian)}</td>
-                <td className="num" style={{ color: f.por_fuera ? "var(--coral)" : undefined }}>
-                  {f.por_fuera}
-                  <div className="hint">{$(f.por_fuera_valor)}
-                    {f.anuladas ? ` · ${f.anuladas} anuladas aparte` : ""}</div>
-                </td>
-              </tr>
-            ))}
+            {filas.map((f) => {
+              const cap = p(f.capturadas, f.dian), con = p(f.con_concepto, f.capturadas);
+              const des = p(f.con_destino, f.capturadas), ret = p(f.con_retencion, f.capturadas);
+              const cau = p(f.causadas, f.dian);
+              return (
+                <tr key={f.mes}>
+                  <td className="mono">{f.mes}</td>
+                  <td className="num">{f.dian}</td>
+                  <td>
+                    <div className="dsh-val">{M(f.dian_valor || 0)}</div>
+                    <div className="dsh-bar">
+                      <span style={{ width: `${((f.dian_valor || 0) / maxVal) * 100}%` }} />
+                    </div>
+                  </td>
+                  <td className={"num heat " + heat(cap)}
+                      title={`fuga ${f.dian - f.capturadas} de ${f.dian}`}>{cap}%</td>
+                  <td className={"num heat " + heat(con)}>{con}%</td>
+                  <td className={"num heat " + heat(des)}>{des}%</td>
+                  <td className={"num heat " + heat(ret)}>{ret}%</td>
+                  <td className={"num heat " + heat(cau)}
+                      title={`${f.causadas} de ${f.dian}`}>{cau}%</td>
+                  <td className="num" title={f.anuladas ? `${f.anuladas} anuladas aparte` : ""}>
+                    <b style={{ color: f.por_fuera ? "var(--coral)" : undefined }}>{f.por_fuera}</b>
+                    <div className="muted" style={{ fontSize: 10.5 }}>{M(f.por_fuera_valor || 0)}</div>
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
+
       {inverso.length > 0 && (
         <>
-          <div className="pg-col-head" style={{ borderTop: "1px solid var(--border)" }}>
-            <span className="pg-col-tag">Al revés · de lo causado, ¿qué no tiene factura?</span>
-          </div>
-          <div className="pg-col-body">
-            <table className="pg-tabla">
+          <h2 style={{ fontSize: 15, marginTop: 22 }}>Al revés · de lo causado, ¿qué no tiene factura?</h2>
+          <div className="dsh-wrap">
+            <table className="dsh-tabla">
+              <thead><tr>
+                <th>Mes</th><th className="num">Causadas en Siigo</th>
+                <th className="num">Sin factura DIAN</th><th>Qué significa</th>
+              </tr></thead>
               <tbody>
                 {inverso.map((f) => (
                   <tr key={f.mes}>
-                    <td style={{ padding: "8px 12px" }}><b>{f.mes}</b></td>
-                    <td className="num">{f.siigo_causadas}
-                      <div className="hint">causadas en Siigo</div></td>
-                    <td className="num"
-                        style={{ color: f.siigo_sin_dian ? "var(--coral)" : undefined }}>
-                      {f.siigo_sin_dian}
-                      <div className="hint">{$(f.siigo_sin_dian_valor || 0)} sin factura DIAN</div>
+                    <td className="mono">{f.mes}</td>
+                    <td className="num">{f.siigo_causadas}</td>
+                    <td className="num">
+                      <b style={{ color: f.siigo_sin_dian ? "var(--coral)" : undefined }}>
+                        {f.siigo_sin_dian}</b>
+                      <div className="muted" style={{ fontSize: 10.5 }}>
+                        {M(f.siigo_sin_dian_valor || 0)}</div>
                     </td>
-                    <td className="hint">
-                      Son cuentas de cobro legítimas —arriendos por fiducia— mezcladas
-                      con fuga de captura. Separarlas es lo que dice cuánto de esto es
-                      normal y cuánto es soporte que nos falta.
+                    <td className="muted">
+                      Cuentas de cobro legítimas —arriendos por fiducia— mezcladas con
+                      fuga de captura. Separarlas dice cuánto es normal y cuánto es
+                      soporte que falta.
                     </td>
                   </tr>
                 ))}
@@ -717,17 +751,16 @@ function Embudo({ filas }: { filas: MesEmbudo[] }) {
         </>
       )}
 
-      <div style={{ padding: "10px 14px" }}>
-        <p className="hint" style={{ margin: 0 }}>
-          <b>Capturadas</b> y <b>Causadas</b> se miden contra lo que dice la DIAN;
-          concepto, destino y retención contra lo capturado — pedirle concepto a
-          una factura cuyo XML no tenemos sería contar el mismo hueco dos veces.
-          Las anuladas por nota crédito no entran en «por fuera»: no se causan.
-          El barrido DIAN empieza en <b>mayo de 2026</b> y el proceso se empezó a
-          operar con juicio en <b>agosto</b>: los meses anteriores dicen más del
-          desorden de entonces que de cómo se trabaja hoy.
-        </p>
-      </div>
+      <p className="chain-note">
+        <b>Captura</b> y <b>Causadas</b> se miden contra lo que dice la DIAN;
+        concepto, destino y retención contra lo capturado — pedirle concepto a una
+        factura cuyo XML no tenemos sería contar el mismo hueco dos veces. Las
+        anuladas por nota crédito no entran en «por fuera»: no se causan. El cruce
+        de abajo va anclado a la fecha del documento <em>en Siigo</em>, no a la de
+        emisión. El barrido DIAN empieza en <b>mayo de 2026</b> y el proceso se
+        opera con juicio desde <b>agosto</b>: los meses anteriores dicen más del
+        desorden de entonces que de cómo se trabaja hoy.
+      </p>
     </div>
   );
 }
