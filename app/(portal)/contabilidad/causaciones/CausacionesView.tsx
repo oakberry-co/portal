@@ -10,6 +10,15 @@ import type { Resultado } from "@/lib/resultado";
 
 export type CuentaPuc = { codigo: string; nombre: string };
 export type MesCausacion = { mes: string; n: number; sin_causar: number };
+/** El embudo mensual medido contra el universo DIAN, no contra lo que
+ *  capturamos: medirse contra uno mismo hace que el % SUBA cuando el buzón
+ *  deja de recibir. */
+export type MesEmbudo = {
+  mes: string; dian: number; dian_valor: number; capturadas: number;
+  con_concepto: number; con_destino: number; con_retencion: number;
+  causadas: number; anuladas: number; por_fuera: number;
+  por_fuera_valor: number; actualizado_en: string;
+};
 
 export type FilaCausacion = {
   cufe: string; numero: string; nombre_proveedor: string | null; nit_proveedor: string;
@@ -41,11 +50,12 @@ const TABS = [
   { id: "incompleta", label: "Incompletas" },
   { id: "lista", label: "Listas para causar" },
   { id: "causada", label: "Causadas" },
+  { id: "resumen", label: "Resumen mes a mes" },
 ] as const;
 type TabId = (typeof TABS)[number]["id"];
 
-export function CausacionesView({ filas, cuentas, meses, desde, hasta, truncado, tope, puedeAprobar }: {
-  filas: FilaCausacion[]; cuentas: CuentaPuc[]; meses: MesCausacion[];
+export function CausacionesView({ filas, cuentas, meses, embudo, desde, hasta, truncado, tope, puedeAprobar }: {
+  filas: FilaCausacion[]; cuentas: CuentaPuc[]; meses: MesCausacion[]; embudo: MesEmbudo[];
   desde: string; hasta: string; truncado: boolean; tope: number; puedeAprobar: boolean;
 }) {
   const [tab, setTab] = useState<TabId>("lista");
@@ -113,6 +123,7 @@ export function CausacionesView({ filas, cuentas, meses, desde, hasta, truncado,
     incompleta: filtradas.filter((f) => f.carril === "incompleta"),
     lista: filtradas.filter((f) => f.carril === "lista"),
     causada: filtradas.filter((f) => f.carril === "causada"),
+    resumen: [] as FilaCausacion[],
   }), [filtradas]);
 
   const visibles = grupos[tab];
@@ -239,7 +250,7 @@ export function CausacionesView({ filas, cuentas, meses, desde, hasta, truncado,
         {TABS.map((t) => (
           <button key={t.id} className={tab === t.id ? "on" : ""}
                   onClick={() => { setTab(t.id); setSel(new Set()); }}>
-            {t.label}<i>{grupos[t.id].length}</i>
+            {t.label}{t.id !== "resumen" && <i>{grupos[t.id].length}</i>}
           </button>
         ))}
       </div>
@@ -293,6 +304,7 @@ export function CausacionesView({ filas, cuentas, meses, desde, hasta, truncado,
         </div>
       )}
 
+      {tab === "resumen" ? <Embudo filas={embudo} /> : (
       <div className="pg-col">
         <div className="pg-col-head">
           <span className="pg-col-tag">
@@ -404,6 +416,7 @@ export function CausacionesView({ filas, cuentas, meses, desde, hasta, truncado,
           </table>
         </div>
       </div>
+      )}
 
       {cuentaDe && (
         <ModalCuenta fila={cuentaDe} cuentas={cuentas} pend={pend}
@@ -592,5 +605,90 @@ function Documentos({ f }: { f: FilaCausacion }) {
         </a>
       )}
     </span>
+  );
+}
+
+
+/** EL EMBUDO, mes a mes y contra la VERDAD.
+ *
+ *  El denominador es el universo DIAN, no lo que capturamos. Medirse contra uno
+ *  mismo tiene una trampa: si el buzón deja de recibir, el porcentaje SUBE. Con
+ *  la DIAN como piso, la fuga de captura se ve como lo que es — plata sin
+ *  soporte del IVA ni deducción del costo.
+ *
+ *  Las anuladas por nota crédito salen del residuo: no se causan, así que
+ *  contarlas como pendientes mostraría un hueco que no existe. */
+function Embudo({ filas }: { filas: MesEmbudo[] }) {
+  if (!filas.length) {
+    return (
+      <div className="pg-empty">
+        Todavía no hay resumen. Lo calcula <b>dashboard_causacion.py</b> en el
+        ciclo diario de las 8:00.
+      </div>
+    );
+  }
+  const p = (x: number, n: number) => (n ? Math.round((100 * x) / n) : 0);
+  const bar = (x: number, n: number) => {
+    const v = p(x, n);
+    return (
+      <div title={`${x} de ${n} · ${v}%`}>
+        <div style={{ background: "var(--lav-soft)", borderRadius: 3, height: 6, width: 76 }}>
+          <div style={{ background: v >= 90 ? "var(--ok)" : v >= 60 ? "var(--purple)" : "var(--coral)",
+                        width: `${v}%`, height: 6, borderRadius: 3 }} />
+        </div>
+        <span className="hint">{x} · {v}%</span>
+      </div>
+    );
+  };
+  const tot = filas.reduce((a, f) => a + f.por_fuera, 0);
+  const totV = filas.reduce((a, f) => a + (f.por_fuera_valor || 0), 0);
+
+  return (
+    <div className="pg-col">
+      <div className="pg-col-head">
+        <span className="pg-col-tag">Embudo mensual · contra el universo DIAN</span>
+        <span className="hint">sin causar en el período: {tot} facturas · {$(totV)}</span>
+      </div>
+      <div className="pg-col-body">
+        <table className="pg-tabla">
+          <thead>
+            <tr>
+              <th style={{ padding: "8px 12px", textAlign: "left" }}>Mes</th>
+              <th style={{ textAlign: "right" }}>DIAN dice</th>
+              <th>Capturadas</th><th>Con concepto</th><th>Con destino</th>
+              <th>Retención</th><th>CAUSADAS</th>
+              <th style={{ textAlign: "right" }}>Quedó por fuera</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filas.map((f) => (
+              <tr key={f.mes}>
+                <td style={{ padding: "8px 12px" }}><b>{f.mes}</b></td>
+                <td className="num">{f.dian}<div className="hint">{$(f.dian_valor)}</div></td>
+                <td>{bar(f.capturadas, f.dian)}</td>
+                <td>{bar(f.con_concepto, f.capturadas)}</td>
+                <td>{bar(f.con_destino, f.capturadas)}</td>
+                <td>{bar(f.con_retencion, f.capturadas)}</td>
+                <td>{bar(f.causadas, f.dian)}</td>
+                <td className="num" style={{ color: f.por_fuera ? "var(--coral)" : undefined }}>
+                  {f.por_fuera}
+                  <div className="hint">{$(f.por_fuera_valor)}
+                    {f.anuladas ? ` · ${f.anuladas} anuladas aparte` : ""}</div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div style={{ padding: "10px 14px" }}>
+        <p className="hint" style={{ margin: 0 }}>
+          <b>Capturadas</b> y <b>Causadas</b> se miden contra lo que dice la DIAN;
+          concepto, destino y retención contra lo capturado — pedirle concepto a
+          una factura cuyo XML no tenemos sería contar el mismo hueco dos veces.
+          Las anuladas por nota crédito no entran en «por fuera»: no se causan.
+          El barrido DIAN empieza en mayo de 2026; antes no hay contra qué medir.
+        </p>
+      </div>
+    </div>
   );
 }

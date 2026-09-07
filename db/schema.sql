@@ -173,6 +173,33 @@ CREATE INDEX IF NOT EXISTS ix_estado_causacion ON factura_estado (causacion_esta
 -- Una fila por factura y se REESCRIBE en cada corrida: una alerta que ya no
 -- aplica —porque alguien reclasificó— tiene que desaparecer. Dejarla ahí es cómo
 -- un aviso se vuelve ruido que se cierra sin leer.
+-- EL EMBUDO MENSUAL DE CAUSACIÓN, medido contra el universo DIAN.
+--
+-- El denominador es lo que la DIAN dice que nos facturaron, no lo que nosotros
+-- capturamos: medirse contra uno mismo tiene una trampa —si el buzón deja de
+-- recibir, el porcentaje SUBE—. Con la DIAN como piso, la fuga de captura se ve
+-- como lo que es: plata sin soporte del IVA ni deducción del costo.
+--
+-- La calcula `dashboard_causacion.py` en la VM y la empuja acá, igual que
+-- `dashboard_semana`: el universo DIAN vive en BigQuery y la app no se monta
+-- sobre BQ. Concepto, destino y retención se cuentan sobre lo CAPTURADO —
+-- pedirle concepto a una factura cuyo XML no tenemos sería contar el mismo
+-- hueco dos veces.
+CREATE TABLE IF NOT EXISTS dashboard_causacion_mes (
+  mes             TEXT PRIMARY KEY,          -- 'YYYY-MM'
+  dian            INT NOT NULL,              -- la verdad: universo DIAN sin notas crédito
+  dian_valor      NUMERIC(18,2),
+  capturadas      INT NOT NULL,              -- de esas, cuántas tenemos en XML
+  con_concepto    INT NOT NULL DEFAULT 0,
+  con_destino     INT NOT NULL DEFAULT 0,
+  con_retencion   INT NOT NULL DEFAULT 0,    -- confirmada por el contador
+  causadas        INT NOT NULL,              -- en Siigo (purchases ∪ journals ∪ log propio)
+  anuladas        INT NOT NULL DEFAULT 0,    -- por nota crédito: NO se causan
+  por_fuera       INT NOT NULL DEFAULT 0,    -- el residuo real, sin las anuladas
+  por_fuera_valor NUMERIC(18,2),
+  actualizado_en  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 CREATE TABLE IF NOT EXISTS clasificacion_alerta (
   cufe      TEXT PRIMARY KEY REFERENCES facturas(cufe) ON DELETE CASCADE,
   regla     TEXT NOT NULL,              -- 'proveedor' | 'lineas'

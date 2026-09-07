@@ -2,7 +2,7 @@ import { getPool } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { puede } from "@/lib/permisos";
 import { carrilDe, faltaParaCausar, resolverCuenta, explicarCuenta, finDeMes } from "@/lib/causacion";
-import { CausacionesView, type FilaCausacion, type CuentaPuc } from "./CausacionesView";
+import { CausacionesView, type FilaCausacion, type CuentaPuc, type MesEmbudo } from "./CausacionesView";
 
 export const dynamic = "force-dynamic";
 
@@ -93,10 +93,18 @@ export default async function Page({ searchParams }: {
   const hasta = fechaValida(sp.hasta) ?? finDeMes(mesDe(hoy));
 
   const pool = getPool();
-  const [{ rows }, { rows: cuentas }, { rows: meses }] = await Promise.all([
+  const [{ rows }, { rows: cuentas }, { rows: meses }, { rows: embudo }] = await Promise.all([
     pool.query(SQL, [desde, hasta]),
     pool.query<CuentaPuc>("SELECT codigo, nombre FROM maestro_cuentas_puc WHERE activo ORDER BY codigo"),
     pool.query(SQL_MESES),
+    // El embudo contra la VERDAD (universo DIAN). Lo calcula dashboard_causacion.py
+    // en la VM: el universo DIAN vive en BigQuery y la app no se monta sobre BQ.
+    pool.query<MesEmbudo>(`SELECT mes, dian, dian_valor::float AS dian_valor, capturadas,
+                                  con_concepto, con_destino, con_retencion, causadas,
+                                  anuladas, por_fuera, por_fuera_valor::float AS por_fuera_valor,
+                                  actualizado_en::text AS actualizado_en
+                             FROM dashboard_causacion_mes ORDER BY mes DESC`)
+      .catch(() => ({ rows: [] as MesEmbudo[] })),
   ]);
 
   const truncado = rows.length > TOPE;
@@ -120,7 +128,7 @@ export default async function Page({ searchParams }: {
     } as FilaCausacion;
   });
 
-  return <CausacionesView filas={filas} cuentas={cuentas} meses={meses}
+  return <CausacionesView filas={filas} cuentas={cuentas} meses={meses} embudo={embudo}
                           desde={desde} hasta={hasta} truncado={truncado} tope={TOPE}
                           puedeAprobar={puede(user.rol, "causar")} />;
 }
