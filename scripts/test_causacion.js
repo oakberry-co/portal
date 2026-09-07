@@ -35,13 +35,15 @@ try {
   execFileSync("npx", ["tsc", "lib/causacion.ts", "--outDir", tmp, "--module", "commonjs",
                        "--target", "es2020", "--skipLibCheck"], { cwd: RAIZ, stdio: "pipe" });
 } catch {}
-const { resolverCuenta, faltaParaCausar, carrilDe, finDeMes } = require(path.join(tmp, "causacion.js"));
+const { resolverCuenta, faltaParaCausar, carrilDe, finDeMes, avisoNotaCredito } =
+  require(path.join(tmp, "causacion.js"));
 
 // Una factura que SÍ se puede causar. Cada prueba le rompe una cosa.
 const OK = {
   concepto: "Toppings", destino: "Oakberry Zona T", retencion_ok: true,
   centro_costo: "18", cuenta_proveedor: "14050501", cuenta_concepto: "14050501",
   cuenta_valida: true, anulada: false, causacion_estado: null,
+  nc_sin_ref: 0, nc_sin_ref_detalle: null,
 };
 const sin = (campo, valor = null) => ({ ...OK, [campo]: valor });
 
@@ -90,6 +92,36 @@ check(carrilDe({ ...OK, causacion_estado: "causada" }) === "causada",
 const roto = { ...OK, concepto: null, destino: null, retencion_ok: false };
 check(faltaParaCausar(roto).length >= 3, "lista TODO lo que falta, no solo lo primero",
       `${faltaParaCausar(roto).length} motivos`);
+
+// NOTAS CRÉDITO SIN REFERENCIA. El 24% de las notas crédito no dice qué factura
+// corrige. Una del mismo proveedor por el mismo valor puede ser la que anula
+// ésta, y causarla registraría un gasto ya devuelto.
+//   1 candidata  -> BLOQUEA (no se puede afirmar otra cosa razonable)
+//   2 o más      -> AVISA, porque cruzar por valor no puede AFIRMAR: hay 414
+//                   pares (NIT, monto) repetidos entre facturas de 2026 (Regla 3)
+const unaNC = { ...OK, nc_sin_ref: 1, nc_sin_ref_detalle: "NC123 (2026-08-20)" };
+check(carrilDe(unaNC) === "incompleta" && faltaParaCausar(unaNC)[0].includes("nota crédito"),
+      "UNA nota crédito que calza bloquea la causación");
+check(avisoNotaCredito(unaNC) === null,
+      "…y no se muestra como simple aviso: es bloqueo, no sugerencia");
+const variasNC = { ...OK, nc_sin_ref: 3, nc_sin_ref_detalle: "NC1 · NC2 · NC3" };
+check(carrilDe(variasNC) === "lista" && (avisoNotaCredito(variasNC) || "").includes("3"),
+      "VARIAS avisan pero no bloquean (no se puede afirmar cuál es)");
+check(avisoNotaCredito(OK) === null, "sin notas crédito, sin ruido");
+
+// EL CARRIL «NO SE CAUSA». Sin él, una factura que alguien ya resolvió se ve
+// igual que una que nadie ha mirado, y «quedó por fuera» deja de significar algo.
+check(carrilDe({ ...OK, causacion_estado: "no_causa" }) === "no_causa",
+      "«no se causa» es su propio carril, no desaparece");
+check(carrilDe({ ...OK, causacion_estado: "causada" }) === "causada",
+      "y no se confunde con causada");
+
+// LA RETENCIÓN SIGUE SIENDO REQUISITO DURO (decisión del 7-sep: NO se quita).
+// Causar es el momento del abono en cuenta, o sea el momento legal de retener:
+// causar sin la retención confirmada deja la CxP inflada y la retención sin
+// practicar a tiempo.
+check(faltaParaCausar({ ...OK, retencion_ok: false }).some((m) => m.includes("retención")),
+      "la retención del contador sigue siendo obligatoria para causar");
 
 // EL FIN DE MES. Tumbó la pantalla en producción: los atajos armaban el rango
 // pegándole "-31" al mes y `2026-09-31` no existe — Postgres responde «out of

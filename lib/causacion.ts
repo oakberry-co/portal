@@ -28,8 +28,17 @@ export type DatosCausacion = {
   cuenta_proveedor: string | null;    // maestro_proveedores.cuenta_puc_default
   cuenta_concepto: string | null;     // maestro_conceptos.cuenta_puc
   cuenta_valida: boolean;             // ¿la cuenta resuelta está en el plan?
-  anulada: boolean;                   // la anuló una nota crédito
+  anulada: boolean;                   // una nota crédito la referencia por CUFE
   causacion_estado: string | null;
+  /** Notas crédito del MISMO proveedor por el MISMO valor que NO dicen a qué
+   *  factura pertenecen. La DIAN escribe la referencia en el XML y el 76% la
+   *  trae; el resto hay que emparejarlo a mano.
+   *   · 1 candidata  → BLOQUEA: causar sería registrar un gasto que ya fue devuelto.
+   *   · 2 o más      → AVISA: cruzar por valor es inviable como afirmación
+   *     (414 pares NIT+monto se repiten entre facturas de 2026), así que la
+   *     coincidencia SUGIERE y decide un humano (Regla 3). */
+  nc_sin_ref: number;
+  nc_sin_ref_detalle: string | null;
 };
 
 /** La cuenta con la que se causaría, y de dónde salió.
@@ -49,6 +58,11 @@ export function resolverCuenta(d: DatosCausacion): { cuenta: string | null; fuen
  *  merece saber cuántos viajes va a dar (Regla 18). */
 export function faltaParaCausar(d: DatosCausacion): string[] {
   if (d.anulada) return ["la anuló una nota crédito — esta factura no se causa"];
+  if (d.nc_sin_ref === 1) {
+    return [`hay una nota crédito del mismo proveedor por el mismo valor que no ` +
+            `dice qué factura corrige (${d.nc_sin_ref_detalle ?? ""}). Si es ésta, ` +
+            `causarla registra un gasto que ya fue devuelto — resolvelo antes`];
+  }
   const falta: string[] = [];
   if (!d.concepto) falta.push("sin concepto");
   if (!d.destino) falta.push("sin destino");
@@ -62,7 +76,7 @@ export function faltaParaCausar(d: DatosCausacion): string[] {
   return falta;
 }
 
-export type Carril = "incompleta" | "lista" | "causada";
+export type Carril = "incompleta" | "lista" | "causada" | "no_causa";
 
 /** En cuál de las tres ventanas va.
  *
@@ -71,7 +85,20 @@ export type Carril = "incompleta" | "lista" | "causada";
  *  'causada' — deshacer eso se hace en Siigo, a mano, y con motivo. */
 export function carrilDe(d: DatosCausacion): Carril {
   if (d.causacion_estado === "causada") return "causada";
+  // Decidida a mano: sale de las listas de trabajo pero NO desaparece. Sin este
+  // carril, una factura que alguien ya resolvió se ve igual que una que nadie
+  // ha mirado, y «por fuera» deja de significar algo.
+  if (d.causacion_estado === "no_causa") return "no_causa";
   return faltaParaCausar(d).length === 0 ? "lista" : "incompleta";
+}
+
+/** ¿Hay que avisar de una nota crédito que podría anular esta factura?
+ *  Con 2 o más candidatas no se puede afirmar cuál es — se muestra y decide
+ *  un humano. Con 1 no es aviso: es bloqueo (ver `faltaParaCausar`). */
+export function avisoNotaCredito(d: DatosCausacion): string | null {
+  if (d.nc_sin_ref < 2) return null;
+  return `${d.nc_sin_ref} notas crédito de este proveedor por este mismo valor no ` +
+         `dicen qué factura corrigen. Si alguna es ésta, causarla duplicaría el gasto.`;
 }
 
 /** Etiqueta corta de por qué la cuenta es la que es, para mostrarla al lado.

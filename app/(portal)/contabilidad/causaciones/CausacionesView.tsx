@@ -1,14 +1,17 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
-import { aprobarCausacion, retirarAprobacion, fijarCuentaProveedor } from "./actions";
+import { aprobarCausacion, retirarAprobacion, fijarCuentaProveedor,
+         marcarNoCausa, reactivarCausacion, cambiarTercero, quitarTercero,
+         reclasificarDesdeCausacion } from "./actions";
 import { ModalPortal } from "../_ui/ModalPortal";
 import { ruta } from "@/lib/ruta";
-import { finDeMes } from "@/lib/causacion";
+import { finDeMes, avisoNotaCredito } from "@/lib/causacion";
 import { isoWeek } from "@/lib/orden-facturas";
 import type { Resultado } from "@/lib/resultado";
 
 export type CuentaPuc = { codigo: string; nombre: string };
+export type Tercero = { nit: string; nombre: string | null };
 export type MesCausacion = { mes: string; n: number; sin_causar: number };
 /** El embudo mensual medido contra el universo DIAN, no contra lo que
  *  capturamos: medirse contra uno mismo hace que el % SUBA cuando el buzón
@@ -27,7 +30,7 @@ export type FilaCausacion = {
   cufe: string; numero: string; nombre_proveedor: string | null; nit_proveedor: string;
   fecha_emision: string; total: number; concepto: string | null; destino: string | null;
   retencion_ok: boolean; reten_total: number; valor_a_pagar: number; pago_estado: string;
-  carril: "incompleta" | "lista" | "causada";
+  carril: "incompleta" | "lista" | "causada" | "no_causa";
   falta: string[];
   cuenta: string | null; cuenta_origen: string; centro_costo: string | null;
   causacion_estado: string | null; causacion_autorizada_por: string | null;
@@ -38,6 +41,13 @@ export type FilaCausacion = {
   link_drive: string | null; soporte_url: string | null; n_soportes: number | null;
   /** Sospecha de que el concepto está mal puesto. No bloquea: avisa. */
   alerta: string | null; alerta_regla: string | null;
+  /** Notas crédito del mismo proveedor y valor que no dicen qué factura corrigen. */
+  nc_sin_ref: number; nc_sin_ref_detalle: string | null;
+  /** La decisión explícita de no causarla, con su motivo. */
+  no_causa_motivo: string | null; no_causa_por: string | null; no_causa_en: string | null;
+  /** El tercero al que se causa, si no es el que emitió la factura. */
+  causacion_tercero_nit: string | null; causacion_tercero_nombre: string | null;
+  causacion_tercero_motivo: string | null;
 };
 
 const cop = new Intl.NumberFormat("es-CO", { style: "currency", currency: "COP", maximumFractionDigits: 0 });
@@ -53,18 +63,23 @@ const TABS = [
   { id: "incompleta", label: "Incompletas" },
   { id: "lista", label: "Listas para causar" },
   { id: "causada", label: "Causadas" },
+  { id: "no_causa", label: "No se causan" },
   { id: "resumen", label: "Resumen mes a mes" },
 ] as const;
 type TabId = (typeof TABS)[number]["id"];
 
-export function CausacionesView({ filas, cuentas, meses, embudo, desde, hasta, truncado, tope, puedeAprobar }: {
+export function CausacionesView({ filas, cuentas, meses, embudo, terceros, desde, hasta, truncado, tope, puedeAprobar }: {
   filas: FilaCausacion[]; cuentas: CuentaPuc[]; meses: MesCausacion[]; embudo: MesEmbudo[];
+  terceros: Tercero[];
   desde: string; hasta: string; truncado: boolean; tope: number; puedeAprobar: boolean;
 }) {
   const [tab, setTab] = useState<TabId>("lista");
   const [sel, setSel] = useState<Set<string>>(new Set());
   const [msg, setMsg] = useState<string | null>(null);
   const [cuentaDe, setCuentaDe] = useState<FilaCausacion | null>(null);
+  const [noCausaDe, setNoCausaDe] = useState<FilaCausacion[] | null>(null);
+  const [terceroDe, setTerceroDe] = useState<FilaCausacion | null>(null);
+  const [claseDe, setClaseDe] = useState<FilaCausacion | null>(null);
   const [pend, start] = useTransition();
   // Los mismos filtros de Conciliación. Aquí son de CLIENTE porque el rango de
   // fechas ya acotó cuántas filas llegaron: filtrar de nuevo en la base sería
@@ -126,6 +141,7 @@ export function CausacionesView({ filas, cuentas, meses, embudo, desde, hasta, t
     incompleta: filtradas.filter((f) => f.carril === "incompleta"),
     lista: filtradas.filter((f) => f.carril === "lista"),
     causada: filtradas.filter((f) => f.carril === "causada"),
+    no_causa: filtradas.filter((f) => f.carril === "no_causa"),
     resumen: [] as FilaCausacion[],
   }), [filtradas]);
 
@@ -293,6 +309,10 @@ export function CausacionesView({ filas, cuentas, meses, embudo, desde, hasta, t
               {$(visibles.filter((f) => sel.has(f.cufe)).reduce((a, x) => a + x.total, 0))} en total
             </span>
           )}
+          <button className="pg-btn ghost" disabled={!sel.size || pend}
+                  onClick={() => setNoCausaDe(visibles.filter((f) => sel.has(f.cufe)))}>
+            No se causa{sel.size ? ` (${sel.size})` : ""}
+          </button>
           {aprobadas.length > 0 && (
             <button className="pg-btn ghost" disabled={pend}
                     style={{ marginLeft: "auto" }}
@@ -304,6 +324,31 @@ export function CausacionesView({ filas, cuentas, meses, embudo, desde, hasta, t
               Retirar las {aprobadas.length} aprobadas
             </button>
           )}
+        </div>
+      )}
+
+            {tab === "incompleta" && puedeAprobar && sel.size > 0 && (
+        <div className="pg-assign">
+          <button className="pg-btn ghost" disabled={pend}
+                  onClick={() => setNoCausaDe(visibles.filter((f) => sel.has(f.cufe)))}>
+            No se causa ({sel.size})
+          </button>
+          <span className="hint" style={{ marginLeft: 10 }}>
+            Sale de la lista con el motivo escrito. Se puede devolver después.
+          </span>
+        </div>
+      )}
+
+      {tab === "no_causa" && puedeAprobar && sel.size > 0 && (
+        <div className="pg-assign">
+          <button className="pg-btn" disabled={pend}
+                  onClick={() => {
+                    const fd = new FormData();
+                    fd.set("cufes", [...sel].join(","));
+                    correr(reactivarCausacion, fd);
+                  }}>
+            Devolver a la fila ({sel.size})
+          </button>
         </div>
       )}
 
@@ -331,7 +376,7 @@ export function CausacionesView({ filas, cuentas, meses, embudo, desde, hasta, t
               )}
               {visibles.map((f) => (
                 <tr key={f.cufe}>
-                  {tab === "lista" && puedeAprobar && (
+                  {tab !== "causada" && puedeAprobar && (
                     <td className="pg-chk">
                       {f.causacion_estado === "aprobada"
                         ? <span title="ya aprobada, esperando al proceso">⏳</span>
@@ -356,6 +401,26 @@ export function CausacionesView({ filas, cuentas, meses, embudo, desde, hasta, t
                         {f.alerta}
                       </div>
                     )}
+                    {avisoNotaCredito(f as never) && (
+                      <div style={{ color: "var(--coral)", fontSize: 11, maxWidth: 340 }}>
+                        ⚠️ {avisoNotaCredito(f as never)}
+                        <div className="muted">{f.nc_sin_ref_detalle}</div>
+                      </div>
+                    )}
+                    {f.causacion_tercero_nit && (
+                      <div className="hint" style={{ color: "var(--purple)" }}>
+                        se causa a <b>{f.causacion_tercero_nombre ?? f.causacion_tercero_nit}</b>
+                        {" · "}{f.causacion_tercero_motivo}
+                      </div>
+                    )}
+                    {puedeAprobar && tab !== "causada" && (
+                      <div style={{ marginTop: 4, display: "flex", gap: 6 }}>
+                        <button type="button" className="pg-btn ghost" style={{ fontSize: 10.5 }}
+                                onClick={() => setClaseDe(f)}>Reclasificar</button>
+                        <button type="button" className="pg-btn ghost" style={{ fontSize: 10.5 }}
+                                onClick={() => setTerceroDe(f)}>Tercero</button>
+                      </div>
+                    )}
                   </td>
                   {tab === "causada" ? (
                     <td colSpan={2}>
@@ -372,6 +437,12 @@ export function CausacionesView({ filas, cuentas, meses, embudo, desde, hasta, t
                             <div className="hint">{f.cuenta_origen}
                               {f.centro_costo ? ` · centro ${f.centro_costo}` : ""}</div></>
                         : <span style={{ color: "var(--coral)" }}>sin cuenta contable</span>}
+                    </td>
+                  )}
+                  {tab === "no_causa" && (
+                    <td style={{ fontSize: 11.5, maxWidth: 380 }}>
+                      <b>{f.no_causa_motivo}</b>
+                      <div className="hint">{f.no_causa_por} · {dia(f.no_causa_en)}</div>
                     </td>
                   )}
                   {tab === "incompleta" && (
@@ -419,6 +490,23 @@ export function CausacionesView({ filas, cuentas, meses, embudo, desde, hasta, t
           </table>
         </div>
       </div>
+      )}
+
+      {noCausaDe && (
+        <ModalNoCausa filas={noCausaDe} pend={pend}
+                      onClose={() => setNoCausaDe(null)}
+                      onGuardar={(fd) => { correr(marcarNoCausa, fd); setNoCausaDe(null); }} />
+      )}
+      {terceroDe && (
+        <ModalTercero fila={terceroDe} terceros={terceros} pend={pend}
+                      onClose={() => setTerceroDe(null)}
+                      onGuardar={(fd) => { correr(cambiarTercero, fd); setTerceroDe(null); }}
+                      onQuitar={(fd) => { correr(quitarTercero, fd); setTerceroDe(null); }} />
+      )}
+      {claseDe && (
+        <ModalClasificar fila={claseDe} pend={pend}
+                         onClose={() => setClaseDe(null)}
+                         onGuardar={(fd) => { correr(reclasificarDesdeCausacion, fd); setClaseDe(null); }} />
       )}
 
       {cuentaDe && (
@@ -762,5 +850,237 @@ function Embudo({ filas }: { filas: MesEmbudo[] }) {
         desorden de entonces que de cómo se trabaja hoy.
       </p>
     </div>
+  );
+}
+
+/** «No se causa», con el motivo escrito.
+ *
+ *  El motivo es obligatorio y largo a propósito: es la respuesta cuando alguien
+ *  pregunte por qué falta esa factura en el cierre. Sin él, la decisión vive en
+ *  la memoria de quien la tomó y a los dos meses nadie sabe si fue criterio o
+ *  descuido. */
+function ModalNoCausa({ filas, pend, onClose, onGuardar }: {
+  filas: FilaCausacion[]; pend: boolean;
+  onClose: () => void; onGuardar: (fd: FormData) => void;
+}) {
+  const [motivo, setMotivo] = useState("");
+  const total = filas.reduce((a, f) => a + f.total, 0);
+  const corto = motivo.trim().length < 10;
+  return (
+    <ModalPortal>
+      <div className="modal-backdrop" onMouseDown={onClose}>
+        <div className="modal" onMouseDown={(e) => e.stopPropagation()}>
+          <div className="modal-head">
+            <div>
+              <h3>Estas facturas no se causan</h3>
+              <p className="modal-sub">{filas.length} factura(s) · {$(total)}</p>
+            </div>
+            <button type="button" className="modal-x" onClick={onClose}>×</button>
+          </div>
+          <p className="modal-nota">
+            Salen de las listas de trabajo pero <b>no desaparecen</b>: quedan en
+            «No se causan» con este motivo, y se pueden devolver a la fila cuando
+            se quiera.
+          </p>
+          <div style={{ maxHeight: 150, overflowY: "auto", margin: "4px 0" }}>
+            <table className="pg-tabla"><tbody>
+              {filas.slice(0, 20).map((f) => (
+                <tr key={f.cufe}>
+                  <td>{f.nombre_proveedor ?? f.nit_proveedor}</td>
+                  <td className="mono">{f.numero}</td>
+                  <td className="num">{$(f.total)}</td>
+                </tr>
+              ))}
+            </tbody></table>
+            {filas.length > 20 && <p className="hint">…y {filas.length - 20} más</p>}
+          </div>
+          <div className="pg-form">
+            <label>¿Por qué no se causa?
+              <input value={motivo} onChange={(e) => setMotivo(e.target.value)} autoFocus
+                     placeholder="duplicada del proveedor · ya causada como comprobante · no es gasto nuestro…" />
+            </label>
+          </div>
+          {corto && motivo.length > 0 && (
+            <p className="hint" style={{ color: "var(--coral)" }}>
+              Escribe un motivo de verdad: esto es lo que va a leer quien pregunte
+              por qué falta en el cierre.
+            </p>
+          )}
+          <div className="modal-foot">
+            <button type="button" className="ghost" onClick={onClose}>Cancelar</button>
+            <button type="button" disabled={corto || pend}
+                    onClick={() => {
+                      const fd = new FormData();
+                      fd.set("cufes", filas.map((f) => f.cufe).join(","));
+                      fd.set("motivo", motivo.trim());
+                      onGuardar(fd);
+                    }}>
+              {pend ? "Guardando…" : "Marcar «no se causa»"}
+            </button>
+          </div>
+        </div>
+      </div>
+    </ModalPortal>
+  );
+}
+
+/** Causar a un tercero distinto del que emitió la factura.
+ *
+ *  Pasa por negociación. Se hace de UNA factura en una y con motivo, y **no
+ *  toca el maestro del proveedor**: si se guardara, un caso puntual se volvería
+ *  la regla y todas sus facturas siguientes irían al tercero equivocado. Mismo
+ *  criterio que el desvío de cuenta bancaria en Pagos. */
+function ModalTercero({ fila, terceros, pend, onClose, onGuardar, onQuitar }: {
+  fila: FilaCausacion; terceros: Tercero[]; pend: boolean;
+  onClose: () => void; onGuardar: (fd: FormData) => void; onQuitar: (fd: FormData) => void;
+}) {
+  const [q, setQ] = useState("");
+  const [sel, setSel] = useState(fila.causacion_tercero_nit ?? "");
+  const [motivo, setMotivo] = useState(fila.causacion_tercero_motivo ?? "");
+  const lista = useMemo(() => {
+    const t = q.trim().toLowerCase();
+    if (!t) return terceros.slice(0, 40);
+    return terceros.filter((x) =>
+      x.nit.includes(t) || (x.nombre ?? "").toLowerCase().includes(t)).slice(0, 40);
+  }, [q, terceros]);
+  const corto = motivo.trim().length < 10;
+
+  return (
+    <ModalPortal>
+      <div className="modal-backdrop" onMouseDown={onClose}>
+        <div className="modal" onMouseDown={(e) => e.stopPropagation()}>
+          <div className="modal-head">
+            <div>
+              <h3>Causar a otro tercero</h3>
+              <p className="modal-sub">
+                {fila.numero} · la emitió {fila.nombre_proveedor ?? fila.nit_proveedor}
+                {" "}(NIT {fila.nit_proveedor})
+              </p>
+            </div>
+            <button type="button" className="modal-x" onClick={onClose}>×</button>
+          </div>
+          <p className="modal-nota">
+            Solo para <b>esta factura</b>. No cambia el maestro del proveedor: si lo
+            cambiara, todas sus facturas siguientes irían a este tercero sin que
+            nadie lo hubiera decidido. La lista son los terceros que <b>existen en
+            Siigo</b> — uno que no exista hace fallar el asiento.
+          </p>
+          <div className="pg-form">
+            <label>Buscar tercero
+              <input value={q} onChange={(e) => setQ(e.target.value)} autoFocus
+                     placeholder="nombre o NIT…" />
+            </label>
+          </div>
+          <div style={{ maxHeight: 220, overflowY: "auto", margin: "4px 0 10px" }}>
+            <table className="pg-tabla"><tbody>
+              {lista.map((t) => (
+                <tr key={t.nit} onClick={() => setSel(t.nit)}
+                    style={{ cursor: "pointer",
+                             background: sel === t.nit ? "var(--lav-soft)" : undefined }}>
+                  <td style={{ width: 28 }}>
+                    <input type="radio" name="tercero" checked={sel === t.nit}
+                           onChange={() => setSel(t.nit)} />
+                  </td>
+                  <td className="mono" style={{ width: 110 }}>{t.nit}</td>
+                  <td>{t.nombre ?? "—"}</td>
+                </tr>
+              ))}
+              {!lista.length && (
+                <tr><td colSpan={3}>
+                  <div className="pg-empty sm">
+                    Ningún tercero coincide. Si es nuevo, <b>créalo en Siigo</b> primero.
+                  </div>
+                </td></tr>
+              )}
+            </tbody></table>
+          </div>
+          <div className="pg-form">
+            <label>¿Por qué se causa a otro tercero?
+              <input value={motivo} onChange={(e) => setMotivo(e.target.value)}
+                     placeholder="acuerdo comercial · el gasto es de otra sociedad…" />
+            </label>
+          </div>
+          <div className="modal-foot">
+            {fila.causacion_tercero_nit && (
+              <button type="button" className="ghost" disabled={pend}
+                      onClick={() => {
+                        const fd = new FormData(); fd.set("cufe", fila.cufe);
+                        onQuitar(fd);
+                      }}>
+                Volver al de la factura
+              </button>
+            )}
+            <button type="button" className="ghost" onClick={onClose}>Cancelar</button>
+            <button type="button" disabled={!sel || corto || pend}
+                    onClick={() => {
+                      const fd = new FormData();
+                      fd.set("cufe", fila.cufe); fd.set("nit", sel);
+                      fd.set("motivo", motivo.trim());
+                      onGuardar(fd);
+                    }}>
+              {pend ? "Guardando…" : "Causar a este tercero"}
+            </button>
+          </div>
+        </div>
+      </div>
+    </ModalPortal>
+  );
+}
+
+/** Corregir concepto y destino sin salir de causación.
+ *
+ *  Escribe por el MISMO camino que Conciliación (`guardarClasificacion`), no por
+ *  una copia: con una copia por pantalla el maestro aprende por un lado solo y
+ *  las dos listas se separan. */
+function ModalClasificar({ fila, pend, onClose, onGuardar }: {
+  fila: FilaCausacion; pend: boolean;
+  onClose: () => void; onGuardar: (fd: FormData) => void;
+}) {
+  const [concepto, setConcepto] = useState(fila.concepto ?? "");
+  const [destino, setDestino] = useState(fila.destino ?? "");
+  return (
+    <ModalPortal>
+      <div className="modal-backdrop" onMouseDown={onClose}>
+        <div className="modal" onMouseDown={(e) => e.stopPropagation()}>
+          <div className="modal-head">
+            <div>
+              <h3>Corregir concepto y destino</h3>
+              <p className="modal-sub">
+                {fila.numero} · {fila.nombre_proveedor ?? fila.nit_proveedor}
+              </p>
+            </div>
+            <button type="button" className="modal-x" onClick={onClose}>×</button>
+          </div>
+          <p className="modal-nota">
+            Se guarda por el mismo camino que Conciliación y alimenta los maestros
+            igual. El <b>destino decide el centro de costo</b>, o sea a qué tienda
+            le queda el gasto en el P&amp;L.
+          </p>
+          <div className="pg-form">
+            <label>Concepto
+              <input value={concepto} onChange={(e) => setConcepto(e.target.value)}
+                     list="lista-conceptos" autoFocus placeholder="Toppings, Arriendo - Local…" />
+            </label>
+            <label>Destino
+              <input value={destino} onChange={(e) => setDestino(e.target.value)}
+                     list="lista-destinos" placeholder="Oakberry Zona T…" />
+            </label>
+          </div>
+          <div className="modal-foot">
+            <button type="button" className="ghost" onClick={onClose}>Cancelar</button>
+            <button type="button" disabled={pend}
+                    onClick={() => {
+                      const fd = new FormData();
+                      fd.set("cufe", fila.cufe);
+                      fd.set("concepto", concepto.trim());
+                      fd.set("destino", destino.trim());
+                      onGuardar(fd);
+                    }}>
+              {pend ? "Guardando…" : "Guardar"}
+            </button>
+          </div>
+        </div>
+      </div>
+    </ModalPortal>
   );
 }

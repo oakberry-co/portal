@@ -2,7 +2,8 @@ import { getPool } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { puede } from "@/lib/permisos";
 import { carrilDe, faltaParaCausar, resolverCuenta, explicarCuenta, finDeMes } from "@/lib/causacion";
-import { CausacionesView, type FilaCausacion, type CuentaPuc, type MesEmbudo } from "./CausacionesView";
+import { CausacionesView, type FilaCausacion, type CuentaPuc, type MesEmbudo,
+         type Tercero } from "./CausacionesView";
 
 export const dynamic = "force-dynamic";
 
@@ -39,7 +40,22 @@ const SQL = `
          (SELECT count(*) > 0 FROM maestro_cuentas_puc p
            WHERE p.activo AND p.codigo = coalesce(mp.cuenta_puc_default, mc.cuenta_puc)) AS cuenta_valida,
          EXISTS (SELECT 1 FROM facturas nc
-                  WHERE nc.ref_cufe = f.cufe AND nc.doc_tipo = 'CreditNote') AS anulada
+                  WHERE nc.ref_cufe = f.cufe AND nc.doc_tipo = 'CreditNote') AS anulada,
+         -- NOTAS CRÉDITO QUE NO DICEN QUÉ FACTURA CORRIGEN. La DIAN escribe la
+         -- referencia en el XML y el 76% la trae; el resto hay que emparejarlo.
+         -- Una del MISMO proveedor por el MISMO valor puede ser la que anula
+         -- ésta — y causarla sería registrar un gasto ya devuelto.
+         (SELECT count(*)::int FROM facturas nc
+           WHERE nc.doc_tipo = 'CreditNote' AND nc.ref_cufe IS NULL
+             AND nc.nit_proveedor = f.nit_proveedor
+             AND abs(abs(nc.total) - f.total) <= 1) AS nc_sin_ref,
+         (SELECT string_agg(nc.numero || ' (' || nc.fecha_emision::text || ')', ' · ')
+            FROM facturas nc
+           WHERE nc.doc_tipo = 'CreditNote' AND nc.ref_cufe IS NULL
+             AND nc.nit_proveedor = f.nit_proveedor
+             AND abs(abs(nc.total) - f.total) <= 1) AS nc_sin_ref_detalle,
+         e.no_causa_motivo, e.no_causa_por, e.no_causa_en::text AS no_causa_en,
+         e.causacion_tercero_nit, e.causacion_tercero_nombre, e.causacion_tercero_motivo
     FROM facturas f
     JOIN factura_estado e ON e.cufe = f.cufe
     LEFT JOIN maestro_destinos   md ON md.nombre = e.destino AND md.activo
@@ -93,10 +109,15 @@ export default async function Page({ searchParams }: {
   const hasta = fechaValida(sp.hasta) ?? finDeMes(mesDe(hoy));
 
   const pool = getPool();
-  const [{ rows }, { rows: cuentas }, { rows: meses }, { rows: embudo }] = await Promise.all([
+  const [{ rows }, { rows: cuentas }, { rows: meses }, { rows: terceros }, { rows: embudo }] = await Promise.all([
     pool.query(SQL, [desde, hasta]),
     pool.query<CuentaPuc>("SELECT codigo, nombre FROM maestro_cuentas_puc WHERE activo ORDER BY codigo"),
     pool.query(SQL_MESES),
+    // Los terceros que EXISTEN en Siigo: mandar uno que no conoce hace fallar
+    // el asiento, y descubrirlo en el POST es tarde.
+    pool.query<Tercero>(`SELECT nit, nombre FROM maestro_terceros_siigo
+                          WHERE activo ORDER BY nombre NULLS LAST`)
+      .catch(() => ({ rows: [] as Tercero[] })),
     // El embudo contra la VERDAD (universo DIAN). Lo calcula dashboard_causacion.py
     // en la VM: el universo DIAN vive en BigQuery y la app no se monta sobre BQ.
     pool.query<MesEmbudo>(`SELECT mes, dian, dian_valor::float AS dian_valor, capturadas,
@@ -116,6 +137,7 @@ export default async function Page({ searchParams }: {
       centro_costo: r.centro_costo, cuenta_proveedor: r.cuenta_proveedor,
       cuenta_concepto: r.cuenta_concepto, cuenta_valida: r.cuenta_valida,
       anulada: r.anulada, causacion_estado: r.causacion_estado,
+      nc_sin_ref: r.nc_sin_ref ?? 0, nc_sin_ref_detalle: r.nc_sin_ref_detalle,
     };
     const { cuenta, fuente } = resolverCuenta(d);
     return {
@@ -131,6 +153,7 @@ export default async function Page({ searchParams }: {
   });
 
   return <CausacionesView filas={filas} cuentas={cuentas} meses={meses} embudo={embudo}
+                          terceros={terceros}
                           desde={desde} hasta={hasta} truncado={truncado} tope={TOPE}
                           puedeAprobar={puede(user.rol, "causar")} />;
 }

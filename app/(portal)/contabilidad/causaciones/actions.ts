@@ -6,6 +6,7 @@ import { registrarEvento } from "@/lib/eventos";
 import { exigirCap } from "@/lib/auth";
 import { intentar, type Resultado } from "@/lib/resultado";
 import { faltaParaCausar, resolverCuenta } from "@/lib/causacion";
+import { guardarClasificacion } from "../conciliacion/actions";
 import type { PoolClient } from "pg";
 
 // EL BOTÓN "CAUSAR" APRUEBA, NO ESCRIBE.
@@ -178,6 +179,178 @@ export async function fijarCuentaProveedor(fd: FormData): Promise<Resultado> {
         actor: user.email, actorRol: user.rol, origen: "web",
       });
     });
+    done();
+  });
+}
+
+/** Marca que esta factura NO se causa, con el motivo escrito.
+ *
+ *  El motivo es obligatorio y no es burocracia: hoy toda factura no causada se
+ *  ve igual —trabajo pendiente— aunque alguien ya haya decidido hace un mes.
+ *  Con esto, «quedó por fuera» vuelve a significar «nadie la ha mirado». Y
+ *  cuando el contador pregunte por qué falta una del cierre, la respuesta está
+ *  escrita y firmada en vez de en la memoria de alguien.
+ *
+ *  Es reversible (`reactivarCausacion`) y NO aplica a una ya causada: el asiento
+ *  existe en Siigo y decir acá que «no se causa» no lo borra. */
+export async function marcarNoCausa(fd: FormData): Promise<Resultado> {
+  return intentar(async () => {
+    const user = await exigirCap("causar");
+    const cufes = cufesDe(fd);
+    const motivo = String(fd.get("motivo") ?? "").trim();
+    if (!cufes.length) throw new Error("Selecciona al menos una factura.");
+    if (motivo.length < 10) {
+      throw new Error(
+        "Escribe por qué no se causa (al menos 10 caracteres). Este texto es la " +
+        "respuesta cuando alguien pregunte por qué falta en el cierre.");
+    }
+    await withTx(async (c: PoolClient) => {
+      const { rows } = await c.query<{ cufe: string; causacion_estado: string | null; numero: string }>(
+        `SELECT e.cufe, e.causacion_estado, f.numero
+           FROM factura_estado e JOIN facturas f ON f.cufe = e.cufe
+          WHERE e.cufe = ANY($1) FOR UPDATE OF e`, [cufes]);
+      for (const r of rows) {
+        if (r.causacion_estado === "causada") {
+          throw new Error(
+            `${r.numero} ya está causada en Siigo. Marcarla «no causa» acá no ` +
+            `borra el asiento allá — se anula en Siigo y después se corrige acá.`);
+        }
+      }
+      await c.query(
+        `UPDATE factura_estado
+            SET causacion_estado = 'no_causa', no_causa_motivo = $2,
+                no_causa_por = $3, no_causa_en = now(),
+                causacion_cuenta_puc = NULL, causacion_centro_costo = NULL,
+                actualizado_en = now()
+          WHERE cufe = ANY($1) AND causacion_estado IS DISTINCT FROM 'causada'`,
+        [cufes, motivo, user.email]);
+      for (const cufe of cufes) {
+        await registrarEvento(c, {
+          cufe, tipo: "no_causa", campo: "causacion_estado",
+          valorNuevo: { causacion_estado: "no_causa", motivo },
+          actor: user.email, actorRol: user.rol, origen: "web",
+        });
+      }
+    });
+    done();
+  });
+}
+
+/** Devuelve una «no causa» a la fila. El motivo anterior NO se borra: queda en
+ *  la bitácora, porque la decisión de hoy se entiende sabiendo la de ayer. */
+export async function reactivarCausacion(fd: FormData): Promise<Resultado> {
+  return intentar(async () => {
+    const user = await exigirCap("causar");
+    const cufes = cufesDe(fd);
+    if (!cufes.length) throw new Error("Selecciona al menos una factura.");
+    await withTx(async (c: PoolClient) => {
+      await c.query(
+        `UPDATE factura_estado
+            SET causacion_estado = NULL, no_causa_motivo = NULL,
+                no_causa_por = NULL, no_causa_en = NULL, actualizado_en = now()
+          WHERE cufe = ANY($1) AND causacion_estado = 'no_causa'`, [cufes]);
+      await registrarEvento(c, {
+        cufe: null, tipo: "reactiva_causacion", campo: "causacion_estado",
+        valorNuevo: { facturas: cufes.length },
+        actor: user.email, actorRol: user.rol, origen: "web",
+      });
+    });
+    done();
+  });
+}
+
+/** Causa esta factura a un TERCERO distinto del que la emitió.
+ *
+ *  Pasa por negociación: el proveedor factura a nombre de uno y el gasto es de
+ *  otro. Tres candados, los mismos del desvío de cuenta bancaria en Pagos:
+ *    · se hace de una factura en una, nunca en lote;
+ *    · el motivo es obligatorio y queda en la bitácora;
+ *    · NO toca el maestro del proveedor — si se guardara, un caso puntual se
+ *      volvería la regla y todas sus facturas siguientes irían al tercero
+ *      equivocado sin que nadie lo decidiera.
+ *
+ *  Y el tercero tiene que EXISTIR en Siigo: mandar un NIT que no conoce hace
+ *  fallar el POST, y descubrirlo ahí es tarde. */
+export async function cambiarTercero(fd: FormData): Promise<Resultado> {
+  return intentar(async () => {
+    const user = await exigirCap("causar");
+    const cufe = String(fd.get("cufe") ?? "").trim();
+    const nit = String(fd.get("nit") ?? "").trim();
+    const motivo = String(fd.get("motivo") ?? "").trim();
+    if (!cufe) throw new Error("Falta la factura.");
+    if (!nit) throw new Error("Elige el tercero.");
+    if (motivo.length < 10) {
+      throw new Error("Escribe por qué se causa a otro tercero (al menos 10 caracteres).");
+    }
+    await withTx(async (c: PoolClient) => {
+      const t = await c.query<{ nombre: string | null; activo: boolean }>(
+        "SELECT nombre, activo FROM maestro_terceros_siigo WHERE nit = $1", [nit]);
+      if (!t.rowCount) {
+        throw new Error(
+          `El NIT ${nit} no existe como tercero en Siigo. Créalo allá primero: ` +
+          `si se manda así, Siigo rechaza el asiento.`);
+      }
+      if (!t.rows[0].activo) {
+        throw new Error(`El tercero ${nit} está INACTIVO en Siigo. Actívalo allá primero.`);
+      }
+      const prev = await c.query<{ causacion_tercero_nit: string | null; causacion_estado: string | null }>(
+        "SELECT causacion_tercero_nit, causacion_estado FROM factura_estado WHERE cufe = $1 FOR UPDATE",
+        [cufe]);
+      if (!prev.rowCount) throw new Error("No encuentro la factura.");
+      if (prev.rows[0].causacion_estado === "causada") {
+        throw new Error(
+          "Ya está causada en Siigo: el asiento salió con el tercero anterior y " +
+          "cambiarlo acá no lo mueve allá. Se corrige en Siigo.");
+      }
+      await c.query(
+        `UPDATE factura_estado
+            SET causacion_tercero_nit = $2, causacion_tercero_nombre = $3,
+                causacion_tercero_motivo = $4, actualizado_en = now()
+          WHERE cufe = $1`, [cufe, nit, t.rows[0].nombre, motivo]);
+      await registrarEvento(c, {
+        cufe, tipo: "cambia_tercero", campo: "causacion_tercero_nit",
+        valorAnterior: prev.rows[0].causacion_tercero_nit,
+        valorNuevo: { nit, nombre: t.rows[0].nombre, motivo },
+        actor: user.email, actorRol: user.rol, origen: "web",
+      });
+    });
+    done();
+  });
+}
+
+/** Vuelve al tercero de la factura (el que la emitió). */
+export async function quitarTercero(fd: FormData): Promise<Resultado> {
+  return intentar(async () => {
+    const user = await exigirCap("causar");
+    const cufe = String(fd.get("cufe") ?? "").trim();
+    if (!cufe) throw new Error("Falta la factura.");
+    await withTx(async (c: PoolClient) => {
+      const prev = await c.query<{ causacion_tercero_nit: string | null }>(
+        "SELECT causacion_tercero_nit FROM factura_estado WHERE cufe = $1 FOR UPDATE", [cufe]);
+      await c.query(
+        `UPDATE factura_estado SET causacion_tercero_nit = NULL,
+            causacion_tercero_nombre = NULL, causacion_tercero_motivo = NULL,
+            actualizado_en = now() WHERE cufe = $1`, [cufe]);
+      await registrarEvento(c, {
+        cufe, tipo: "quita_tercero", campo: "causacion_tercero_nit",
+        valorAnterior: prev.rows[0]?.causacion_tercero_nit ?? null, valorNuevo: null,
+        actor: user.email, actorRol: user.rol, origen: "web",
+      });
+    });
+    done();
+  });
+}
+
+/** Reclasificar concepto y destino SIN salir de causación.
+ *
+ *  Reusa `guardarClasificacion` de Conciliación — el mismo camino de escritura,
+ *  no una copia: con una copia por pantalla el maestro aprende por un lado solo
+ *  y las dos listas se separan. Quien causa ve la factura completa y es quien
+ *  más rápido detecta que el destino está mal; obligarlo a cambiar de pantalla
+ *  es la fricción que hace que no lo corrija. */
+export async function reclasificarDesdeCausacion(fd: FormData): Promise<Resultado> {
+  return intentar(async () => {
+    await guardarClasificacion(fd);
     done();
   });
 }

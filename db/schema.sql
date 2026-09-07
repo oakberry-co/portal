@@ -150,12 +150,44 @@ ALTER TABLE factura_estado
   ADD COLUMN IF NOT EXISTS causacion_error        TEXT,
   ADD COLUMN IF NOT EXISTS siigo_numero           INT;
 
+-- «NO CAUSA»: la decisión explícita de que esta factura no se causa, con su
+-- motivo. Existe porque sin ella toda factura no causada se ve igual —trabajo
+-- pendiente— aunque alguien ya haya decidido. Con esto, «por fuera» vuelve a
+-- significar «nadie la ha mirado», que es lo que uno quiere que signifique.
+-- Es reversible: el motivo queda y se puede volver a poner en la fila.
+ALTER TABLE factura_estado
+  ADD COLUMN IF NOT EXISTS no_causa_motivo TEXT,
+  ADD COLUMN IF NOT EXISTS no_causa_por    TEXT,
+  ADD COLUMN IF NOT EXISTS no_causa_en     TIMESTAMPTZ;
+
+-- EL TERCERO AL QUE SE CAUSA puede no ser el que emitió la factura: hay
+-- negociaciones donde el proveedor factura a nombre de otro. Se decide de una
+-- factura en una, con motivo, y NO toca el maestro — si se guardara, un caso
+-- puntual se volvería la regla del proveedor (misma lógica que el desvío de
+-- cuenta bancaria en Pagos).
+ALTER TABLE factura_estado
+  ADD COLUMN IF NOT EXISTS causacion_tercero_nit    TEXT,
+  ADD COLUMN IF NOT EXISTS causacion_tercero_nombre TEXT,
+  ADD COLUMN IF NOT EXISTS causacion_tercero_motivo TEXT;
+
+-- Los terceros que existen EN SIIGO. Se empujan desde la VM (viven en
+-- `raw_siigo.customers`) porque la app no se monta sobre BigQuery, y hacen
+-- falta para dos cosas: elegir un tercero distinto sabiendo que existe, y no
+-- mandar a Siigo un NIT que va a rechazar.
+CREATE TABLE IF NOT EXISTS maestro_terceros_siigo (
+  nit            TEXT PRIMARY KEY,
+  nombre         TEXT,
+  activo         BOOLEAN NOT NULL DEFAULT TRUE,
+  actualizado_en TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 -- aprobada -> causada | error. NULL = nadie la ha aprobado todavía.
 -- 'error' NO es final: Siigo rechazó y no escribió nada, así que se corrige y
 -- se vuelve a aprobar. Lo que nunca vuelve atrás es 'causada'.
 ALTER TABLE factura_estado DROP CONSTRAINT IF EXISTS ck_causacion_estado;
 ALTER TABLE factura_estado ADD CONSTRAINT ck_causacion_estado
-  CHECK (causacion_estado IS NULL OR causacion_estado IN ('aprobada','causada','error'));
+  CHECK (causacion_estado IS NULL OR causacion_estado IN
+         ('aprobada','causada','error','no_causa'));
 
 -- El cron pregunta "¿qué hay aprobado?" cada vez que corre; sin índice eso es un
 -- barrido de las 4.000 facturas.
