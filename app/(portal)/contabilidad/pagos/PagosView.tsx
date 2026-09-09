@@ -118,7 +118,6 @@ export function PagosView({ pendientes, validacion, intake, adelantos, historial
   const [revision, setRevision] = useState<RevisionCuentas | null>(null);
   const [errRev, setErrRev] = useState<string | null>(null);
   const [vista, setVista] = useState<"tablero" | "historial" | "config">(puedePagos ? "tablero" : "historial");
-  const [proxAbierto, setProxAbierto] = useState(true);
   // El NO del servidor al asignar, pintado al lado del botón del grupo que lo
   // pidió (un alert en producción diría "An error occurred…" y nada más).
   const [errGrupo, setErrGrupo] = useState<Record<string, string>>({});
@@ -172,11 +171,11 @@ export function PagosView({ pendientes, validacion, intake, adelantos, historial
     });
   }
 
-  // 4 columnas + 1 recuadro: pendientes ATRASADAS · pendientes de ESTA SEMANA ·
-  // validación · confirmados de esta semana (lo anterior vive en Historial), y
-  // abajo PRÓXIMOS PAGOS: lo listo cuya semana de pago todavía no llega. Hasta
-  // sep-2026 "esta semana" era `>=` — esta semana y todas las futuras — y con un
-  // clic se mandaron a Validación 10 facturas con plazo hasta la semana
+  // 5 columnas: pendientes ATRASADAS · pendientes de ESTA SEMANA · PRÓXIMOS
+  // PAGOS (lo listo cuya semana de pago todavía no llega, por semana) ·
+  // validación · confirmados de esta semana (lo anterior vive en Historial).
+  // Hasta sep-2026 "esta semana" era `>=` — esta semana y todas las futuras — y
+  // con un clic se mandaron a Validación 10 facturas con plazo hasta la semana
   // siguiente. La regla está en lib/semana-pago; acá solo se pinta.
   const hoy = hoyBogota();
   const hoySem = semanaISO(hoy);
@@ -387,7 +386,34 @@ export function PagosView({ pendientes, validacion, intake, adelantos, historial
           </div>
         </section>
 
-        {/* ---------- Columna 3: VALIDACIÓN SEMANA EN CURSO ---------- */}
+        {/* ---------- Columna 3: PRÓXIMOS PAGOS ----------
+            Lo listo para pagar cuya semana de pago todavía no llega, por semana.
+            Es columna propia a propósito: en «esta semana» solo debe haber lo que
+            se paga ahora. Cada factura sube sola a la columna de al lado cuando
+            llega su semana; adelantarla exige marcarla, acá y en el servidor. */}
+        <section className="pg-col pg-col-prox">
+          <div className="pg-col-head" title="Suben solas a «Pagos de esta semana» cuando llega su semana de pago. Para adelantar una, ábrela y márcala."><span className="pg-col-tag prox">Próximos pagos</span><span className="pg-prox-tot">{$(totalProx)}</span><i>{nProx}</i></div>
+          <div className="pg-col-body">
+            {!semanasProx.length ? (
+              <div className="pg-empty sm">Nada programado para las próximas semanas. Lo que se paga más adelante espera aquí y sube solo cuando llega su semana.</div>
+            ) : (<>
+              <div className="pg-prox-nota">Suben solas a «esta semana» cuando llega su semana de pago. Para adelantar una, márcala.</div>
+              {semanasProx.map((s) => (
+                <div key={s.sem} className="pg-prox-sem">
+                  <div className="pg-prox-sem-head">
+                    <span>Semana del {dm(s.lunes)} al {dm(sumarDias(s.lunes, 4))}</span>
+                    <i>{s.n}</i><b>{$(s.total)}</b>
+                  </div>
+                  <div className="pg-prox-sem-body">
+                    {s.grupos.map((g) => renderGrupoPend(g, "PX" + s.sem, true))}
+                  </div>
+                </div>
+              ))}
+            </>)}
+          </div>
+        </section>
+
+        {/* ---------- Columna 4: VALIDACIÓN SEMANA EN CURSO ---------- */}
         <section className="pg-col">
           <div className="pg-col-head"><span className="pg-col-tag val">Validación semana en curso</span><i>{validacion.length + intake.length}</i></div>
           <div className="pg-col-body">
@@ -461,7 +487,7 @@ export function PagosView({ pendientes, validacion, intake, adelantos, historial
           </div>
         </section>
 
-        {/* ---------- Columna 4: CONFIRMADOS (esta semana) ---------- */}
+        {/* ---------- Columna 5: CONFIRMADOS (esta semana) ---------- */}
         <section className="pg-col">
           <div className="pg-col-head"><span className="pg-col-tag ok">Confirmados</span><i>{confSemana.length}</i></div>
           <div className="pg-col-body">
@@ -494,37 +520,6 @@ export function PagosView({ pendientes, validacion, intake, adelantos, historial
           </div>
         </section>
       </div>
-
-      {/* ---------- Recuadro aparte: PRÓXIMOS PAGOS ----------
-          Lo listo para pagar cuya semana de pago todavía no llega. Vive FUERA
-          del tablero a propósito: en las columnas solo debe haber lo que se
-          paga ahora. Cada factura sube sola a «Pagos de esta semana» cuando
-          llega su semana; adelantarla exige marcarla, acá y en el servidor. */}
-      <section className={"pg-prox" + (pending ? " busy" : "")}>
-        <div className="pg-col-head" onClick={() => setProxAbierto(!proxAbierto)}>
-          <span className="pg-caret">{proxAbierto ? "▾" : "▸"}</span>
-          <span className="pg-col-tag prox">Próximos pagos</span>
-          <span className="pg-prox-hint">Suben solas a «Pagos de esta semana» cuando llega su semana de pago. Para adelantar una, ábrela y márcala.</span>
-          <span className="pg-prox-tot">{$(totalProx)}</span><i>{nProx}</i>
-        </div>
-        {proxAbierto && (
-          <div className="pg-prox-body">
-            {!semanasProx.length ? (
-              <div className="pg-empty sm">Nada programado para las próximas semanas.</div>
-            ) : semanasProx.map((s) => (
-              <div key={s.sem} className="pg-prox-sem">
-                <div className="pg-prox-sem-head">
-                  <span>Semana del {dm(s.lunes)} al {dm(sumarDias(s.lunes, 4))}</span>
-                  <i>{s.n}</i><b>{$(s.total)}</b>
-                </div>
-                <div className="pg-prox-sem-body">
-                  {s.grupos.map((g) => renderGrupoPend(g, "PX" + s.sem, true))}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </section>
       </>)}
 
       {vista === "historial" && <HistorialView historial={historial} cuentas={cuentas} />}
