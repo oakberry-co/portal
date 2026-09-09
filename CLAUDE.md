@@ -129,7 +129,7 @@ asumiéndolo.
 ```bash
 for t in nit bancos candado_aprobacion permisos documentos retenciones_excel espina_dian \
          desvio_titular nombre_pago modal_portal enlaces_basepath \
-         aislamiento_pruebas causacion; do
+         aislamiento_pruebas causacion semana_pagos; do
   node scripts/test_$t.js; done
 python3 scripts/test_enriquecimiento_xml.py   # base REAL, con ROLLBACK
 python3 scripts/test_intake_a_pagos.py     # contra la base REAL, con ROLLBACK
@@ -152,6 +152,16 @@ Los centinelas de datos (no de código) viven en el otro repo:
   banco**, sin ningún error ($37M detenidos). Canónico = **sin DV** (`lib/nit.ts`
   + espejo `scripts/nit.py`). **Nunca** "quítale el último dígito si son 10":
   una cédula de 10 dígitos tiene ~9% de dar DV válido por casualidad.
+- **"Esta semana" que era "esta semana y todas las futuras".** El tablero de
+  Pagos partía Pendientes con `>=`; nadie lo notó mientras las retenciones se
+  confirmaban de a una. El día que el contador confirmó 183 desde el Excel, un
+  clic sobre un proveedor ("ninguna marcada = todas") mandó 64 facturas a
+  Validación, diez con plazo hasta la semana siguiente ($8,3M). La regla de en
+  qué semana se paga cada factura vive en **`lib/semana-pago.ts`** (una sola
+  copia, la usan pantalla y servidor); lo futuro va al recuadro **Próximos
+  pagos** y solo se adelanta marcándolo — `asignarCuenta` lo rechaza sin la
+  marca `adelantar`, y el centinela de datos `pagos_adelantados_sin_marca` vigila
+  Validación a diario.
 - **Dos copias de la misma consulta.** El candado de aprobación tenía su propia
   copia del SQL de la certificación y se quedó sin una columna → bloqueaba
   siempre, callado. El genérico de `query<T>()` es una **promesa, no una
@@ -191,6 +201,7 @@ Los centinelas de datos (no de código) viven en el otro repo:
 |---|---|
 | `app/(portal)/contabilidad/` | el portal interno (conciliación, pagos, causaciones, maestros, bandejas) |
 | `lib/causacion.ts` | qué se puede causar y con qué cuenta (módulo puro) |
+| `lib/semana-pago.ts` | en qué semana se paga cada factura: atrasada · esta semana · próxima (módulo puro) |
 | `app/cuentas-de-cobro/`, `app/cotizaciones/`, `app/completar/` | landings PÚBLICAS (fuera del middleware) |
 | `lib/permisos.ts` | capacidades por rol — `ver_*` es leer, el resto es operar |
 | `lib/certificaciones.ts` | el candado de aprobación del intake (módulo puro) |

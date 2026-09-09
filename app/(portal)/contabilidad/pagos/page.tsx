@@ -4,6 +4,7 @@ import { puede } from "@/lib/permisos";
 import { LISTO_PARA_PAGOS } from "@/lib/documentos-no-dian";
 import { refDe } from "@/lib/ref-documento";
 import { NC_APLICADA, SALDO_NETO, NO_ES_NOTA } from "@/lib/notas-credito";
+import { DIA_PAGO_DEFAULT } from "@/lib/semana-pago";
 import { PagosView, type FilaPago, type FilaIntake, type PagoHecho, type CuentaPago, type Adelanto } from "./PagosView";
 
 export const dynamic = "force-dynamic";
@@ -12,6 +13,9 @@ const CAMPOS = `
   f.cufe, f.nombre_proveedor, f.nit_proveedor, f.numero, f.fecha_emision::text AS fecha_emision,
   e.concepto, e.destino, e.cuenta_pago,
   e.fecha_vencimiento::text AS fecha_vencimiento,
+  -- La fecha programada a mano viaja APARTE del vencimiento: la regla de en qué
+  -- semana se paga (lib/semana-pago) necesita saber cuál de las dos es.
+  e.fecha_pago_prog::text AS fecha_pago_prog,
   coalesce(e.fecha_pago_prog, e.fecha_vencimiento, f.fecha_emision)::text AS semana_fecha,
   coalesce(e.valor_a_pagar, f.total)::float AS a_pagar,
   coalesce(e.pago_monto,0)::float AS pagado,
@@ -173,7 +177,7 @@ async function cargar(): Promise<{ pendientes: FilaPago[]; validacion: FilaPago[
     LIMIT 300`);
   const cuentas = await pool.query<CuentaPago>("SELECT nombre, formato, activo FROM cuentas_pago ORDER BY id");
   const cfg = await pool.query<{ valor: string }>("SELECT valor FROM config_pagos WHERE clave = 'dia_pago'");
-  const diaPago = Number(cfg.rows[0]?.valor ?? 5) || 5;
+  const diaPago = Number(cfg.rows[0]?.valor ?? DIA_PAGO_DEFAULT) || DIA_PAGO_DEFAULT;
   return { pendientes: pendientes.rows, validacion: validacion.rows, intake: intake.rows,
            historial: historial.rows, cuentas: cuentas.rows, diaPago, adelantos: adelantos.rows };
 }
@@ -194,7 +198,7 @@ export default async function PagosPage() {
         {puedePagos ? (
           <>Tablero de pago: <b>Pendientes</b> (asigna la cuenta por factura) →
           <b> Validación semana en curso</b> (baja el archivo del banco por cuenta) →
-          <b> Confirmados</b> (el banco ya pagó).</>
+          <b> Confirmados</b> (el banco ya pagó). Lo que se paga en semanas futuras espera en <b>Próximos pagos</b>.</>
         ) : (
           <>Consolidado de pagos: consulta el <b>Historial</b> y descárgalo en Excel.</>
         )}

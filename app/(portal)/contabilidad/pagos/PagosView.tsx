@@ -7,10 +7,14 @@ import { asignarCuenta, quitarCuenta, confirmarPago, agregarCuentaPago, toggleCu
 import { etiquetaOrigen, etiquetaOrigenCorta } from "@/lib/origen-pago";
 import { ModalPortal } from "../_ui/ModalPortal";
 import { ruta } from "@/lib/ruta";
+import { repartir, fechaPagoDe, semanaISO, lunesDe } from "@/lib/semana-pago";
+import { hoyBogota, sumarDias } from "@/lib/habiles";
 
 export type FilaPago = {
   cufe: string; nombre_proveedor: string | null; nit_proveedor: string; numero: string;
   fecha_emision: string; fecha_vencimiento: string | null; concepto: string | null; destino: string | null;
+  /** Fecha de pago programada a mano; manda sobre el vencimiento (lib/semana-pago). */
+  fecha_pago_prog: string | null;
   cuenta_pago: string | null; semana_fecha: string; a_pagar: number; pagado: number;
   abono_aplicado: number; pago_estado: string; tiene_banco: boolean;
   /** Lo que le quitan sus notas crédito (en positivo) y cuáles son. */
@@ -60,25 +64,13 @@ const saldo = (f: FilaPago) =>
 const MESES = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
 const dm = (s: string) => { const x = new Date(s); return `${String(x.getUTCDate()).padStart(2, "0")}/${MESES[x.getUTCMonth()]}`; };
 const mesActual = new Date().toISOString().slice(0, 7);
-const hoyISO = new Date().toISOString().slice(0, 10);
-
-/** Fecha de pago SUGERIDA: el último "día de pago" (ISO 1=Lun..7=Dom) ≤ vencimiento. */
-function sugPago(dueISO: string, payDow: number): string {
-  const d = new Date(dueISO + "T00:00:00Z");
-  const dow = d.getUTCDay() || 7;
-  d.setUTCDate(d.getUTCDate() - ((dow - payDow + 7) % 7));
-  return d.toISOString().slice(0, 10);
-}
-const diasHasta = (iso: string) => Math.round((new Date(iso + "T00:00:00Z").getTime() - new Date(hoyISO + "T00:00:00Z").getTime()) / 86400000);
-/** Semana ISO como "YYYY-Sww" (para filtros y para partir Pendientes por semana). */
-function semanaISO(s: string): string {
-  const x = new Date(s);
-  const t = new Date(Date.UTC(x.getUTCFullYear(), x.getUTCMonth(), x.getUTCDate()));
-  const day = t.getUTCDay() || 7; t.setUTCDate(t.getUTCDate() + 4 - day);
-  const ys = new Date(Date.UTC(t.getUTCFullYear(), 0, 1));
-  return `${t.getUTCFullYear()}-S${String(Math.ceil(((t.getTime() - ys.getTime()) / 86400000 + 1) / 7)).padStart(2, "0")}`;
-}
-const hoySem = semanaISO(new Date().toISOString());
+// "Hoy" se pregunta CADA vez (no al cargar el módulo): en el servidor el módulo
+// vive lo que viva la lambda, y una que cruce la medianoche del domingo
+// repartiría con la semana anterior. Y es el día de Bogotá, no el de UTC.
+const diasHasta = (iso: string) =>
+  Math.round((new Date(iso.slice(0, 10) + "T00:00:00Z").getTime() - new Date(hoyBogota() + "T00:00:00Z").getTime()) / 86400000);
+// La regla de QUÉ SEMANA se paga cada factura (sugerida, programada, atrasada,
+// próxima) vive en lib/semana-pago y la comparte el servidor: acá no se copia.
 
 type Grupo = { nit: string; nombre: string; tiene_banco: boolean; facturas: FilaPago[]; total: number; oldest: string };
 
@@ -126,6 +118,10 @@ export function PagosView({ pendientes, validacion, intake, adelantos, historial
   const [revision, setRevision] = useState<RevisionCuentas | null>(null);
   const [errRev, setErrRev] = useState<string | null>(null);
   const [vista, setVista] = useState<"tablero" | "historial" | "config">(puedePagos ? "tablero" : "historial");
+  const [proxAbierto, setProxAbierto] = useState(true);
+  // El NO del servidor al asignar, pintado al lado del botón del grupo que lo
+  // pidió (un alert en producción diría "An error occurred…" y nada más).
+  const [errGrupo, setErrGrupo] = useState<Record<string, string>>({});
 
   const toggle = <T,>(set: Set<T>, k: T) => { const n = new Set(set); n.has(k) ? n.delete(k) : n.add(k); return n; };
   const totalPend = pendientes.reduce((s, f) => s + saldo(f), 0);
@@ -176,25 +172,55 @@ export function PagosView({ pendientes, validacion, intake, adelantos, historial
     });
   }
 
-  // 4 columnas independientes: pendientes de semanas pasadas · pendientes de esta
-  // semana · validación · confirmados de ESTA semana (lo anterior vive en Historial).
-  const gruposPasadas = porProveedor(pendientes.filter((f) => semanaISO(f.semana_fecha) < hoySem));
-  const gruposEnCurso = porProveedor(pendientes.filter((f) => semanaISO(f.semana_fecha) >= hoySem));
-  const confSemana = historial.filter((p) => semanaISO(p.fecha_pago) === hoySem);
+  // 4 columnas + 1 recuadro: pendientes ATRASADAS · pendientes de ESTA SEMANA ·
+  // validación · confirmados de esta semana (lo anterior vive en Historial), y
+  // abajo PRÓXIMOS PAGOS: lo listo cuya semana de pago todavía no llega. Hasta
+  // sep-2026 "esta semana" era `>=` — esta semana y todas las futuras — y con un
+  // clic se mandaron a Validación 10 facturas con plazo hasta la semana
+  // siguiente. La regla está en lib/semana-pago; acá solo se pinta.
+  const hoy = hoyBogota();
+  const hoySem = semanaISO(hoy);
+  const { atrasadas, estaSemana, proximas } = repartir(pendientes, diaPago, hoy);
+  const gruposPasadas = porProveedor(atrasadas);
+  const gruposEnCurso = porProveedor(estaSemana);
+  // Próximos pagos: por semana de pago, y dentro de cada semana por proveedor.
+  const porSemanaProx = new Map<string, FilaPago[]>();
+  for (const f of proximas) {
+    const s = semanaISO(fechaPagoDe(f, diaPago));
+    (porSemanaProx.get(s) ?? porSemanaProx.set(s, []).get(s)!).push(f);
+  }
+  const semanasProx = [...porSemanaProx.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([sem, fs]) => ({
+    sem, lunes: lunesDe(fechaPagoDe(fs[0], diaPago)), grupos: porProveedor(fs),
+    n: fs.length, total: fs.reduce((s, f) => s + saldo(f), 0),
+  }));
+  const confSemana = historial.filter((p) => semanaISO(p.fecha_pago.slice(0, 10)) === hoySem);
   const nPasadas = gruposPasadas.reduce((n, g) => n + g.facturas.length, 0);
   const nEnCurso = gruposEnCurso.reduce((n, g) => n + g.facturas.length, 0);
+  const nProx = proximas.length;
+  const totalProx = proximas.reduce((s, f) => s + saldo(f), 0);
 
-  // Facturas seleccionadas de un grupo (si ninguna marcada → todas: atajo rápido).
-  const seleccion = (g: Grupo) => { const s = g.facturas.filter((f) => sel.has(f.cufe)); return s.length ? s : g.facturas; };
+  // Facturas seleccionadas de un grupo. En las columnas de la semana, ninguna
+  // marcada = todas (atajo rápido). En PRÓXIMOS PAGOS no hay atajo: adelantar
+  // plata se hace marcando cada factura — el atajo es justo lo que se llevó 64
+  // de NUTRELLE a Validación con un clic (sep-2026). El servidor lo exige igual.
+  const seleccion = (g: Grupo, adelantar: boolean) => {
+    const s = g.facturas.filter((f) => sel.has(f.cufe));
+    return s.length || adelantar ? s : g.facturas;
+  };
 
-  function asignar(g: Grupo, key: string) {
+  function asignar(g: Grupo, key: string, adelantar = false) {
     const cuenta = cuentaProv[key] ?? cuenta0;
-    const cufes = seleccion(g).map((f) => f.cufe);
+    const cufes = seleccion(g, adelantar).map((f) => f.cufe);
     if (!cuenta || !cufes.length) return;
     start(async () => {
       try {
         const fd = new FormData(); fd.set("cufes", cufes.join(",")); fd.set("cuenta", cuenta);
-        await asignarCuenta(fd);
+        // Sin esta marca el servidor se niega a mover lo que todavía no toca.
+        if (adelantar) fd.set("adelantar", "1");
+        const r = await asignarCuenta(fd);
+        if (!r.ok) { setErrGrupo({ ...errGrupo, [key]: r.error ?? "No se pudo asignar." }); return; }
+        const { [key]: _quitado, ...resto } = errGrupo; void _quitado;
+        setErrGrupo(resto);
         setSel(new Set());
       } catch (e) { alert("No se pudo asignar: " + (e as Error).message); }
     });
@@ -206,7 +232,9 @@ export function PagosView({ pendientes, validacion, intake, adelantos, historial
     });
   }
 
-  const renderGrupoPend = (g: Grupo, keyPrefix: string) => {
+  // `adelantar` = el grupo vive en PRÓXIMOS PAGOS: el botón exige selección y
+  // le dice al servidor que quien lo aprieta sabe que se está adelantando plata.
+  const renderGrupoPend = (g: Grupo, keyPrefix: string, adelantar = false) => {
     const key = keyPrefix + g.nit; const exp = abierto.has(key);
     const selG = g.facturas.filter((f) => sel.has(f.cufe)).length;
     // A este proveedor ya se le adelantó plata que nadie ha descontado.
@@ -235,13 +263,17 @@ export function PagosView({ pendientes, validacion, intake, adelantos, historial
               <select value={cuentaProv[key] ?? cuenta0} onChange={(e) => setCuentaProv({ ...cuentaProv, [key]: e.target.value })}>
                 {ctasActivas.map((c) => <option key={c.nombre} value={c.nombre}>{c.nombre}</option>)}
               </select>
-              <button type="button" className="pg-btn" disabled={pending} onClick={() => asignar(g, key)}>Asignar →</button>
+              <button type="button" className="pg-btn" disabled={pending || (adelantar && !selG)}
+                      title={adelantar ? (selG ? `Adelantar ${selG} factura(s) al archivo de esta semana` : "Marca las facturas que quieres adelantar") : undefined}
+                      onClick={() => asignar(g, key, adelantar)}>{adelantar ? "Adelantar →" : "Asignar →"}</button>
             </div>
+            {errGrupo[key] && <div className="pg-assign-err">⚠ {errGrupo[key]}</div>}
+            {adelantar && !selG && <div className="pg-prox-aviso">Todavía no toca. Marca las que quieras adelantar al archivo de esta semana.</div>}
             <div className="pg-pend-list">
               <table className="pg-tabla"><tbody>
                 {g.facturas.map((f) => {
-                  const orig = f.fecha_vencimiento ?? f.semana_fecha;
-                  const sug = sugPago(orig, diaPago);
+                  const orig = (f.fecha_vencimiento ?? f.fecha_emision).slice(0, 10);
+                  const sug = fechaPagoDe(f, diaPago);
                   const dias = diasHasta(orig);
                   const urg = dias < 0 ? "lo" : dias <= 3 ? "mid" : "hi";
                   const urgTxt = dias < 0 ? `⏰ ${-dias}d tarde` : dias === 0 ? "⏰ hoy" : `faltan ${dias}d`;
@@ -297,6 +329,7 @@ export function PagosView({ pendientes, validacion, intake, adelantos, historial
         <div className="pg-kpi due"><i>Por pagar (total)</i><b>{$(totalPend + totalVal)}</b><span>{pendientes.length + validacion.length} facturas{intake.length ? ` + ${intake.length} sin factura DIAN` : ""}</span></div>
         <div className="pg-kpi"><i>En validación</i><b>{$(totalVal)}</b><span>{validacion.length} factura(s){intake.length ? ` + ${intake.length} del intake` : ""}</span></div>
         <div className="pg-kpi paid"><i>Pagado este mes</i><b>{$(pagadoMes)}</b><span>{historial.filter((p) => p.fecha_pago.slice(0, 7) === mesActual).length} pago(s)</span></div>
+        <div className="pg-kpi prox"><i>Próximos pagos</i><b>{$(totalProx)}</b><span>{nProx} factura(s) que todavía no tocan</span></div>
       </div>
 
       {/* Después de cargar la cuenta de un proveedor nuevo en Maestros, este
@@ -461,6 +494,37 @@ export function PagosView({ pendientes, validacion, intake, adelantos, historial
           </div>
         </section>
       </div>
+
+      {/* ---------- Recuadro aparte: PRÓXIMOS PAGOS ----------
+          Lo listo para pagar cuya semana de pago todavía no llega. Vive FUERA
+          del tablero a propósito: en las columnas solo debe haber lo que se
+          paga ahora. Cada factura sube sola a «Pagos de esta semana» cuando
+          llega su semana; adelantarla exige marcarla, acá y en el servidor. */}
+      <section className={"pg-prox" + (pending ? " busy" : "")}>
+        <div className="pg-col-head" onClick={() => setProxAbierto(!proxAbierto)}>
+          <span className="pg-caret">{proxAbierto ? "▾" : "▸"}</span>
+          <span className="pg-col-tag prox">Próximos pagos</span>
+          <span className="pg-prox-hint">Suben solas a «Pagos de esta semana» cuando llega su semana de pago. Para adelantar una, ábrela y márcala.</span>
+          <span className="pg-prox-tot">{$(totalProx)}</span><i>{nProx}</i>
+        </div>
+        {proxAbierto && (
+          <div className="pg-prox-body">
+            {!semanasProx.length ? (
+              <div className="pg-empty sm">Nada programado para las próximas semanas.</div>
+            ) : semanasProx.map((s) => (
+              <div key={s.sem} className="pg-prox-sem">
+                <div className="pg-prox-sem-head">
+                  <span>Semana del {dm(s.lunes)} al {dm(sumarDias(s.lunes, 4))}</span>
+                  <i>{s.n}</i><b>{$(s.total)}</b>
+                </div>
+                <div className="pg-prox-sem-body">
+                  {s.grupos.map((g) => renderGrupoPend(g, "PX" + s.sem, true))}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
       </>)}
 
       {vista === "historial" && <HistorialView historial={historial} cuentas={cuentas} />}

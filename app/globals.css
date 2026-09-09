@@ -878,6 +878,33 @@ button.ghost { background: #fff; color: var(--purple); }
 .pg-venc-tag { font-size: 10px; font-weight: 700; color: var(--coral); background: rgba(232,89,60,.1); border-radius: 999px; padding: 1px 8px; margin-left: auto; }
 @media (max-width: 1400px) { .pg-board { grid-template-columns: repeat(2, 1fr); } }
 @media (max-width: 980px) { .pg-board { grid-template-columns: 1fr; } .pg-col-body { max-height: none; } }
+
+/* Próximos pagos: lo listo para pagar cuya semana todavía no llega. Es un
+   recuadro APARTE del tablero (no una quinta columna) para que en las columnas
+   solo viva lo que se paga ahora — mezclarlo fue como se adelantaron $8,3M de
+   NUTRELLE con un clic (sep-2026). */
+.pg-prox { border: 1px solid var(--border); border-radius: 14px; background: var(--card); box-shadow: var(--shadow); overflow: hidden; margin-top: 12px; }
+.pg-prox.busy { opacity: .55; pointer-events: none; }
+.pg-prox > .pg-col-head { cursor: pointer; gap: 10px; }
+.pg-col-tag.prox { color: var(--lav); }
+.pg-kpi.prox { border-left: 3px solid var(--lav); }
+.pg-prox-hint { flex: 1; font-size: 11px; color: var(--lav); line-height: 1.35; }
+.pg-prox-tot { font-weight: 800; font-size: 12.5px; color: var(--purple-deep); white-space: nowrap; }
+.pg-prox-body { padding: 8px; display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 10px; align-items: start; }
+.pg-prox-sem { border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+.pg-prox-sem-head { display: flex; align-items: center; gap: 8px; padding: 7px 10px; background: var(--cream); border-bottom: 1px solid var(--border); font-size: 12px; font-weight: 700; color: var(--purple-deep); }
+.pg-prox-sem-head i { font-style: normal; font-family: var(--mono); font-size: 11px; background: rgba(0,0,0,.06); border-radius: 999px; padding: 1px 8px; color: var(--lav); }
+.pg-prox-sem-head b { margin-left: auto; font-size: 12.5px; white-space: nowrap; }
+.pg-prox-sem-body { padding: 6px; display: flex; flex-direction: column; gap: 6px; }
+.pg-prox .pg-prov { border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+.pg-prox .pg-prov-head { padding: 8px 10px; }
+.pg-prox .pg-prov-nom { font-size: 12.5px; }
+.pg-prox .pg-prov-tot { min-width: 0; font-size: 12.5px; }
+.pg-prox .pg-prov-n { font-size: 10.5px; }
+.pg-prox-aviso { padding: 6px 10px; font-size: 11px; color: #6b4d05; background: #fff8e6; border-bottom: 1px solid var(--border); }
+/* El NO del servidor al asignar (p. ej. "todavía no tocan"), al lado del botón. */
+.pg-assign-err { padding: 6px 10px; font-size: 11px; line-height: 1.45; color: #a3321a; background: #fff4f1; border-bottom: 1px solid rgba(232,89,60,.3); }
+@media (max-width: 980px) { .pg-prox-hint { display: none; } .pg-prox-body { grid-template-columns: 1fr; } }
 .pg-subtabs { margin-bottom: 14px; }
 .pg-hfiltros { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 4px 0 10px; }
 .pg-hfiltros input, .pg-hfiltros select { width: auto; font-size: 12.5px; padding: 7px 10px; font-weight: 600; }

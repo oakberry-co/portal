@@ -10,6 +10,7 @@ import { subirComprobante } from "@/lib/intake";
 import { encolarCorreo } from "@/lib/correos";
 import { mismoNit, soloDigitos } from "@/lib/nit";
 import { intentar, type Resultado } from "@/lib/resultado";
+import { adelantadas, fechaPagoDe, DIA_PAGO_DEFAULT } from "@/lib/semana-pago";
 import type { PoolClient } from "pg";
 
 // Tablero de pagos (3 columnas):
@@ -29,33 +30,77 @@ async function guardPagador() {
  *  las pasa a 'aprobada_pago' (columna Validación). La cuenta se elige POR FACTURA;
  *  esta acción aplica la MISMA cuenta al lote seleccionado (se repite por cuenta si
  *  se quiere mezclar). Sólo mueve facturas listas para pago. */
-export async function asignarCuenta(fd: FormData) {
-  const user = await guardPagador();
-  const cufes = cufesDe(fd);
-  const cuenta = String(fd.get("cuenta") ?? "").trim();
-  if (!cufes.length) throw new Error("Selecciona al menos una factura.");
-  if (!cuenta) throw new Error("Elige la cuenta de pago.");
-  await withTx(async (c: PoolClient) => {
-    const cc = await c.query("SELECT 1 FROM cuentas_pago WHERE nombre = $1 AND activo", [cuenta]);
-    if (!cc.rowCount) throw new Error("Cuenta de pago no válida: " + cuenta);
-    const { rows } = await c.query<{ cufe: string; estado: string }>(
-      "SELECT cufe, estado FROM factura_estado WHERE cufe = ANY($1) FOR UPDATE", [cufes]);
-    for (const r of rows) {
-      if (!["retenciones_ok", "aprobada_pago"].includes(r.estado)) {
-        throw new Error(`La factura ${r.cufe} no está lista para pago (clasifica y retén primero).`);
+export async function asignarCuenta(fd: FormData): Promise<Resultado> {
+  // Devuelve `Resultado` en vez de lanzar: el "todavía no tocan" está escrito
+  // para quien paga, y una acción que lanza llega a producción como
+  // "An error occurred in the Server Components render" (lib/resultado.ts).
+  return intentar(async () => {
+    const user = await guardPagador();
+    const cufes = cufesDe(fd);
+    const cuenta = String(fd.get("cuenta") ?? "").trim();
+    // "adelantar" = quien aprieta el botón SABE que estas facturas todavía no
+    // tocan y las quiere en el archivo de esta semana igual. Sin esa marca, lo
+    // que se paga en una semana futura no se mueve — ni por el atajo de la
+    // pantalla ("ninguna marcada = todas") ni desde una pestaña vieja. Así se
+    // fueron 64 de NUTRELLE a Validación con un clic el 9-sep-2026, diez de
+    // ellas con plazo hasta la semana siguiente ($8,3M adelantados sin que
+    // nadie lo decidiera).
+    const adelantar = String(fd.get("adelantar") ?? "") === "1";
+    if (!cufes.length) throw new Error("Selecciona al menos una factura.");
+    if (!cuenta) throw new Error("Elige la cuenta de pago.");
+    await withTx(async (c: PoolClient) => {
+      const cc = await c.query("SELECT 1 FROM cuentas_pago WHERE nombre = $1 AND activo", [cuenta]);
+      if (!cc.rowCount) throw new Error("Cuenta de pago no válida: " + cuenta);
+      const { rows } = await c.query<{
+        cufe: string; estado: string; numero: string;
+        fecha_emision: string; fecha_vencimiento: string | null; fecha_pago_prog: string | null;
+      }>(
+        `SELECT e.cufe, e.estado, f.numero, f.fecha_emision::text AS fecha_emision,
+                e.fecha_vencimiento::text AS fecha_vencimiento, e.fecha_pago_prog::text AS fecha_pago_prog
+           FROM factura_estado e JOIN facturas f USING (cufe)
+          WHERE e.cufe = ANY($1) FOR UPDATE OF e`, [cufes]);
+      for (const r of rows) {
+        if (!["retenciones_ok", "aprobada_pago"].includes(r.estado)) {
+          throw new Error(`La factura ${r.cufe} no está lista para pago (clasifica y retén primero).`);
+        }
       }
-    }
-    await c.query(
-      `UPDATE factura_estado SET cuenta_pago = $2, estado = 'aprobada_pago', actualizado_en = now()
-        WHERE cufe = ANY($1) AND estado IN ('retenciones_ok','aprobada_pago')`,
-      [cufes, cuenta]);
-    await registrarEvento(c, {
-      cufe: null, tipo: "asigna_cuenta", campo: "cuenta_pago",
-      valorNuevo: { cuenta, facturas: cufes.length },
-      actor: user.email, actorRol: user.rol, origen: "web",
+      // La MISMA regla que reparte el tablero decide acá: lo de semanas
+      // futuras solo pasa con la marca explícita.
+      const diaPago = await leerDiaPago(c);
+      const futuras = adelantadas(rows, diaPago);
+      if (futuras.length && !adelantar) {
+        const primera = futuras.map((f) => fechaPagoDe(f, diaPago)).sort()[0];
+        throw new Error(
+          `${futuras.length} de estas facturas todavía no tocan (la más próxima se paga el ${primera}): ` +
+          `${futuras.slice(0, 4).map((f) => f.numero).join(", ")}${futuras.length > 4 ? "…" : ""}. ` +
+          `Están en «Próximos pagos»; si de verdad van en el archivo de esta semana, márcalas ahí y usa «Adelantar».`);
+      }
+      await c.query(
+        `UPDATE factura_estado SET cuenta_pago = $2, estado = 'aprobada_pago', actualizado_en = now()
+          WHERE cufe = ANY($1) AND estado IN ('retenciones_ok','aprobada_pago')`,
+        [cufes, cuenta]);
+      await registrarEvento(c, {
+        cufe: null, tipo: "asigna_cuenta", campo: "cuenta_pago",
+        // Las adelantadas quedan NOMBRADAS: el centinela `pagos_adelantados_sin_marca`
+        // (health_check del repo datawarehouse) busca en Validación lo que se
+        // paga en semanas futuras y exige que alguien lo haya adelantado a propósito.
+        valorNuevo: {
+          cuenta, facturas: cufes.length, adelantadas: futuras.length,
+          ...(futuras.length ? { adelantadas_cufes: futuras.map((f) => f.cufe) } : {}),
+        },
+        actor: user.email, actorRol: user.rol, origen: "web",
+      });
     });
+    done();
   });
-  done();
+}
+
+/** El día de la semana en que se paga (config_pagos), con el MISMO default que
+ *  usa la página: si repartieran con días distintos, el servidor rechazaría
+ *  facturas que la pantalla muestra como de esta semana. */
+async function leerDiaPago(c: PoolClient): Promise<number> {
+  const r = await c.query<{ valor: string }>("SELECT valor FROM config_pagos WHERE clave = 'dia_pago'");
+  return Number(r.rows[0]?.valor ?? DIA_PAGO_DEFAULT) || DIA_PAGO_DEFAULT;
 }
 
 /** Devuelve facturas a PENDIENTES: quita la cuenta y vuelve a 'retenciones_ok'.
