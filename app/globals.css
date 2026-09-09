@@ -1648,3 +1648,51 @@ tr.desfasada td { background: #fff8e6; }
   .rolp-lbl { display: none; }
   .rolp-btn { padding: 4px 8px; font-size: 10.5px; }
 }
+
+/* --- Catálogo de piezas (solo ambiente de pruebas) --------------------------
+   Estilos de la PÁGINA de catálogo, no de las piezas: las piezas se pintan con
+   las clases de arriba, tal como se ven en producción. Todo con tokens: si
+   mañana el catálogo necesita un color nuevo, es señal de que falta un token. */
+.cat-hero { padding: 8px 0 22px; border-bottom: 1px solid var(--border); margin-bottom: 8px; }
+.cat-hero h1 { margin: 0 0 6px; }
+.cat-inv { display: flex; flex-wrap: wrap; gap: 8px 22px; margin-top: 14px;
+  font-family: var(--mono); font-size: 11px; color: var(--lav); }
+.cat-inv b { color: var(--purple-deep); font-size: 13px; }
+.cat-sec { padding-top: 34px; }
+.cat-sec h2 { font-size: 19px; color: var(--purple-deep); margin: 0 0 4px; display: flex;
+  align-items: center; gap: 10px; flex-wrap: wrap; }
+.cat-sec > .muted { margin: 0 0 14px; font-size: 13px; max-width: 72ch; }
+.cat-tag { font-family: var(--mono); font-size: 9.5px; text-transform: uppercase;
+  letter-spacing: .08em; background: var(--coral); color: #fff; border-radius: 999px; padding: 3px 9px; }
+.cat-clave { border-left: 3px solid var(--coral); padding-left: 16px; background: #fff9f7;
+  border-radius: 0 12px 12px 0; padding-bottom: 16px; }
+.cat-huecos { border-left: 3px solid var(--border-lav); padding-left: 16px; }
+.cat-huecos ul { margin: 0; padding-left: 20px; font-size: 13.5px; }
+.cat-huecos li { margin-bottom: 6px; }
+
+.cat-swatches { display: grid; grid-template-columns: repeat(auto-fill, minmax(168px, 1fr)); gap: 12px; }
+.cat-sw { display: flex; flex-direction: column; gap: 2px; font-size: 11.5px; }
+.cat-sw-box { height: 46px; border-radius: 9px; border: 1px solid var(--border); margin-bottom: 5px; }
+.cat-sw b { font-family: var(--mono); font-size: 11px; color: var(--purple-deep); }
+.cat-sw code { font-family: var(--mono); font-size: 10.5px; color: var(--lav); }
+
+.cat-tipo { display: grid; gap: 16px; margin-bottom: 20px; }
+.cat-tipo .muted { font-family: var(--mono); font-size: 10px; text-transform: uppercase; letter-spacing: .08em; }
+.cat-escala { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 24px; }
+.cat-escala > div { display: flex; flex-direction: column; }
+.cat-escala b { color: var(--purple-deep); line-height: 1.2; }
+.cat-escala .muted { font-size: 10.5px; }
+
+.cat-fila-demo { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; }
+.cat-est { display: flex; flex-direction: column; gap: 5px; }
+.cat-est-lbl { font-family: var(--mono); font-size: 10px; text-transform: uppercase;
+  letter-spacing: .07em; color: var(--purple-deep); }
+.cat-est .muted { font-size: 11px; }
+.cat-est .cbx-input { width: 100%; padding: 6px 8px; border: 1px solid var(--border-lav);
+  border-radius: 8px; font-size: 12px; background: #fff; }
+
+.cat-row { display: flex; flex-wrap: wrap; gap: 14px 20px; align-items: flex-start; }
+.cat-item { display: flex; flex-direction: column; align-items: flex-start; gap: 5px; font-size: 11px; }
+.cat-item .muted { font-family: var(--mono); font-size: 10px; }
+.cat-pie { font-size: 11.5px; margin-top: 10px; }
+.cat-pie code { font-family: var(--mono); font-size: 10.5px; }

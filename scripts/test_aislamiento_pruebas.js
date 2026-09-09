@@ -73,7 +73,17 @@ check(/if \(!EN_PRUEBAS\)/.test(cuerpo),
       "esconder el botón no es una defensa: una pantalla se manipula desde la consola");
 check(!/DELETE FROM eventos/.test(acc), "no borra eventos: devolverse se registra, no se borra");
 
-console.log("\n6) La carpeta de Drive del ambiente va aparte");
+console.log("\n6) El catálogo de piezas no existe en producción");
+const cat = fs.readFileSync(path.join(RAIZ, "app/(portal)/catalogo/page.tsx"), "utf8");
+check(/if \(!EN_PRUEBAS\) redirect\(/.test(cat),
+      "lo PRIMERO que hace es redirigir si el despliegue no es el de pruebas",
+      "es una página de referencia: en producción no tiene por qué existir");
+check(cat.indexOf("if (!EN_PRUEBAS)") < cat.indexOf("return ("),
+      "y ese candado va antes de pintar nada");
+check(/from "@\/lib\/ambiente"/.test(cat) && !/process\.env\.AMBIENTE/.test(cat),
+      "usa el interruptor único de lib/ambiente.ts");
+
+console.log("\n7) La carpeta de Drive del ambiente va aparte");
 const intake = fs.readFileSync(path.join(RAIZ, "lib/intake.ts"), "utf8");
 check(/AMBIENTE === "pruebas"\) fd\.set\("ambiente", "pruebas"\)/.test(intake),
       "el portal le dice al relay que es pruebas", "de ahí sale CONTABILIDAD/PRUEBAS/");
