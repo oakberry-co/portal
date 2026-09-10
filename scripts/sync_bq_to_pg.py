@@ -101,6 +101,24 @@ def ahora_ms():
     return now, iso
 
 
+def _sin_decimal_vacio(v):
+    """487900.0 → 487900. Un float entero se guarda y se hashea como entero.
+
+    JSONB conserva el «.0» y Python lo relee como float, así que Python siempre
+    reprodujo sus hashes. Pero el verificador del portal (TypeScript) relee
+    487900.0 como 487900 y su canónico dice "487900": los 265 eventos de la
+    migración del 11-ago-2026 le salen rotos aunque no lo estén. Desde hoy los
+    dos escritores guardan lo mismo; los eventos viejos siguen verificándose
+    con este mismo módulo (health_check `bitacora_cadena`)."""
+    if isinstance(v, float) and v.is_integer():
+        return int(v)
+    if isinstance(v, dict):
+        return {k: _sin_decimal_vacio(x) for k, x in v.items()}
+    if isinstance(v, list):
+        return [_sin_decimal_vacio(x) for x in v]
+    return v
+
+
 def registrar_evento(cur, *, cufe, tipo, valor_nuevo, actor, origen):
     """Inserta un evento en la bitácora encadenada (mismo lock que el portal)."""
     cur.execute("SELECT pg_advisory_xact_lock(%s)", (LOCK_KEY,))
@@ -108,7 +126,7 @@ def registrar_evento(cur, *, cufe, tipo, valor_nuevo, actor, origen):
     row = cur.fetchone()
     hash_anterior = row[0] if row else "GENESIS"
     creado_dt, creado_iso = ahora_ms()
-    valor_nuevo = {**valor_nuevo, "corrida": creado_iso}
+    valor_nuevo = _sin_decimal_vacio({**valor_nuevo, "corrida": creado_iso})
     hash_evento = calcular_hash(
         cufe, tipo, None, None, valor_nuevo, actor, creado_iso, hash_anterior)
     cur.execute("""

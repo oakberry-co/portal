@@ -28,6 +28,16 @@ export type EventoInput = {
 
 const LOCK_KEY = 918273; // clave fija: serializa la inserción en la cadena
 
+/** LO QUE SE HASHEA TIENE QUE SER EXACTAMENTE LO QUE SE GUARDA.
+ *
+ *  `JSON.stringify` descarta las llaves con `undefined`, pero `canonical()` las
+ *  escribía como `null`: el hash salía sobre un objeto que nunca llegó a la
+ *  base y ese evento no lo reproduce ningún verificador. Pasó 7 veces
+ *  (`documentos: undefined` en crea_gasto_periodico, ago-2026) y nadie lo vio
+ *  porque la cadena no se verificaba. Un viaje de ida y vuelta por JSON deja el
+ *  valor tal como lo va a leer quien verifique mañana. */
+const normalizar = (v: unknown): unknown => (v == null ? null : JSON.parse(JSON.stringify(v)));
+
 /** Serialización estable: llaves ordenadas recursivamente. Determinista pese al JSONB. */
 function canonical(v: unknown): string {
   if (v === null || typeof v !== "object") return JSON.stringify(v) ?? "null";
@@ -57,8 +67,10 @@ export async function registrarEvento(c: PoolClient, ev: EventoInput): Promise<s
   const hashAnterior = prev.rows[0]?.hash_evento ?? "GENESIS";
 
   const creadoEn = new Date().toISOString();
+  const valorAnterior = normalizar(ev.valorAnterior);
+  const valorNuevo = normalizar(ev.valorNuevo);
   const hashEvento = calcularHash(
-    { cufe: ev.cufe, tipo: ev.tipo, campo: ev.campo ?? null, valorAnterior: ev.valorAnterior, valorNuevo: ev.valorNuevo, actor: ev.actor, creadoEn },
+    { cufe: ev.cufe, tipo: ev.tipo, campo: ev.campo ?? null, valorAnterior, valorNuevo, actor: ev.actor, creadoEn },
     hashAnterior
   );
 
@@ -71,8 +83,8 @@ export async function registrarEvento(c: PoolClient, ev: EventoInput): Promise<s
       ev.cufe,
       ev.tipo,
       ev.campo ?? null,
-      ev.valorAnterior != null ? JSON.stringify(ev.valorAnterior) : null,
-      ev.valorNuevo != null ? JSON.stringify(ev.valorNuevo) : null,
+      valorAnterior != null ? JSON.stringify(valorAnterior) : null,
+      valorNuevo != null ? JSON.stringify(valorNuevo) : null,
       ev.actor,
       ev.actorRol ?? null,
       ev.origen ?? "web",
