@@ -1719,3 +1719,24 @@ tr.desfasada td { background: #fff8e6; }
 .cat-item .muted { font-family: var(--mono); font-size: 10px; }
 .cat-pie { font-size: 11.5px; margin-top: 10px; }
 .cat-pie code { font-family: var(--mono); font-size: 10.5px; }
+
+/* --- Quitar un pago que nunca salió (lib/revertir-pago.ts) ------------------ */
+/* El botón vive dentro del semáforo de Pago (columna flexible, no una celda
+   nueva de la grilla): así no corre las columnas en escritorio ni en celular.
+   Coral porque es la única acción del portal que devuelve una factura a la
+   cola de Pagos, y tiene que verse como la excepción que es. */
+.rev-btn { font-size: 8.5px; font-weight: 700; padding: 2px 7px; border-radius: 999px; cursor: pointer;
+  border: 1px solid rgba(232,89,60,.45); color: var(--coral); background: #fff; margin-top: 2px; width: fit-content; white-space: nowrap; }
+.rev-btn:hover:not(:disabled) { background: #fff1ed; filter: none; }
+.rev-mini { font-size: 8.5px; font-weight: 700; color: var(--coral); background: #fff1ed;
+  border: 1px solid rgba(232,89,60,.3); border-radius: 999px; padding: 2px 7px; margin-top: 2px; width: fit-content; white-space: nowrap; }
+.rev-pago-dato { background: #fff8e6; border: 1px solid var(--yellow); border-radius: 10px;
+  padding: 10px 12px; margin: 12px 0; font-size: 12.5px; display: flex; flex-direction: column; gap: 4px; }
+.rev-pago-no { color: var(--coral); font-size: 12.5px; font-weight: 600; margin: 8px 0 0; }
+.rev-pago-campo { margin-top: 12px; }
+.rev-pago-campo textarea { font-size: 16px; padding: 8px 10px; border-radius: 8px; min-height: 84px; width: 100%;
+  box-sizing: border-box; border: 1px solid var(--border); font-family: inherit; resize: vertical; }
+.rev-pago-campo textarea:focus { outline: 2px solid var(--purple); outline-offset: 1px; }
+.rev-pago-check { display: flex; gap: 8px; align-items: flex-start; font-size: 12.5px; margin: 12px 0 0; cursor: pointer; }
+.rev-pago-check input { margin-top: 3px; flex: none; width: 16px; height: 16px; }
+.rev-pago-aviso { margin: 10px 0 0; line-height: 1.4; }

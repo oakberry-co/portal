@@ -35,6 +35,10 @@ async function cargar(): Promise<{ filas: FacturaRow[]; conceptos: string[]; des
             e.retencion_ok, e.reten_total, e.retefuente, e.reteiva, e.reteica, e.valor_a_pagar,
             e.otros_valor, e.otros_concepto, e.observaciones,
             e.pago_estado, e.fecha_pago_prog,
+            -- El último pago revertido de ESTA factura: quien la vea otra vez
+            -- pendiente tiene que saber que alguien quitó el pago y por qué,
+            -- no creer que el portal se equivocó (lib/revertir-pago.ts).
+            rp.motivo AS rev_motivo, rp.revertido_por AS rev_por, rp.revertido_en AS rev_en,
             coalesce(e.abono_aplicado,0)::float AS abono_aplicado,
             cot.id AS cot_id, cot.codigo AS cot_codigo,
             COALESCE(p.concepto_sug, mp.concepto_default) AS concepto_sug,
@@ -79,6 +83,10 @@ async function cargar(): Promise<{ filas: FacturaRow[]; conceptos: string[]; des
        LEFT JOIN cuentas_bancarias_proveedor cb ON cb.nit = f.nit_proveedor
        -- La cotización cuyo adelanto ya se aplicó a esta factura (el cruce).
        LEFT JOIN cotizaciones cot ON cot.cufe_factura = f.cufe
+       LEFT JOIN LATERAL (
+         SELECT x.motivo, x.revertido_por, x.revertido_en
+           FROM pagos_revertidos x WHERE x.cufe = f.cufe
+          ORDER BY x.id DESC LIMIT 1) rp ON TRUE
       ORDER BY (e.estado = 'capturada') DESC, f.fecha_emision DESC`
   );
   const c = await pool.query<{ nombre: string }>("SELECT nombre FROM maestro_conceptos WHERE activo ORDER BY nombre");
@@ -140,7 +148,8 @@ export default async function ConciliacionPage() {
       <SyncPanel ultima={sync.ultima} nuevas={sync.nuevas} pendiente={sync.pendiente} />
       <ConciliacionView filas={filas} conceptos={conceptos} destinos={destinos} noDian={docsNoDian}
                         puedeClasificar={puedeClasificar} puedeExport={puede(rol, "retenciones")}
-                        puedeRetenciones={puedeRetenciones} />
+                        puedeRetenciones={puedeRetenciones}
+                        puedeRevertir={puede(rol, "revertir_pago")} />
 
       <p className="chain-note">
         🔒 Cada guardado escribe el cambio <em>y</em> su evento en la misma transacción; la bitácora

@@ -1299,3 +1299,45 @@ ALTER TABLE cuentas_cobro ADD CONSTRAINT ck_cc_valor_o_plantilla
 -- el dato de dónde pagarlo justo cuando alguien lo iba a usar. Va pegado al
 -- documento igual que la referencia: quien paga mira UNA fila, no dos tablas.
 ALTER TABLE cuentas_cobro ADD COLUMN IF NOT EXISTS link_pago TEXT;
+
+-- -----------------------------------------------------------------------------
+-- 24) REVERTIR UN PAGO QUE NUNCA SALIÓ DEL BANCO (2026-09-10)
+--
+-- El 11-ago se migraron 265 pagos desde el Sheet histórico: la marca «Pagado»
+-- que el equipo tecleó a mano se volvió un pago del portal, con monto = valor
+-- de la factura y SIN comprobante. Una de esas marcas estaba mal (VIB125646,
+-- $13,9 M, penalidad de arriendo de Viva Barranquilla): el portal decía pagada
+-- y nadie encontraba la transferencia. Y el portal no tenía cómo devolverla —el
+-- estado solo avanza, a propósito, porque una pagada que retrocede reaparece en
+-- Pagos y se paga dos veces.
+--
+-- Revertir es la excepción CONTROLADA a esa regla, y por eso deja rastro aquí y
+-- no se limita a borrar: el pago original se copia entero a esta tabla (con las
+-- facturas que cubría y lo que factura_estado decía), se saca de `pagos` para
+-- que TODA consulta —tablero, Historial, Excel del contador— deje de verlo sin
+-- que a ninguna le falte un filtro, y queda el evento `revierte_pago` en la
+-- bitácora encadenada. Solo se puede revertir un pago SIN comprobante, de UNA
+-- sola factura y completo; lo demás es un ajuste con el contador, no un clic.
+-- -----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS pagos_revertidos (
+  id               BIGSERIAL PRIMARY KEY,
+  pago_id          BIGINT NOT NULL,                 -- el id que tenía en `pagos` (ya no existe allá)
+  cufe             TEXT NOT NULL REFERENCES facturas(cufe),
+  nit_proveedor    TEXT NOT NULL,
+  fecha_pago       DATE NOT NULL,
+  monto            NUMERIC(16,2) NOT NULL,
+  tipo             TEXT NOT NULL,
+  cuenta_pago      TEXT,
+  comprobante_url  TEXT,
+  nota             TEXT,
+  pagado_por       TEXT NOT NULL,
+  pago_creado_en   TIMESTAMPTZ NOT NULL,
+  origen           TEXT,
+  facturas         JSONB NOT NULL DEFAULT '[]',     -- las filas de pago_facturas tal como estaban
+  estado_anterior  JSONB NOT NULL DEFAULT '{}',     -- lo que factura_estado decía del pago
+  motivo           TEXT NOT NULL,                   -- qué revisaron y dónde: obligatorio
+  verificado_banco BOOLEAN NOT NULL DEFAULT FALSE,  -- alguien miró el extracto, no solo el portal
+  revertido_por    TEXT NOT NULL,
+  revertido_en     TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS ix_pagos_rev_cufe ON pagos_revertidos (cufe);

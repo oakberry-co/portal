@@ -85,15 +85,22 @@ export async function registrarEvento(c: PoolClient, ev: EventoInput): Promise<s
   return hashEvento;
 }
 
-/** Verifica la cadena completa (para el sentinela / health_check). */
-export async function verificarCadena(c: PoolClient): Promise<{ ok: boolean; rotoEnId?: number }> {
+/** Verifica la cadena completa (para el sentinela / health_check).
+ *
+ *  `desdeId` permite verificar solo la cola: desde ese evento en adelante,
+ *  tomando como punto de partida el `hash_anterior` que ese evento declara.
+ *  Existe porque la cadena de producción ya estaba rota en el #1188 (un
+ *  `registra_pago` de la migración del 11-ago-2026, escrito por Python) y un
+ *  centinela que necesita comprobar que SU evento quedó bien encadenado no
+ *  puede depender de que todo lo anterior esté sano. */
+export async function verificarCadena(c: PoolClient, desdeId = 1): Promise<{ ok: boolean; rotoEnId?: number }> {
   const { rows } = await c.query<{
     id: number; cufe: string | null; tipo: string; campo: string | null;
     valor_anterior: unknown; valor_nuevo: unknown; actor: string;
     creado_en: Date; hash_anterior: string | null; hash_evento: string;
-  }>("SELECT * FROM eventos ORDER BY id ASC");
+  }>("SELECT * FROM eventos WHERE id >= $1 ORDER BY id ASC", [desdeId]);
 
-  let prevHash = "GENESIS";
+  let prevHash = desdeId > 1 && rows[0] ? (rows[0].hash_anterior ?? "GENESIS") : "GENESIS";
   for (const r of rows) {
     const esperado = calcularHash(
       { cufe: r.cufe, tipo: r.tipo, campo: r.campo, valorAnterior: r.valor_anterior, valorNuevo: r.valor_nuevo, actor: r.actor, creadoEn: new Date(r.creado_en).toISOString() },

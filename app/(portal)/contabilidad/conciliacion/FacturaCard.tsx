@@ -7,6 +7,7 @@ import { semanaISO } from "@/lib/orden-facturas";
 import { CuentaDestinoModal } from "./CuentaDestinoModal";
 import { guardarClasificacion, marcarTipoPago , devolverUnPaso } from "./actions";
 import { RetencionesModal } from "./RetencionesModal";
+import { RevertirPagoModal } from "./RevertirPagoModal";
 import { EN_PRUEBAS_CLIENTE } from "@/lib/ambiente";
 
 export type FacturaRow = {
@@ -58,6 +59,10 @@ export type FacturaRow = {
   pago_estado: string | null;
   fecha_pago_prog: string | Date | null;
   tipo_pago: string | null;
+  // El último pago REVERTIDO de esta factura (lib/revertir-pago.ts): quien la
+  // vea otra vez pendiente tiene que saber que alguien quitó el pago y por qué,
+  // no creer que el portal se equivocó.
+  rev_motivo: string | null; rev_por: string | null; rev_en: string | Date | null;
   // El cruce con la cotización abonada: cuánto se adelantó y de qué cotización.
   abono_aplicado: number | null;
   cot_id: number | null;
@@ -92,16 +97,18 @@ function ddmm(d: string | Date | null): string {
 }
 
 export const FacturaCard = memo(function FacturaCard({
-  f, conceptos, destinos, onSaved, puedeClasificar,
+  f, conceptos, destinos, onSaved, puedeClasificar, puedeRevertir,
 }: {
   f: FacturaRow;
   conceptos: string[];
   destinos: string[];
   onSaved: (cufe: string, patch: FilaPatch) => void;
   puedeClasificar: boolean;   // false = contador (solo puede Reten., no clasificar)
+  puedeRevertir: boolean;     // admin: quitar un pago que nunca salió del banco
 }) {
   const [modal, setModal] = useState(false);
   const [modalCta, setModalCta] = useState(false);
+  const [modalRev, setModalRev] = useState(false);
   const [det, setDet] = useState(false);
   const [pending, start] = useTransition();
   const [faltaDest, setFaltaDest] = useState(false);
@@ -149,7 +156,18 @@ export const FacturaCard = memo(function FacturaCard({
 
   const movida = !pagada && !!f.fecha_pago_prog;
   const pagoLuz = pagada ? "ok" : movida ? "mid" : "no";
-  const pagoTitle = pagada ? "Pagada" : movida ? "Movida de semana (reprogramada)" : "Pendiente por pagar";
+  // Un pago quitado se dice al lado del semáforo: la factura vuelve a verse
+  // pendiente y, sin esto, parecería que el portal perdió el pago.
+  const revertida = !pagada && !!f.rev_en;
+  const revTitle = revertida
+    ? `Se le quitó el pago el ${ddmm(f.rev_en)} (${f.rev_por ?? "—"}): ${f.rev_motivo ?? ""}`
+    : "";
+  const pagoTitle = pagada ? "Pagada" : revertida ? "Pendiente otra vez — " + revTitle
+                  : movida ? "Movida de semana (reprogramada)" : "Pendiente por pagar";
+  // Quitar el pago se ofrece solo sobre una pagada y solo a quien tiene el
+  // permiso; el servidor decide si ESE pago se puede (sin comprobante, de una
+  // sola factura, completo) y si no, dice por qué.
+  const puedeQuitarPago = puedeRevertir && f.pago_estado === "pagado";
 
   // Crédito/Débito: 'debito' = NO entra a Pagos (no se paga; ej. Éxito). El
   // proveedor APRENDE su default → sus próximas facturas lo heredan.
@@ -402,6 +420,15 @@ export const FacturaCard = memo(function FacturaCard({
         <span className="sem" title={pagoTitle}>
           <i className={"luz " + pagoLuz} />Pago
         </span>
+        {puedeQuitarPago && (
+          <button type="button" className="rev-btn" onClick={() => setModalRev(true)}
+            title="Este pago no salió del banco: quitarlo y devolver la factura al flujo">
+            ↩ quitar pago
+          </button>
+        )}
+        {revertida && (
+          <span className="rev-mini" title={revTitle}>↩ pago quitado</span>
+        )}
         <button type="button" className={"cd-toggle " + (esDebito ? "deb" : "cred")} disabled={pending || !puedeClasificar} onClick={onTipo}
           title={esDebito
             ? "Débito — NO entra a Pagos (no se paga, ej. Éxito). Clic para volver a Crédito."
@@ -409,6 +436,16 @@ export const FacturaCard = memo(function FacturaCard({
           {esDebito ? "Débito" : "Crédito"}
         </button>
       </div>
+
+      {modalRev && (
+        <RevertirPagoModal
+          cufe={f.cufe}
+          factura={f.numero}
+          proveedor={f.nombre_proveedor ?? f.nit_proveedor}
+          onSaved={onSaved}
+          onClose={() => setModalRev(false)}
+        />
+      )}
 
       {modalCta && (
         <CuentaDestinoModal

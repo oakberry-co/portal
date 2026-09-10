@@ -31,12 +31,13 @@ function Th({ col, clase, orden, on, children }: {
 }
 
 export function ConciliacionView({
-  filas, conceptos, destinos, noDian, puedeClasificar, puedeExport, puedeRetenciones,
+  filas, conceptos, destinos, noDian, puedeClasificar, puedeExport, puedeRetenciones, puedeRevertir,
 }: { filas: FacturaRow[]; conceptos: string[]; destinos: string[];
      /** Cuentas de cobro y gastos sin factura electrónica: van EN la misma tabla
       *  (ver DocsNoDian.tsx), con SIN FACTURA donde iría el número. */
      noDian: DocNoDianUI[];
-     puedeClasificar: boolean; puedeExport: boolean; puedeRetenciones: boolean }) {
+     puedeClasificar: boolean; puedeExport: boolean; puedeRetenciones: boolean;
+     puedeRevertir: boolean }) {
   // El buscador arranca con lo que venga en ?q= — así Causaciones puede mandar
   // a alguien DERECHO a la factura que hay que clasificar, en vez de decirle
   // "anda a Conciliación y búscala" (Regla 18: el loop tiene que cerrar).
@@ -255,7 +256,7 @@ export function ConciliacionView({
         {visible.length === 0 && noDianVisibles.length === 0 ? (
           <div className="tabla-vacia muted">Nada coincide con los filtros.</div>
         ) : (
-          visible.map((f) => <FacturaCard key={f.cufe} f={f} conceptos={conceptos} destinos={destinos} onSaved={onSaved} puedeClasificar={puedeClasificar} />)
+          visible.map((f) => <FacturaCard key={f.cufe} f={f} conceptos={conceptos} destinos={destinos} onSaved={onSaved} puedeClasificar={puedeClasificar} puedeRevertir={puedeRevertir} />)
         )}
       </div>
 

@@ -12,6 +12,7 @@ import { esBancoConocido } from "@/lib/bancos";
 import { revisarTitularDestino } from "@/lib/cuenta-destino";
 import { EN_PRUEBAS } from "@/lib/ambiente";
 import { asegurarConcepto, asegurarDestino } from "@/lib/maestros";
+import { pagoActivoDe, revertirPago, type Revertible, type ResultadoReversion } from "@/lib/revertir-pago";
 import type { PoolClient } from "pg";
 
 /** El "apartado" de extracción: registra una solicitud de sync manual. La VM
@@ -540,4 +541,38 @@ export async function devolverUnPaso(fd: FormData): Promise<Resultado> {
     revalidatePath("/contabilidad/conciliacion");
     revalidatePath("/contabilidad/pagos");
   });
+}
+
+/** Qué pago respalda el «pagada» de esta factura y si se puede deshacer. Lo
+ *  pide el modal al abrirse: no viaja en la grilla (que ya pesa 7 MB) porque
+ *  se mira una factura de cada mil. */
+export async function datosPagoDe(cufe: string): Promise<Revertible> {
+  await exigirCap("ver_conciliacion");
+  return withTx((c) => pagoActivoDe(c, cufe));
+}
+
+/** DESHACER UN PAGO QUE NUNCA SALIÓ DEL BANCO (ver lib/revertir-pago.ts).
+ *
+ *  Es la única acción que devuelve una factura a la cola de Pagos, así que va
+ *  con la capacidad más cerrada del portal y con motivo obligatorio. El «no se
+ *  puede» llega como texto al lado del botón, no como excepción: el revisor
+ *  tiene que saber si fue el comprobante, el abono o el permiso. */
+export async function revertirPagoFactura(fd: FormData): Promise<Resultado & { patch?: ResultadoReversion }> {
+  try {
+    const user = await exigirCap("revertir_pago");
+    const cufe = String(fd.get("cufe") ?? "").trim();
+    if (!cufe) throw new Error("Falta la factura.");
+    const marca = String(fd.get("verificado_banco") ?? "");
+    const patch = await withTx((c) => revertirPago(c, cufe, {
+      motivo: String(fd.get("motivo") ?? ""),
+      verificadoBanco: marca === "on" || marca === "1" || marca === "true",
+    }, user, "web"));
+    revalidatePath("/contabilidad/conciliacion");
+    revalidatePath("/contabilidad/pagos");
+    return { ok: true, patch };
+  } catch (e) {
+    const error = e instanceof Error ? e.message : String(e);
+    console.error("[revertir pago]", error, e);
+    return { ok: false, error };
+  }
 }

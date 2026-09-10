@@ -129,7 +129,7 @@ asumiéndolo.
 ```bash
 for t in nit bancos candado_aprobacion permisos documentos retenciones_excel espina_dian \
          desvio_titular nombre_pago modal_portal enlaces_basepath \
-         aislamiento_pruebas causacion semana_pagos; do
+         aislamiento_pruebas causacion semana_pagos revertir_pago; do
   node scripts/test_$t.js; done
 python3 scripts/test_enriquecimiento_xml.py   # base REAL, con ROLLBACK
 python3 scripts/test_intake_a_pagos.py     # contra la base REAL, con ROLLBACK
@@ -152,6 +152,21 @@ Los centinelas de datos (no de código) viven en el otro repo:
   banco**, sin ningún error ($37M detenidos). Canónico = **sin DV** (`lib/nit.ts`
   + espejo `scripts/nit.py`). **Nunca** "quítale el último dígito si son 10":
   una cédula de 10 dígitos tiene ~9% de dar DV válido por casualidad.
+- **«Pagada» no siempre quiere decir que la plata salió.** La migración del Sheet
+  (11-ago) convirtió 265 marcas «Pagado» tecleadas a mano en pagos del portal,
+  con `pagado_por = 'migracion:historico_sheet'`, cuenta `histórico` y SIN
+  comprobante. Una estaba mal (VIB125646, $13,9 M) y el portal no tenía cómo
+  devolverla, porque el estado solo avanza. La salida es **«↩ quitar pago»** en
+  la fila de Conciliación (`lib/revertir-pago.ts`, solo admin, capacidad
+  `revertir_pago`): copia el pago entero a `pagos_revertidos`, lo saca de
+  `pagos` —para que ninguna consulta necesite un filtro nuevo—, devuelve la
+  factura al paso que le toca por lo que ya tiene confirmado y deja
+  `revierte_pago` en la bitácora. Solo pagos sin comprobante, de una factura y
+  completos; lo demás es ajuste con el contador. Centinela `test_revertir_pago.js`.
+- **La cadena de hashes de `eventos` está rota en el #1188 desde el 11-ago-2026**
+  (un `registra_pago` de la migración, escrito por Python). `verificarCadena`
+  desde GENESIS falla en producción y ningún centinela lo vigilaba. Para
+  comprobar que un evento nuevo quedó bien encadenado, `verificarCadena(c, desdeId)`.
 - **"Esta semana" que era "esta semana y todas las futuras".** El tablero de
   Pagos partía Pendientes con `>=`; nadie lo notó mientras las retenciones se
   confirmaban de a una. El día que el contador confirmó 183 desde el Excel, un

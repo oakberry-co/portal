@@ -83,6 +83,14 @@ def migrar(conn, filas, con_pago):
     st = Counter()
     antes = _counts(cur)
 
+    # LO REVERTIDO NO SE VUELVE A MARCAR PAGADO. Si un humano quitó el pago de
+    # una factura (pagos_revertidos, ver lib/revertir-pago.ts) fue porque
+    # comprobó en el banco que la marca «Pagado» del Sheet estaba mal. Una
+    # re-corrida de esta migración la volvería a poner, y ese es exactamente el
+    # error que se corrigió (Regla 13: lo humano es sagrado).
+    cur.execute("SELECT DISTINCT cufe FROM pagos_revertidos")
+    revertidas = {row[0] for row in cur.fetchall()}
+
     for r in filas:
         cufe = r["cufe"]
         cur.execute("""SELECT concepto, concepto_fuente, destino, destino_fuente,
@@ -107,7 +115,9 @@ def migrar(conn, filas, con_pago):
         if final_c and final_d and estado0 == "capturada":
             sets += ["estado='clasificada'"]; cambios["estado"] = "clasificada"
 
-        if con_pago and r["estado_pago"] and pago0 != "pagado":
+        if con_pago and r["estado_pago"] and pago0 != "pagado" and cufe in revertidas:
+            st["pago_revertido_respetado"] += 1
+        elif con_pago and r["estado_pago"] and pago0 != "pagado":
             sets += ["pago_estado='pagado'"]; cambios["pago_estado"] = "pagado"
             f = parse_fecha(r["fecha_pago"])
             if f:

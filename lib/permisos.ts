@@ -10,12 +10,17 @@ export type Cap =
   | "ver_pagos" | "pagos" | "export_historial" | "causar"
   | "maestros" | "maestro_retenciones"
   | "ver_intake" | "intake"
-  | "dashboard" | "asistente" | "usuarios";
+  | "dashboard" | "asistente" | "usuarios"
+  // Deshacer un pago registrado que nunca salió del banco. Es la ÚNICA acción
+  // que devuelve una factura a la cola de Pagos, o sea la única que puede
+  // terminar en un pago doble: solo admin, con motivo, y solo pagos sin
+  // comprobante (ver lib/revertir-pago.ts).
+  | "revertir_pago";
 
 const TODAS: Cap[] = [
   "ver_conciliacion", "clasificar", "retenciones", "tipo_pago",
   "ver_pagos", "pagos", "export_historial", "causar", "maestros", "maestro_retenciones",
-  "ver_intake", "intake", "dashboard", "asistente", "usuarios",
+  "ver_intake", "intake", "dashboard", "asistente", "usuarios", "revertir_pago",
 ];
 
 // VER ≠ OPERAR. La bandeja del intake se parte en dos capacidades porque quien
