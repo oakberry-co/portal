@@ -111,11 +111,15 @@ neon branches reset pruebas --parent --project-id odd-king-16815003
   lo sube al banco creyendo que es el bueno. Adentro se ve idéntico.
 - **Los 7 crons de la VM apuntan solo a producción.** En pruebas se corren a mano
   con `DATABASE_URL=` por delante.
-- **La rama `pruebas` es COPIA de producción** (reset del 9-sep): trae cuentas
-  bancarias reales, certificaciones y cédulas, y ahí entran correos externos.
-  `scripts/anonimizar_pruebas.py` la deja sin datos bancarios ni personales
-  conservando el volumen (ensayo por defecto, `--aplicar` escribe; se niega
-  contra la base del `.env.local`). Correrlo después de cada reset.
+- **En pruebas NO queda nada real** (decisión de Daniel, 10-sep-2026). La rama
+  `pruebas` nace como copia de producción en cada `neon branches reset`, con
+  cuentas bancarias, certificaciones y cédulas reales, y ahí entran correos
+  externos. **Después de cada reset** se corre
+  `DATABASE_URL="$(cat ~/.neon_pruebas_url)" python3 scripts/pruebas_sin_datos_reales.py --aplicar`:
+  vacía todo el movimiento y la bitácora, borra los maestros con identidad de
+  terceros, siembra la demo `PRB-*` y VERIFICA que no quede un NIT real (si
+  queda, ROLLBACK). Se niega contra la base del `.env.local`. El equipo de UX
+  diseña con 7 facturas ficticias, no con la cola real.
 
 ## Cómo se trabaja
 
