@@ -7,7 +7,7 @@ import { exigirCap } from "@/lib/auth";
 
 // Gestión de usuarios/permisos. Solo quien tenga la capacidad `usuarios` (admin)
 // puede tocar esto. Cada cambio deja su evento en la bitácora (append-only).
-const ROLES = ["admin", "causador", "conciliador", "pagador"];
+const ROLES = ["admin", "operador", "causador", "conciliador", "pagador"];
 const done = () => revalidatePath("/contabilidad/configuracion");
 const S = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
 

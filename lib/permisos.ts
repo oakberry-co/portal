@@ -33,9 +33,18 @@ const IMPLICA: Partial<Record<Cap, Cap[]>> = {
   maestros: ["maestro_retenciones"],  // quien administra los maestros, administra las tarifas
 };
 
-// Rol → qué puede hacer. Manel (interno) = admin = TODO.
+// LO QUE SOLO HACE EL DECISOR. Daniel es el decisor máximo y el único admin
+// (2026-09-10): dar y quitar accesos, y deshacer un pago —la única acción que
+// devuelve una factura a la cola de Pagos— no las hace quien opera a diario.
+const SOLO_DECISOR: Cap[] = ["usuarios", "revertir_pago"];
+
+// Rol → qué puede hacer.
 const MATRIZ: Record<Rol, Cap[]> = {
   admin: TODAS,
+  // OPERADOR: el equipo interno. Todo el trabajo diario —clasificar,
+  // retenciones, pagos, intake, maestros, causar— menos lo del decisor. Es el
+  // rol con el que entra cualquier @manelfoods.com que no esté en `usuarios`.
+  operador: TODAS.filter((c) => !SOLO_DECISOR.includes(c)),
   // CONTADOR externo: SOLO confirmar retenciones (en Conciliación) + descargar el
   // consolidado de pagos en Excel (Pagos › Historial). Nada más entra.
   // Se le abrió TODO lo que toca retenciones (pedido de Daniel, 19-ago): puede

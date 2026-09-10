@@ -11,6 +11,7 @@ const ROLES = [
   { v: "causador", l: "Contador — retenciones + descargar pagos" },
   { v: "conciliador", l: "Conciliador — clasifica y retiene (sin pagos)" },
   { v: "pagador", l: "Pagador — opera pagos (sin clasificar)" },
+  { v: "operador", l: "Operador — todo el trabajo diario (sin administrar usuarios ni quitar pagos)" },
 ];
 
 export function ConfiguracionView({ usuarios, yo }: { usuarios: UsuarioRow[]; yo: string }) {

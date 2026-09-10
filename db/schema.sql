@@ -1341,3 +1341,16 @@ CREATE TABLE IF NOT EXISTS pagos_revertidos (
   revertido_en     TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS ix_pagos_rev_cufe ON pagos_revertidos (cufe);
+
+-- -----------------------------------------------------------------------------
+-- 25) EL ROL «OPERADOR» Y EL DECISOR ÚNICO (2026-09-10)
+--
+-- Hasta hoy todo @manelfoods.com nacía admin: cuatro personas (una de ellas la
+-- cuenta compartida compras@) podían dar accesos y —desde hoy— deshacer pagos.
+-- Decisión de Daniel: él es el decisor máximo y el único admin. El equipo
+-- opera con `operador` (todo el trabajo diario menos administrar usuarios y
+-- quitar pagos; ver lib/permisos.ts). Idempotente.
+-- -----------------------------------------------------------------------------
+ALTER TABLE usuarios DROP CONSTRAINT IF EXISTS ck_rol;
+ALTER TABLE usuarios ADD CONSTRAINT ck_rol
+  CHECK (rol IN ('conciliador','pagador','causador','operador','admin'));

@@ -52,7 +52,10 @@ repo datawarehouse** — ojo, ese comando NO trae este código.
 - **Next.js 15** (App Router, Server Actions) en **Vercel**. `main` = producción.
 - **Neon Postgres** = base operacional · **BigQuery** = bodega.
   **Regla de oro: la app NO se monta sobre BQ.** BQ entra por `scripts/sync_bq_to_pg.py`.
-- **Auth.js** con Google. Cualquier `@manelfoods.com` es admin; los externos se
+- **Auth.js** con Google. Cualquier `@manelfoods.com` entra como **operador**
+  (todo el trabajo diario, sin administrar usuarios ni quitar pagos); **admin es
+  solo el decisor (Daniel)** y se asigna en Configuración. Un correo
+  desactivado en `usuarios` no entra ni por ser del dominio. Los externos se
   agregan a la tabla `usuarios`. Los roles se aplican en el SERVIDOR
   (`exigirCap`), la UI solo esconde.
 - **Bitácora** `eventos`: append-only y encadenada por hash. Todo cambio de
@@ -108,6 +111,11 @@ neon branches reset pruebas --parent --project-id odd-king-16815003
   lo sube al banco creyendo que es el bueno. Adentro se ve idéntico.
 - **Los 7 crons de la VM apuntan solo a producción.** En pruebas se corren a mano
   con `DATABASE_URL=` por delante.
+- **La rama `pruebas` es COPIA de producción** (reset del 9-sep): trae cuentas
+  bancarias reales, certificaciones y cédulas, y ahí entran correos externos.
+  `scripts/anonimizar_pruebas.py` la deja sin datos bancarios ni personales
+  conservando el volumen (ensayo por defecto, `--aplicar` escribe; se niega
+  contra la base del `.env.local`). Correrlo después de cada reset.
 
 ## Cómo se trabaja
 

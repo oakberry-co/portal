@@ -41,6 +41,14 @@ const NO = ["intake", "pagos", "maestros", "clasificar", "tipo_pago", "usuarios"
 for (const c of SI) check(puede("causador", c), `SÍ puede: ${c}`);
 for (const c of NO) check(!puede("causador", c), `NO puede: ${c}`);
 
+console.log("\n1b) Qué puede el OPERADOR (el equipo interno) — todo menos lo del decisor");
+for (const c of ["clasificar", "retenciones", "tipo_pago", "pagos", "intake", "maestros", "causar", "dashboard"]) {
+  check(puede("operador", c), `SÍ puede: ${c}`);
+}
+check(!puede("operador", "usuarios"), "NO da ni quita accesos: eso es del decisor (Daniel, único admin)");
+check(!puede("operador", "revertir_pago"), "NO quita pagos: la única acción que devuelve una factura a Pagos es del decisor");
+check(puede("admin", "revertir_pago") && puede("admin", "usuarios"), "…y el admin sí, las dos");
+
 console.log("\n2) Lo que NO puede pasar nunca");
 check(!puede("causador", "intake"),
       "el contador NO aprueba: aprobar es lo que manda la plata al banco");
@@ -48,7 +56,7 @@ check(!puede("causador", "maestros"),
       "el contador NO entra al maestro de CUENTAS BANCARIAS (de ahí sale a quién se le paga)");
 check(puede("causador", "maestro_retenciones"),
       "...pero SÍ rectifica las tarifas de retención, que es su trabajo");
-for (const rol of ["causador", "conciliador", "pagador"]) {
+for (const rol of ["causador", "conciliador", "pagador", "operador"]) {
   check(!puede(rol, "usuarios"), `${rol} no administra usuarios`);
 }
 

@@ -10,7 +10,10 @@ import { getPool } from "@/lib/db";
 import { puede, type Cap } from "@/lib/permisos";
 import { rolElegidoEnPruebas } from "@/lib/rol_pruebas";
 
-export type Rol = "conciliador" | "pagador" | "causador" | "admin";
+// `operador` = todo el trabajo diario (clasificar, retenciones, pagos, intake,
+// maestros) SIN las dos cosas del decisor: administrar usuarios y quitar un pago.
+// Decisión de Daniel (2026-09-10): él es el decisor máximo y el único admin.
+export type Rol = "conciliador" | "pagador" | "causador" | "operador" | "admin";
 export type Usuario = { email: string; rol: Rol };
 
 // Rol para un correo autorizado que aún no está en la tabla `usuarios`.
@@ -45,23 +48,30 @@ export async function getCurrentUserOrNull(): Promise<Usuario | null> {
   // lib/rol_pruebas.ts). En producción devuelve null sin siquiera leer la
   // cookie, así que esta línea no cambia nada de lo que ya pasaba.
   const elegido = await rolElegidoEnPruebas();
-  return { email, rol: elegido ?? (await rolDe(email)) };
+  const rol = elegido ?? (await rolDe(email));
+  // Desactivado en Configuración = no entra, aunque su dominio esté permitido.
+  // Antes un @manelfoods.com desactivado caía al default del dominio (admin) y
+  // seguía operando como si nada: así trabajó `prueba@` en producción.
+  if (!rol) return null;
+  return { email, rol };
 }
 
-/** Rol del correo. (1) Si está en `usuarios`, ese rol MANDA. (2) Si no, todo
- *  @manelfoods.com es admin (equipo interno = acceso total). (3) Cualquier otro
- *  cae al mínimo. */
-async function rolDe(email: string): Promise<Rol> {
+/** Rol del correo. (1) Si está en `usuarios`, ese rol MANDA; desactivado =
+ *  null (no entra). (2) Si no está, todo @manelfoods.com es OPERADOR: hace el
+ *  trabajo diario, no administra usuarios ni quita pagos — eso es del decisor,
+ *  que se da de alta como admin en Configuración. (3) Cualquier otro cae al
+ *  mínimo. */
+async function rolDe(email: string): Promise<Rol | null> {
   try {
-    const r = await getPool().query<{ rol: Rol }>(
-      "SELECT rol FROM usuarios WHERE email = $1 AND activo",
+    const r = await getPool().query<{ rol: Rol; activo: boolean }>(
+      "SELECT rol, activo FROM usuarios WHERE email = $1",
       [email]
     );
-    if (r.rowCount && r.rows[0]?.rol) return r.rows[0].rol;
+    if (r.rowCount && r.rows[0]) return r.rows[0].activo ? r.rows[0].rol : null;
   } catch {
     // base ausente o error transitorio -> sigue a los defaults (no bloquea el login)
   }
-  if (email.toLowerCase().endsWith("@manelfoods.com")) return "admin";  // equipo interno
+  if (email.toLowerCase().endsWith("@manelfoods.com")) return "operador";  // equipo interno
   return DEFAULT_ROL;
 }
 

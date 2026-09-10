@@ -31,6 +31,19 @@ async function emailEnUsuarios(email: string): Promise<boolean> {
   }
 }
 
+/** ¿El correo está en `usuarios` pero DESACTIVADO? Un @manelfoods.com dado de
+ *  baja en Configuración no puede seguir entrando por ser del dominio: así
+ *  operó `prueba@` en producción con rol admin (2026-09-10). */
+async function emailDesactivado(email: string): Promise<boolean> {
+  try {
+    const r = await getPool().query<{ activo: boolean }>(
+      "SELECT activo FROM usuarios WHERE email = $1", [email]);
+    return !!r.rowCount && r.rows[0]?.activo === false;
+  } catch {
+    return false;   // si la base no responde, decide la allowlist como siempre
+  }
+}
+
 export const { handlers, auth, signIn, signOut } = NextAuth({
   ...authConfig,
   callbacks: {
@@ -41,6 +54,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     async signIn({ user, profile }) {
       const email = (profile?.email ?? user?.email ?? "").toLowerCase();
       if (!email) return false;
+      if (await emailDesactivado(email)) return false;   // dado de baja: no entra, ni por dominio
       if (emailEnAllowlist(email)) return true;
       if (email.endsWith("@manelfoods.com")) return true;
       return await emailEnUsuarios(email);

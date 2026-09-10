@@ -25,7 +25,7 @@ import { EN_PRUEBAS } from "@/lib/ambiente";
 import type { Rol } from "@/lib/auth";
 
 /** Los cuatro roles, en el orden en que se muestran. */
-export const ROLES: readonly Rol[] = ["admin", "causador", "conciliador", "pagador"] as const;
+export const ROLES: readonly Rol[] = ["admin", "operador", "causador", "conciliador", "pagador"] as const;
 
 /** El nombre de la cookie. Cambia con el ambiente igual que la de sesión. */
 export const COOKIE_ROL = "rol_pruebas";
