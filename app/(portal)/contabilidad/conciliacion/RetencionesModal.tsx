@@ -21,6 +21,7 @@ export function RetencionesModal({
   cufe, proveedor, subtotal, iva, total, sinXml = false,
   retefuente, reteiva, reteica, retefuente_sug, reteiva_sug, reteica_sug,
   tarRf, tarIva, tarIca, otros_valor, otros_concepto, observaciones, yaConfirmada, onSaved, onClose,
+  abonoAplicado = 0, cotCodigo = null,
   regla, concepto,
 }: {
   cufe: string; proveedor: string; subtotal: number; iva: number; total: number;
@@ -33,6 +34,9 @@ export function RetencionesModal({
   yaConfirmada: boolean;
   onSaved: (cufe: string, patch: FilaPatch) => void;
   onClose: () => void;
+  /** Adelanto de cotización YA descontado del saldo por el portal. Si además se
+   *  escribe en Otros, se descuenta dos veces y la factura desaparece de Pagos. */
+  abonoAplicado?: number; cotCodigo?: string | null;
   /** Lo que el equipo YA practicó para este concepto. Sugiere; no decide. */
   regla: ReglaConcepto | null;
   concepto: string | null;
@@ -71,10 +75,19 @@ export function RetencionesModal({
   const faltaBase = calcFaltaBase({ baseRf, baseIva, rf, ri, ric });
   const otrosNum = Number(String(otros).replace(/[^\d]/g, "")) || 0;
   const valorAPagar = total - retenTotal - otrosNum;
+  // El mismo candado del servidor, para decirlo ANTES del clic (Regla 18).
+  const otrosEsElAdelanto = abonoAplicado > 0 && otrosNum > 0 && Math.abs(otrosNum - abonoAplicado) < 1;
+  const [err, setErr] = useState<string | null>(null);
 
   async function confirmar(fd: FormData) {
-    const patch = await confirmarRetenciones(fd);
-    onSaved(cufe, patch as FilaPatch);
+    try {
+      const patch = await confirmarRetenciones(fd);
+      onSaved(cufe, patch as FilaPatch);
+    } catch (e) {
+      // El «no» del servidor se pinta acá, no como "Application error".
+      setErr(e instanceof Error ? e.message : String(e));
+      return;
+    }
     onClose();
   }
 
@@ -166,6 +179,15 @@ export function RetencionesModal({
             </tbody>
           </table>
 
+          {abonoAplicado > 0 && (
+            <div className={"ret-adelanto" + (otrosEsElAdelanto ? " mal" : "")}>
+              {otrosEsElAdelanto
+                ? <>⚠ Ese valor en Otros es el adelanto{cotCodigo ? ` (${cotCodigo})` : ""}, y el portal ya lo descuenta solo. Si lo dejas, se resta dos veces y la factura desaparece de Pagos. Deja Otros en 0.</>
+                : <>Esta factura ya tiene descontado un adelanto de <b>{copN(abonoAplicado)}</b>{cotCodigo ? ` (${cotCodigo})` : ""}: el saldo lo resta el portal. <b>No lo pongas en Otros.</b></>}
+            </div>
+          )}
+          {err && <div className="ret-adelanto mal">⚠ {err}</div>}
+
           <div className="modal-tot">
             <span>Total retenciones <b className="num">{copN(retenTotal)}</b></span>
             {otrosNum > 0 && <span>Otros (−) <b className="num">{copN(otrosNum)}</b></span>}
@@ -182,7 +204,9 @@ export function RetencionesModal({
               <span className="ret-motivo">Escribe la base antes de confirmar: con base en cero
                 la retención quedaría en $0 aunque la tarifa diga otra cosa.</span>
             )}
-            <button type="submit" disabled={faltaBase}>{yaConfirmada ? "Reconfirmar" : "Confirmar retenciones"}</button>
+            <button type="submit" disabled={faltaBase || otrosEsElAdelanto}
+              title={otrosEsElAdelanto ? "Deja Otros en 0: el adelanto ya se descuenta solo" : undefined}>
+              {yaConfirmada ? "Reconfirmar" : "Confirmar retenciones"}</button>
           </div>
         </form>
       </div>

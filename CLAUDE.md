@@ -186,6 +186,14 @@ Los centinelas de datos (no de código) viven en el otro repo:
   sin ellas — corregido el 10-sep (`normalizar` en `registrarEvento`,
   centinela `test_bitacora.js`). Esquema completo de seguridad:
   `gs://oakberry-col-core/05_transversal/seguridad/00_README.md`.
+- **El adelanto de una cotización se descuenta SOLO; en «Otros» se descuenta dos
+  veces.** Al enlazar una cotización con adelanto, `abono_aplicado` ya le resta
+  el anticipo al saldo (`SALDO_NETO`). Si alguien además lo escribe en Otros al
+  confirmar retenciones, el saldo queda en cero y la factura **desaparece de
+  Pagos sin ningún error** (la regla de saldo cero existe para las anuladas por
+  nota crédito). Pasó con FE150 el 11-sep-2026. `guardarRetenciones` lo
+  rechaza y el modal lo avisa; centinela `pagos_invisible_sin_nota` en el repo
+  datawarehouse caza cualquier factura pendiente con saldo cero sin nota.
 - **"Esta semana" que era "esta semana y todas las futuras".** El tablero de
   Pagos partía Pendientes con `>=`; nadie lo notó mientras las retenciones se
   confirmaban de a una. El día que el contador confirmó 183 desde el Excel, un

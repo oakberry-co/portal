@@ -49,10 +49,11 @@ export async function guardarRetenciones(
   const cur = await c.query<{
     estado: string; retefuente: string | null; reteiva: string | null;
     reteica: string | null; reten_total: string | null; total: string | null;
-    retencion_ok: boolean;
+    retencion_ok: boolean; abono_aplicado: string | null; cot_codigo: string | null;
   }>(
     `SELECT e.estado, e.retefuente, e.reteiva, e.reteica, e.reten_total,
-            e.retencion_ok, f.total
+            e.retencion_ok, f.total, e.abono_aplicado,
+            (SELECT cot.codigo FROM cotizaciones cot WHERE cot.cufe_factura = e.cufe LIMIT 1) AS cot_codigo
        FROM factura_estado e JOIN facturas f USING (cufe)
       WHERE e.cufe = $1 FOR UPDATE`, [cufe]);
   if (cur.rowCount === 0) throw new Error("Factura no encontrada: " + cufe);
@@ -60,6 +61,23 @@ export async function guardarRetenciones(
 
   if (ESTADOS_CERRADOS.includes(antes.estado)) {
     throw new Error("Las retenciones ya no se pueden editar en este estado.");
+  }
+
+  // EL ADELANTO NO SE PONE EN «OTROS». Cuando una cotización con adelanto se
+  // enlaza a la factura, el portal ya le resta ese abono al saldo. Si además
+  // alguien lo escribe en Otros, se descuenta DOS VECES: el valor a pagar baja
+  // y el saldo queda en cero, y una factura con saldo cero no entra a Pagos
+  // —a propósito, para no pagar facturas anuladas—, así que desaparece sin
+  // decir nada (FE150, COMERCIALIZADORA ARTEFACTO, 11-sep-2026). Se rechaza
+  // acá, en el único camino de escritura, y no en la pantalla: el Excel del
+  // contador escribe por el mismo sitio.
+  const abono = Number(antes.abono_aplicado ?? 0);
+  if (abono > 0 && m.otrosValor > 0 && Math.abs(m.otrosValor - abono) < 1) {
+    const cop = new Intl.NumberFormat("es-CO", { style: "currency", currency: "COP", maximumFractionDigits: 0 });
+    throw new Error(
+      `Esta factura ya tiene descontado el adelanto de ${cop.format(abono)}` +
+      (antes.cot_codigo ? ` (${antes.cot_codigo})` : "") +
+      ": el saldo lo resta solo. No lo pongas en «Otros», o se descuenta dos veces y la factura desaparece de Pagos. Deja Otros en 0.");
   }
 
   const retenTotal = m.retefuente + m.reteiva + m.reteica;

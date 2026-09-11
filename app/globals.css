@@ -1740,3 +1740,8 @@ tr.desfasada td { background: #fff8e6; }
 .rev-pago-check { display: flex; gap: 8px; align-items: flex-start; font-size: 12.5px; margin: 12px 0 0; cursor: pointer; }
 .rev-pago-check input { margin-top: 3px; flex: none; width: 16px; height: 16px; }
 .rev-pago-aviso { margin: 10px 0 0; line-height: 1.4; }
+
+/* --- Aviso del adelanto en el modal de retenciones ---------------------------- */
+.ret-adelanto { margin: 10px 0 0; padding: 8px 10px; border-radius: 8px; font-size: 12.5px; line-height: 1.4;
+  background: #fff8e6; border: 1px solid var(--yellow); }
+.ret-adelanto.mal { background: #fff1ed; border-color: var(--coral); color: var(--coral); font-weight: 600; }

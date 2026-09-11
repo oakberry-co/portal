@@ -489,6 +489,8 @@ export const FacturaCard = memo(function FacturaCard({
           otros_concepto={f.otros_concepto}
           observaciones={f.observaciones}
           yaConfirmada={f.retencion_ok}
+          abonoAplicado={Number(f.abono_aplicado ?? 0)}
+          cotCodigo={f.cot_codigo}
           onSaved={onSaved}
           onClose={() => setModal(false)}
         />
