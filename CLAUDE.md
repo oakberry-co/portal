@@ -141,7 +141,7 @@ asumiéndolo.
 ```bash
 for t in nit bancos candado_aprobacion permisos documentos retenciones_excel espina_dian \
          desvio_titular nombre_pago modal_portal enlaces_basepath \
-         aislamiento_pruebas causacion semana_pagos revertir_pago bitacora; do
+         aislamiento_pruebas causacion semana_pagos revertir_pago bitacora retenciones_adelanto; do
   node scripts/test_$t.js; done
 python3 scripts/test_enriquecimiento_xml.py   # base REAL, con ROLLBACK
 python3 scripts/test_intake_a_pagos.py     # contra la base REAL, con ROLLBACK
