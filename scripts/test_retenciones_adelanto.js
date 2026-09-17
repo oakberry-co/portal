@@ -88,9 +88,13 @@ const saldoDe = async (c, cufe) =>
     check(s2 > 0 && Math.abs(s2 - (total - abono)) < 1, "saldo del tablero = total − adelanto, una sola vez", s2.toLocaleString("es-CO"));
 
     console.log("\n3) Control: metiendo el bug a propósito");
-    await c.query("UPDATE factura_estado SET otros_valor = $2, valor_a_pagar = valor_a_pagar - $2 WHERE cufe = $1", [cufe, abono]);
+    // El caso real era un adelanto del 50% (FE150): con menos, el doble descuento
+    // no llega a cero y la factura no se esconde. Se reproduce ESE caso dentro
+    // de la transacción (ROLLBACK al final): adelanto = mitad del total.
+    const mitad = Math.round(total / 2);
+    await c.query("UPDATE factura_estado SET abono_aplicado = $2::numeric, otros_valor = $2::numeric, valor_a_pagar = $3::numeric - $2::numeric WHERE cufe = $1", [cufe, mitad, total]);
     const s3 = await saldoDe(c, cufe);
-    check(s3 === 0, "con el doble descuento el saldo da 0 — por eso la factura se escondía de Pagos", String(s3));
+    check(s3 === 0, "con el adelanto del 50% descontado dos veces el saldo da 0 — por eso FE150 se escondía de Pagos", String(s3));
   } finally {
     await c.query("ROLLBACK");
   }

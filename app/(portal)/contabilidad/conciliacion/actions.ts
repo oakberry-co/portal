@@ -268,7 +268,9 @@ export async function confirmarRetenciones(formData: FormData) {
   const reteiva = monto("reteiva");
   const reteica = monto("reteica");
   // "Otros": descuento manual en pesos (ej. indemnización) + su concepto y observaciones.
-  const otros = monto("otros_valor");
+  // "Adicional": lo que se le paga DE MÁS al proveedor (se le deben $20.000 más).
+  // Los dos viajan positivos y se guardan como UN neto con signo (ver lib/retenciones.ts).
+  const otros = monto("otros_valor") - monto("adicional_valor");
   const otrosConcepto = String(formData.get("otros_concepto") ?? "").trim() || null;
   const observaciones = String(formData.get("observaciones") ?? "").trim() || null;
 

@@ -50,9 +50,10 @@ export async function guardarRetenciones(
     estado: string; retefuente: string | null; reteiva: string | null;
     reteica: string | null; reten_total: string | null; total: string | null;
     retencion_ok: boolean; abono_aplicado: string | null; cot_codigo: string | null;
+    doc_tipo: string | null;
   }>(
     `SELECT e.estado, e.retefuente, e.reteiva, e.reteica, e.reten_total,
-            e.retencion_ok, f.total, e.abono_aplicado,
+            e.retencion_ok, f.total, e.abono_aplicado, f.doc_tipo,
             (SELECT cot.codigo FROM cotizaciones cot WHERE cot.cufe_factura = e.cufe LIMIT 1) AS cot_codigo
        FROM factura_estado e JOIN facturas f USING (cufe)
       WHERE e.cufe = $1 FOR UPDATE`, [cufe]);
@@ -80,9 +81,30 @@ export async function guardarRetenciones(
       ": el saldo lo resta solo. No lo pongas en «Otros», o se descuenta dos veces y la factura desaparece de Pagos. Deja Otros en 0.");
   }
 
-  const retenTotal = m.retefuente + m.reteiva + m.reteica;
+  // EL DOCUMENTO MANDA EL SIGNO (Regla 5 del playbook). Una nota crédito va toda
+  // en negativo —reduce lo que se debe— y su retención también: es la reversa de
+  // la que se practicó en la factura, lo que los contadores llaman un DÉBITO.
+  // El humano la ve y la escribe en POSITIVO (el modal y el Excel del contador
+  // rechazan negativos); acá se le pone el signo del documento, para que
+  // `total − retenciones − otros = valor a pagar` cuadre al peso: es lo que la
+  // causación comprueba antes de escribir en Siigo. Pedido del equipo, 17-sep-2026.
+  const esNota = antes.doc_tipo === "CreditNote";
+  const sg = esNota ? -1 : 1;
+  const retefuente = sg * Math.abs(m.retefuente);
+  const reteiva = sg * Math.abs(m.reteiva);
+  const reteica = sg * Math.abs(m.reteica);
+  // «OTROS» TIENE DOS SENTIDOS. Positivo = descuento (indemnización, acuerdo).
+  // Negativo = ADICIONAL a favor del proveedor: se le deben $20.000 más de lo
+  // facturado (pedido del equipo, 17-sep-2026). Pagar más de lo que dice la
+  // factura sin decir por qué, no: el concepto es obligatorio en ese caso.
+  const otrosValor = esNota ? -Math.abs(m.otrosValor) : m.otrosValor;
+  if (!esNota && otrosValor < 0 && !(m.otrosConcepto ?? "").trim()) {
+    throw new Error("Un adicional a favor del proveedor necesita el concepto: por qué se le paga más de lo facturado.");
+  }
+
+  const retenTotal = retefuente + reteiva + reteica;
   const total = antes.total != null ? Number(antes.total) : 0;
-  const valorAPagar = total - retenTotal - m.otrosValor;
+  const valorAPagar = total - retenTotal - otrosValor;
   // Independiente de la clasificación: si aún no está clasificada, se guarda
   // igual (el semáforo se pone verde por retencion_ok) y el estado no se mueve.
   const nuevoEstado = antes.estado === "clasificada" ? "retenciones_ok" : antes.estado;
@@ -94,8 +116,8 @@ export async function guardarRetenciones(
             otros_valor = $8, otros_concepto = $9, observaciones = $10,
             retencion_ok = TRUE, estado = $7, actualizado_en = now()
       WHERE cufe = $1`,
-    [cufe, m.retefuente, m.reteiva, m.reteica, retenTotal, valorAPagar,
-     nuevoEstado, m.otrosValor, m.otrosConcepto, m.observaciones]);
+    [cufe, retefuente, reteiva, reteica, retenTotal, valorAPagar,
+     nuevoEstado, otrosValor, m.otrosConcepto, m.observaciones]);
 
   await registrarEvento(c, {
     cufe, tipo: "valida_retencion", campo: "retenciones",
@@ -105,18 +127,18 @@ export async function guardarRetenciones(
       ya_estaba_confirmada: antes.retencion_ok,
     },
     valorNuevo: {
-      retefuente: m.retefuente, reteiva: m.reteiva, reteica: m.reteica,
+      retefuente, reteiva, reteica, otros_valor: otrosValor,
       reten_total: retenTotal, valor_a_pagar: valorAPagar, estado: nuevoEstado,
-      via: origen,
+      via: origen, nota_credito: esNota,
     },
     actor: actor.email, actorRol: actor.rol, origen: origen === "excel" ? "web" : origen,
   });
 
   return {
     estado: nuevoEstado, retencion_ok: true,
-    retefuente: String(m.retefuente), reteiva: String(m.reteiva), reteica: String(m.reteica),
+    retefuente: String(retefuente), reteiva: String(reteiva), reteica: String(reteica),
     reten_total: String(retenTotal), valor_a_pagar: String(valorAPagar),
-    otros_valor: String(m.otrosValor), otros_concepto: m.otrosConcepto,
+    otros_valor: String(otrosValor), otros_concepto: m.otrosConcepto,
     observaciones: m.observaciones,
   };
 }

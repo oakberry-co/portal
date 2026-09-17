@@ -28,7 +28,7 @@ export async function GET(req: Request) {
   const pool = getPool();
   const { rows } = await pool.query(
     `SELECT f.fecha_emision, f.nit_proveedor, f.nombre_proveedor, f.numero, f.responsabilidad_dian,
-            f.subtotal, f.iva, f.total,
+            f.subtotal, f.iva, f.total, f.doc_tipo,
             e.estado, e.concepto, e.destino, e.plazo_dias, e.fecha_vencimiento,
             e.retefuente, e.reteiva, e.reteica, e.reten_total, e.valor_a_pagar,
             e.otros_valor, e.otros_concepto, e.observaciones, f.cufe
@@ -60,6 +60,9 @@ export async function GET(req: Request) {
     { header: "ReteIVA", key: "ri", width: 12, style: money },
     { header: "ReteICA", key: "ric", width: 12, style: money },
     { header: "Otros", key: "otros", width: 12, style: money },
+    // Lo que se le paga DE MÁS al proveedor. Va en columna propia y en positivo:
+    // "-20.000 en Otros" es un dato que nadie sabe leer sin preguntar.
+    { header: "Adicional (+)", key: "adicional", width: 13, style: money },
     { header: "Otros concepto", key: "otrosc", width: 20 },
     { header: "Observaciones", key: "obs", width: 26 },
     { header: "Total retención", key: "ret", width: 14, style: money },
@@ -77,6 +80,12 @@ export async function GET(req: Request) {
   const n = (v: unknown) => (v == null || v === "" ? null : Number(v));
   const ymd = (d: unknown) => (d ? new Date(d as string).toISOString().slice(0, 10) : "");
   for (const r of rows) {
+    // La nota crédito se guarda en negativo (el documento manda el signo), pero
+    // el contador la escribe y la lee en positivo: al volver, el portal le pone
+    // el signo. Lo mismo que hace el modal.
+    const esNota = r.doc_tipo === "CreditNote";
+    const pos = (v: unknown) => (n(v) == null ? null : esNota ? Math.abs(n(v) as number) : (n(v) as number));
+    const otrosNum = n(r.otros_valor) ?? 0;
     ws.addRow({
       fecha: ymd(r.fecha_emision),
       nit: r.nit_proveedor,
@@ -88,9 +97,10 @@ export async function GET(req: Request) {
       concepto: r.concepto ?? "", destino: r.destino ?? "",
       plazo: r.plazo_dias ?? "",
       venc: ymd(r.fecha_vencimiento),
-      rf: n(r.retefuente), ri: n(r.reteiva), ric: n(r.reteica),
-      otros: n(r.otros_valor), otrosc: r.otros_concepto ?? "", obs: r.observaciones ?? "",
-      ret: n(r.reten_total), pagar: n(r.valor_a_pagar),
+      rf: pos(r.retefuente), ri: pos(r.reteiva), ric: pos(r.reteica),
+      otros: otrosNum > 0 ? otrosNum : null, adicional: otrosNum < 0 ? -otrosNum : null,
+      otrosc: r.otros_concepto ?? "", obs: r.observaciones ?? "",
+      ret: pos(r.reten_total), pagar: n(r.valor_a_pagar),
       cufe: r.cufe,
     });
   }

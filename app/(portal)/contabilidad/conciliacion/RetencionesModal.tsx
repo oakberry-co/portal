@@ -14,14 +14,16 @@ import { ModalPortal } from "../_ui/ModalPortal";
 const cop = new Intl.NumberFormat("es-CO", { style: "currency", currency: "COP", maximumFractionDigits: 0 });
 const copN = (n: number) => cop.format(Math.round(n || 0));
 // % inicial: retro-calcula desde el monto (confirmado o sugerido) sobre su base.
+// Todo en valor absoluto: una nota crédito guarda montos y bases en negativo
+// (el documento manda el signo) y acá se trabaja y se muestra en positivo.
 const pctIni = (amt: string | null, base: number) =>
-  amt != null && amt !== "" && base > 0 ? String(+((Number(amt) / base) * 100).toFixed(3)) : "";
+  amt != null && amt !== "" && Math.abs(base) > 0 ? String(+((Math.abs(Number(amt)) / Math.abs(base)) * 100).toFixed(3)) : "";
 
 export function RetencionesModal({
   cufe, proveedor, subtotal, iva, total, sinXml = false,
   retefuente, reteiva, reteica, retefuente_sug, reteiva_sug, reteica_sug,
   tarRf, tarIva, tarIca, otros_valor, otros_concepto, observaciones, yaConfirmada, onSaved, onClose,
-  abonoAplicado = 0, cotCodigo = null,
+  abonoAplicado = 0, cotCodigo = null, esNotaCredito = false,
   regla, concepto,
 }: {
   cufe: string; proveedor: string; subtotal: number; iva: number; total: number;
@@ -37,6 +39,9 @@ export function RetencionesModal({
   /** Adelanto de cotización YA descontado del saldo por el portal. Si además se
    *  escribe en Otros, se descuenta dos veces y la factura desaparece de Pagos. */
   abonoAplicado?: number; cotCodigo?: string | null;
+  /** Nota crédito: bases y montos vienen en negativo; se muestran en positivo y la
+   *  retención se llama por su nombre contable, DÉBITO (reversa la practicada). */
+  esNotaCredito?: boolean;
   /** Lo que el equipo YA practicó para este concepto. Sugiere; no decide. */
   regla: ReglaConcepto | null;
   concepto: string | null;
@@ -52,8 +57,14 @@ export function RetencionesModal({
   const [rf, setRf] = useState(pctIni(retefuente ?? retefuente_sug, subtotal) || (tarRf ?? "") || delConcepto(regla?.retefuente ?? null));
   const [ri, setRi] = useState(pctIni(reteiva ?? reteiva_sug, iva) || (tarIva ?? ""));
   const [ric, setRic] = useState(pctIni(reteica ?? reteica_sug, subtotal) || (tarIca ?? "") || delConcepto(regla?.reteica ?? null));
-  const [otros, setOtros] = useState(otros_valor && Number(otros_valor) > 0 ? String(Math.round(Number(otros_valor))) : "");
+  // «Otros» guarda un neto con signo: positivo = descuento; negativo = ADICIONAL a
+  // favor del proveedor. En pantalla son dos casillas, las dos en positivo.
+  const otrosGuardado = Number(otros_valor ?? 0);
+  const [otros, setOtros] = useState(otrosGuardado > 0 ? String(Math.round(otrosGuardado)) : "");
+  const [adicional, setAdicional] = useState(otrosGuardado < 0 ? String(Math.round(-otrosGuardado)) : "");
   const [otrosConcepto, setOtrosConcepto] = useState(otros_concepto ?? "");
+  // Bases en positivo: en una nota crédito llegan negativas.
+  const subtotalA = Math.abs(subtotal), ivaA = Math.abs(iva), totalA = Math.abs(total);
 
   // BASE GRAVABLE CUANDO NO HAY XML. Sin el documento no conocemos el subtotal,
   // y `num(null)` lo entrega como 0. Multiplicar 0 por la tarifa daba retención
@@ -62,8 +73,8 @@ export function RetencionesModal({
   // escribe la cuenta bancaria en vez de adivinarla.
   const [baseM, setBaseM] = useState(subtotal > 0 ? String(Math.round(subtotal)) : "");
   const [ivaM, setIvaM] = useState(iva > 0 ? String(Math.round(iva)) : "");
-  const baseRf = sinXml ? soloDigitos(baseM) : subtotal;
-  const baseIva = sinXml ? soloDigitos(ivaM) : iva;
+  const baseRf = sinXml ? soloDigitos(baseM) : subtotalA;
+  const baseIva = sinXml ? soloDigitos(ivaM) : ivaA;
 
   const amtRf = montoRetencion(baseRf, rf);
   const amtRi = montoRetencion(baseIva, ri);
@@ -74,7 +85,11 @@ export function RetencionesModal({
   // válido sin base — eso también es una decisión y no hay por qué estorbarla.
   const faltaBase = calcFaltaBase({ baseRf, baseIva, rf, ri, ric });
   const otrosNum = Number(String(otros).replace(/[^\d]/g, "")) || 0;
-  const valorAPagar = total - retenTotal - otrosNum;
+  const adicionalNum = esNotaCredito ? 0 : Number(String(adicional).replace(/[^\d]/g, "")) || 0;
+  // En una nota crédito el resultado es lo que queda A FAVOR (negativo): el total
+  // de la nota menos la retención que se reversa. En una factura, lo que se paga.
+  const valorAPagar = esNotaCredito ? -(totalA - retenTotal - otrosNum) : totalA - retenTotal - otrosNum + adicionalNum;
+  const faltaConceptoAdicional = adicionalNum > 0 && !otrosConcepto.trim();
   // El mismo candado del servidor, para decirlo ANTES del clic (Regla 18).
   const otrosEsElAdelanto = abonoAplicado > 0 && otrosNum > 0 && Math.abs(otrosNum - abonoAplicado) < 1;
   const [err, setErr] = useState<string | null>(null);
@@ -98,9 +113,9 @@ export function RetencionesModal({
         <div className="modal-head">
           <div>
             <h3>Retenciones</h3>
-            <p className="modal-sub">{proveedor} · {sinXml
+            <p className="modal-sub">{proveedor}{esNotaCredito && <> · <b>nota crédito</b></>} · {sinXml
               ? "sin XML: la base la escribes tú"
-              : <>subtotal {copN(subtotal)} · IVA {copN(iva)}</>}</p>
+              : <>subtotal {copN(subtotalA)} · IVA {copN(ivaA)}</>}</p>
           </div>
           <button type="button" className="modal-x" onClick={onClose} aria-label="Cerrar">×</button>
         </div>
@@ -123,6 +138,15 @@ export function RetencionesModal({
               <>💡 En <b>{concepto}</b> <b>no has retenido</b> ninguna de las {regla.n_casos} veces
                 anteriores. Va en cero — cámbialo si esta vez sí toca.</>
             )}
+          </div>
+        )}
+
+        {esNotaCredito && (
+          <div className="ret-sugerencia">
+            ↩ <b>Nota crédito.</b> La retención se practica igual pero al revés: es un
+            <b> débito</b> que reversa la retenida en la factura, y por eso se escribe y se ve
+            en positivo. Lo que queda es plata <b>a favor nuestro</b>, que se descuenta de la
+            factura que corrige.
           </div>
         )}
 
@@ -176,6 +200,15 @@ export function RetencionesModal({
                 <td className="muted" style={{ textAlign: "center", fontSize: 11 }}>descuento</td>
                 <td><input className="ret-otros num" name="otros_valor" value={otros} onChange={(e) => setOtros(e.target.value)} inputMode="numeric" placeholder="$ 0" /></td>
               </tr>
+              {!esNotaCredito && (
+                <tr>
+                  <td className="muted" style={{ fontSize: 12 }}>Adicional a favor del proveedor</td>
+                  <td className="num muted">—</td>
+                  <td className="muted" style={{ textAlign: "center", fontSize: 11 }}>+ a pagar</td>
+                  <td><input className="ret-otros num" name="adicional_valor" value={adicional} onChange={(e) => setAdicional(e.target.value)} inputMode="numeric" placeholder="$ 0"
+                             title="Lo que se le debe de más al proveedor (ej. $20.000 que no venían en la factura)" /></td>
+                </tr>
+              )}
             </tbody>
           </table>
 
@@ -188,10 +221,15 @@ export function RetencionesModal({
           )}
           {err && <div className="ret-adelanto mal">⚠ {err}</div>}
 
+          {faltaConceptoAdicional && (
+            <div className="ret-adelanto mal">⚠ Un adicional a favor del proveedor necesita el concepto (la casilla «Otros» de la izquierda): por qué se le paga más de lo facturado.</div>
+          )}
+
           <div className="modal-tot">
-            <span>Total retenciones <b className="num">{copN(retenTotal)}</b></span>
+            <span>Total retenciones{esNotaCredito ? " (débito)" : ""} <b className="num">{esNotaCredito ? "+ " : ""}{copN(retenTotal)}</b></span>
             {otrosNum > 0 && <span>Otros (−) <b className="num">{copN(otrosNum)}</b></span>}
-            <span>Valor a pagar <b className="num accent">{copN(valorAPagar)}</b></span>
+            {adicionalNum > 0 && <span>Adicional (+) <b className="num">{copN(adicionalNum)}</b></span>}
+            <span>{esNotaCredito ? "A favor nuestro" : "Valor a pagar"} <b className="num accent">{copN(valorAPagar)}</b></span>
           </div>
 
           <label className="ret-obs">Observaciones
@@ -204,7 +242,7 @@ export function RetencionesModal({
               <span className="ret-motivo">Escribe la base antes de confirmar: con base en cero
                 la retención quedaría en $0 aunque la tarifa diga otra cosa.</span>
             )}
-            <button type="submit" disabled={faltaBase || otrosEsElAdelanto}
+            <button type="submit" disabled={faltaBase || otrosEsElAdelanto || faltaConceptoAdicional}
               title={otrosEsElAdelanto ? "Deja Otros en 0: el adelanto ya se descuenta solo" : undefined}>
               {yaConfirmada ? "Reconfirmar" : "Confirmar retenciones"}</button>
           </div>

@@ -141,7 +141,7 @@ asumiéndolo.
 ```bash
 for t in nit bancos candado_aprobacion permisos documentos retenciones_excel espina_dian \
          desvio_titular nombre_pago modal_portal enlaces_basepath \
-         aislamiento_pruebas causacion semana_pagos revertir_pago bitacora retenciones_adelanto; do
+         aislamiento_pruebas causacion semana_pagos revertir_pago bitacora retenciones_adelanto retenciones_signo; do
   node scripts/test_$t.js; done
 python3 scripts/test_enriquecimiento_xml.py   # base REAL, con ROLLBACK
 python3 scripts/test_intake_a_pagos.py     # contra la base REAL, con ROLLBACK
@@ -194,6 +194,16 @@ Los centinelas de datos (no de código) viven en el otro repo:
   nota crédito). Pasó con FE150 el 11-sep-2026. `guardarRetenciones` lo
   rechaza y el modal lo avisa; centinela `pagos_invisible_sin_nota` en el repo
   datawarehouse caza cualquier factura pendiente con saldo cero sin nota.
+- **En una nota crédito la retención se guarda en NEGATIVO y se muestra en
+  positivo como «débito».** El documento manda el signo (Regla 5): total, IVA y
+  retención de una nota van en negativo para que `total − retenciones − otros =
+  valor a pagar` cuadre al peso (la causación lo comprueba). El humano la escribe
+  y la ve en positivo: modal y Excel rechazan negativos, `guardarRetenciones`
+  pone el signo del documento. Pedido del equipo, 17-sep-2026.
+- **«Otros» tiene dos sentidos.** Positivo = descuento; negativo = **adicional a
+  favor del proveedor** (se le deben $20.000 más). En pantalla y en el Excel son
+  dos casillas positivas («Otros» y «Adicional (+)»); en la base es un neto con
+  signo. Un adicional sin concepto se rechaza. Centinela `test_retenciones_signo.js`.
 - **"Esta semana" que era "esta semana y todas las futuras".** El tablero de
   Pagos partía Pendientes con `>=`; nadie lo notó mientras las retenciones se
   confirmaban de a una. El día que el contador confirmó 183 desde el Excel, un

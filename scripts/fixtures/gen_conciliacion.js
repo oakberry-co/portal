@@ -13,7 +13,7 @@ const path = require("path");
 
 const CABECERAS = ["Fecha emisión", "NIT", "Proveedor", "Factura", "Resp. DIAN",
   "Subtotal", "IVA", "Total", "Estado", "Concepto", "Destino", "Plazo (días)",
-  "Vencimiento", "ReteFuente", "ReteIVA", "ReteICA", "Otros", "Otros concepto",
+  "Vencimiento", "ReteFuente", "ReteIVA", "ReteICA", "Otros", "Adicional (+)", "Otros concepto",
   "Observaciones", "Total retención", "Valor a pagar", "CUFE"];
 
 (async () => {

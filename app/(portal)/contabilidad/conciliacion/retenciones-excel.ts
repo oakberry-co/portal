@@ -169,7 +169,11 @@ async function planear(fd: FormData): Promise<Plan> {
     // eso es información que el sistema NO tenía (vacío ≠ cero, otra vez, ahora
     // del lado de la escritura). Sin esta línea, "ponerle cero a todo y pagar en
     // una sola tanda" no funciona.
-    const mismosNumeros = antes.rf === rf && antes.ri === ri && antes.ric === ric && antes.otros === otros;
+    // En valor absoluto: una nota crédito se guarda en negativo (el documento
+    // manda el signo) y el contador la escribe en positivo. Comparar con signo
+    // haría que cada nota saliera como "cambió" en cada subida sin haber cambiado.
+    const mismosNumeros = Math.abs(antes.rf) === Math.abs(rf) && Math.abs(antes.ri) === Math.abs(ri)
+      && Math.abs(antes.ric) === Math.abs(ric) && antes.otros === otros;
     const igual = mismosNumeros && inv.retencion_ok;
 
     // LO QUE YA ESTÁ ASÍ NO ES UN PROBLEMA, y esto va ANTES del estado. El

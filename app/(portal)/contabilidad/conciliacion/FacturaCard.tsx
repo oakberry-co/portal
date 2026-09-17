@@ -193,16 +193,19 @@ export const FacturaCard = memo(function FacturaCard({
     const esSug = !f.retencion_ok && confirmado == null;
     return (
       <tr key={nombre}>
-        <td>{nombre}{esSug && <i className="det-sug"> propuesta</i>}</td>
-        <td className="num neg">− {copN(val)}</td>
+        <td>{nombre}{esSug && <i className="det-sug"> propuesta</i>}{esNota && <i className="det-sug"> débito</i>}</td>
+        <td className={"num " + (esNota ? "" : "neg")}>{esNota ? "+ " : "− "}{copN(Math.abs(val))}</td>
       </tr>
     );
   };
 
+  // En una nota crédito la retención se guarda en negativo (el documento manda el
+  // signo) y se MUESTRA en positivo como débito: es la reversa de la practicada.
+  const esNota = f.doc_tipo === "CreditNote";
   const retenTotal = f.retencion_ok && f.reten_total != null
     ? num(f.reten_total)
     : num(f.retefuente_sug) + num(f.reteiva_sug) + num(f.reteica_sug);
-  const otros = num(f.otros_valor);
+  const otros = num(f.otros_valor);   // con signo: negativo = adicional a favor del proveedor
   // Lo que las notas crédito le quitan a ESTA factura. Se resta acá y no solo
   // en Pagos: si la grilla dijera un número y el tablero otro, el equipo dejaría
   // de creerle a los dos. Nunca baja de cero — una nota mayor que la factura no
@@ -306,7 +309,7 @@ export const FacturaCard = memo(function FacturaCard({
         <div className="num accent" title="Valor a pagar = total − retenciones">{copN(valorAPagar)}</div>
         <button type="button" className="muted mini det-btn" onClick={() => setDet((v) => !v)}
                 aria-expanded={det}>
-          ret {copN(retenTotal)}{f.retencion_ok ? " ✓" : ""}
+          ret {esNota ? "+" : ""}{copN(Math.abs(retenTotal))}{f.retencion_ok ? " ✓" : ""}
         </button>
         {det && (
           <div className="det-pop" role="dialog" aria-label="Detalle de la retención">
@@ -322,6 +325,9 @@ export const FacturaCard = memo(function FacturaCard({
               {linea("ReteICA", f.reteica, f.reteica_sug)}
               {Number(f.otros_valor) > 0 && (
                 <tr><td>{f.otros_concepto || "Otros"}</td><td className="num neg">− {copN(Number(f.otros_valor))}</td></tr>
+              )}
+              {Number(f.otros_valor) < 0 && (
+                <tr><td>{f.otros_concepto || "Adicional"}<i className="det-sug"> a favor del proveedor</i></td><td className="num">+ {copN(-Number(f.otros_valor))}</td></tr>
               )}
               {Number(f.abono_aplicado) > 0 && (
                 <tr><td>Adelanto ya pagado</td><td className="num neg">− {copN(Number(f.abono_aplicado))}</td></tr>
@@ -491,6 +497,7 @@ export const FacturaCard = memo(function FacturaCard({
           yaConfirmada={f.retencion_ok}
           abonoAplicado={Number(f.abono_aplicado ?? 0)}
           cotCodigo={f.cot_codigo}
+          esNotaCredito={esNota}
           onSaved={onSaved}
           onClose={() => setModal(false)}
         />

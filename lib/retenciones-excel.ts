@@ -29,6 +29,8 @@ import { pesos } from "./pesos";
 export type FilaExcel = {
   fila: number; cufe: string;
   rf: number | null; ri: number | null; ric: number | null;
+  /** Neto con signo: positivo = descuento (columna Otros), negativo = ADICIONAL a
+   *  favor del proveedor (columna "Adicional (+)"). Las dos se escriben en positivo. */
   otros: number | null; otrosConcepto: string | null; observaciones: string | null;
 };
 
@@ -42,6 +44,7 @@ const COLUMNAS: Record<string, string[]> = {
   ri: ["reteiva", "rete iva", "rte iva"],
   ric: ["reteica", "rete ica", "rte ica"],
   otros: ["otros", "otros valor", "otro descuento", "descuento"],
+  adicional: ["adicional", "adicional (+)", "adicional +", "adicional a favor", "a favor del proveedor", "mas a pagar"],
   otrosConcepto: ["otros concepto", "concepto otros", "motivo otros"],
   observaciones: ["observaciones", "observacion", "nota", "notas"],
 };
@@ -111,7 +114,7 @@ export async function leerExcel(buf: ArrayBuffer): Promise<Lectura> {
 
     const nums: Record<string, number | null> = {};
     let malo = false;
-    for (const k of ["rf", "ri", "ric", "otros"] as const) {
+    for (const k of ["rf", "ri", "ric", "otros", "adicional"] as const) {
       const v = pesos(cel(r, idx[k]));
       if (v !== null && Number.isNaN(v)) {
         problemas.push({ fila: i, quien: cufe.slice(0, 12) + "…",
@@ -125,16 +128,19 @@ export async function leerExcel(buf: ArrayBuffer): Promise<Lectura> {
     }
     if (malo) continue;
 
+    // Otros y Adicional se juntan en UN neto con signo; si ninguna de las dos
+    // columnas trae valor, el neto es null (vacío no es cero).
+    const neto = nums.otros == null && nums.adicional == null ? null : (nums.otros ?? 0) - (nums.adicional ?? 0);
     filas.push({
       fila: i, cufe,
       rf: nums.rf ?? null, ri: nums.ri ?? null, ric: nums.ric ?? null,
-      otros: nums.otros ?? null,
+      otros: neto,
       otrosConcepto: txt(cel(r, idx.otrosConcepto)),
       observaciones: txt(cel(r, idx.observaciones)),
     });
   }
   return { filas, problemas, hoja: ws.name,
-           tiene: { otros: idx.otros !== undefined, observaciones: idx.observaciones !== undefined } };
+           tiene: { otros: idx.otros !== undefined || idx.adicional !== undefined, observaciones: idx.observaciones !== undefined } };
 }
 
 /** ¿Este número parece un PORCENTAJE escrito donde van pesos?
