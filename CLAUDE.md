@@ -141,7 +141,7 @@ asumiéndolo.
 ```bash
 for t in nit bancos candado_aprobacion permisos documentos retenciones_excel espina_dian \
          desvio_titular nombre_pago modal_portal enlaces_basepath \
-         aislamiento_pruebas causacion semana_pagos revertir_pago bitacora retenciones_adelanto retenciones_signo; do
+         aislamiento_pruebas causacion semana_pagos revertir_pago bitacora retenciones_adelanto retenciones_signo retenciones_precarga; do
   node scripts/test_$t.js; done
 python3 scripts/test_enriquecimiento_xml.py   # base REAL, con ROLLBACK
 python3 scripts/test_intake_a_pagos.py     # contra la base REAL, con ROLLBACK
@@ -204,6 +204,14 @@ Los centinelas de datos (no de código) viven en el otro repo:
   favor del proveedor** (se le deben $20.000 más). En pantalla y en el Excel son
   dos casillas positivas («Otros» y «Adicional (+)»); en la base es un neto con
   signo. Un adicional sin concepto se rechaza. Centinela `test_retenciones_signo.js`.
+- **La precarga de retenciones: lo aprendido del contador manda sobre el
+  pipeline, y un $0 del pipeline no es propuesta.** Hasta el 20-sep el modal
+  abría con la propuesta de Siigo antes que la tarifa aprendida del contador, y
+  su "$0" (43% de error) se leía como decisión: 115 facturas donde el contador
+  tecleó lo que el portal ya sabía. La precedencia vive en `tarifaInicial`
+  (`lib/base-retencion.ts`), centinela `test_retenciones_precarga.js`. El
+  marcador (`marcador_retenciones.py`, repo datawarehouse) mide desde entonces
+  lo que el humano VE precargado, fuera de muestra, y aparte la propuesta vieja.
 - **"Esta semana" que era "esta semana y todas las futuras".** El tablero de
   Pagos partía Pendientes con `>=`; nadie lo notó mientras las retenciones se
   confirmaban de a una. El día que el contador confirmó 183 desde el Excel, un

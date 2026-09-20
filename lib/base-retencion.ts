@@ -22,6 +22,38 @@ export const soloDigitos = (v: string | null | undefined): number =>
 export const montoRetencion = (base: number, tarifaPct: string | number): number =>
   Math.round((base * (Number(tarifaPct) || 0)) / 100);
 
+/** LA TARIFA CON LA QUE ABRE EL MODAL, del más confiable al menos:
+ *
+ *   1. lo ya confirmado en ESTA factura (aunque sea 0: "no retiene" es decisión);
+ *   2. la tarifa que el contador fijó o viene practicando con ESTE proveedor
+ *      (maestro de retenciones; también puede ser "0");
+ *   3. lo que el equipo practica para ESTE concepto;
+ *   4. la propuesta del pipeline (aprendida de Siigo), y SOLO si es mayor que 0.
+ *
+ * Hasta el 20-sep-2026 el pipeline iba SEGUNDO y su "$0" —su error más común,
+ * el 43% de las veces— se leía como una decisión: el modal abría en 0% y nunca
+ * llegaba a mirar la tarifa aprendida del contador. En 115 facturas el contador
+ * tecleó a mano una tarifa que el portal ya sabía. La regla de la casa es que su
+ * número manda; por eso lo que se aprende de él va antes que lo de Siigo, y un
+ * cero del pipeline no cuenta como propuesta. */
+export function tarifaInicial(a: {
+  confirmado: string | number | null | undefined;   // monto ya confirmado en la factura
+  base: number;                                     // sobre qué se calcula (subtotal o IVA)
+  tarifaProveedor?: string | null;                  // maestro_retenciones (fijada o practicada)
+  reglaConcepto?: { aplica: boolean; tarifa: string | null } | null;
+  sugerido?: string | number | null;                // propuesta del pipeline (monto)
+}): string {
+  const pct = (amt: string | number | null | undefined) => {
+    if (amt == null || amt === "" || Math.abs(a.base) <= 0) return "";
+    return String(+((Math.abs(Number(amt)) / Math.abs(a.base)) * 100).toFixed(3));
+  };
+  const confirmado = pct(a.confirmado);
+  if (confirmado !== "") return confirmado;
+  if (a.tarifaProveedor != null && a.tarifaProveedor !== "") return String(a.tarifaProveedor);
+  if (a.reglaConcepto) return a.reglaConcepto.aplica ? (a.reglaConcepto.tarifa ?? "") : "0";
+  return Number(a.sugerido) > 0 ? pct(a.sugerido) : "";
+}
+
 /**
  * ¿Hay una tarifa escrita que se aplicaría sobre una base que no conocemos?
  *

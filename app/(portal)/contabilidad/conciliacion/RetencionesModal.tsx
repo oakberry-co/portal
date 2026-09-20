@@ -8,16 +8,12 @@ import { useState } from "react";
 import { confirmarRetenciones } from "./actions";
 import { type FilaPatch } from "./FacturaCard";
 import { pct, type ReglaConcepto } from "../cuentas-de-cobro/RetencionesCuentaCobro";
-import { soloDigitos, montoRetencion, faltaBase as calcFaltaBase } from "@/lib/base-retencion";
+import { soloDigitos, montoRetencion, faltaBase as calcFaltaBase, tarifaInicial } from "@/lib/base-retencion";
 import { ModalPortal } from "../_ui/ModalPortal";
 
 const cop = new Intl.NumberFormat("es-CO", { style: "currency", currency: "COP", maximumFractionDigits: 0 });
 const copN = (n: number) => cop.format(Math.round(n || 0));
 // % inicial: retro-calcula desde el monto (confirmado o sugerido) sobre su base.
-// Todo en valor absoluto: una nota crédito guarda montos y bases en negativo
-// (el documento manda el signo) y acá se trabaja y se muestra en positivo.
-const pctIni = (amt: string | null, base: number) =>
-  amt != null && amt !== "" && Math.abs(base) > 0 ? String(+((Math.abs(Number(amt)) / Math.abs(base)) * 100).toFixed(3)) : "";
 
 export function RetencionesModal({
   cufe, proveedor, subtotal, iva, total, sinXml = false,
@@ -46,17 +42,14 @@ export function RetencionesModal({
   regla: ReglaConcepto | null;
   concepto: string | null;
 }) {
-  // Pre-llenado, del más específico al más general:
-  //   1. el monto ya confirmado en esta factura
-  //   2. el monto que sugirió el pipeline
-  //   3. la TARIFA pactada con ESTE proveedor (maestro de retenciones)
-  //   4. lo que el equipo viene practicando para ESTE concepto
-  // Un concepto que aprendimos que NO retiene entra en "0", no vacío: "aquí no
-  // se retiene" también es una decisión y hay que poder verla tomada.
-  const delConcepto = (t: string | null) => (regla ? (regla.aplica ? (t ?? "") : "0") : "");
-  const [rf, setRf] = useState(pctIni(retefuente ?? retefuente_sug, subtotal) || (tarRf ?? "") || delConcepto(regla?.retefuente ?? null));
-  const [ri, setRi] = useState(pctIni(reteiva ?? reteiva_sug, iva) || (tarIva ?? ""));
-  const [ric, setRic] = useState(pctIni(reteica ?? reteica_sug, subtotal) || (tarIca ?? "") || delConcepto(regla?.reteica ?? null));
+  // Pre-llenado: la precedencia vive en lib/base-retencion.ts (`tarifaInicial`),
+  // donde está explicado por qué lo aprendido del contador va ANTES que el
+  // pipeline y por qué un $0 del pipeline no cuenta como propuesta.
+  const [rf, setRf] = useState(tarifaInicial({ confirmado: retefuente, base: subtotal, tarifaProveedor: tarRf,
+    reglaConcepto: regla ? { aplica: regla.aplica, tarifa: regla.retefuente ?? null } : null, sugerido: retefuente_sug }));
+  const [ri, setRi] = useState(tarifaInicial({ confirmado: reteiva, base: iva, tarifaProveedor: tarIva, sugerido: reteiva_sug }));
+  const [ric, setRic] = useState(tarifaInicial({ confirmado: reteica, base: subtotal, tarifaProveedor: tarIca,
+    reglaConcepto: regla ? { aplica: regla.aplica, tarifa: regla.reteica ?? null } : null, sugerido: reteica_sug }));
   // «Otros» guarda un neto con signo: positivo = descuento; negativo = ADICIONAL a
   // favor del proveedor. En pantalla son dos casillas, las dos en positivo.
   const otrosGuardado = Number(otros_valor ?? 0);
