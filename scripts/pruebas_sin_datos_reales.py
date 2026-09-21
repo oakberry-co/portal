@@ -39,6 +39,7 @@ from sembrar_demo import url_del_env_local, host_de, vaciar, sembrar, MARCA  # n
 # Tablas con identidad de terceros o calculadas sobre datos reales. Orden: hijos antes que padres.
 IDENTIDAD = [
     "pagos_revertidos", "clasificacion_alerta",          # apuntan a facturas (paso 1)
+    "centinela_caso_evento", "centinela_caso",           # casos de los centinelas (nombran proveedores reales)
 ]
 MAESTROS_REALES = [
     "cuentas_bancarias_proveedor", "maestro_proveedores", "maestro_terceros_siigo",

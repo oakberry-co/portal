@@ -1745,3 +1745,40 @@ tr.desfasada td { background: #fff8e6; }
 .ret-adelanto { margin: 10px 0 0; padding: 8px 10px; border-radius: 8px; font-size: 12.5px; line-height: 1.4;
   background: #fff8e6; border: 1px solid var(--yellow); }
 .ret-adelanto.mal { background: #fff1ed; border-color: var(--coral); color: var(--coral); font-weight: 600; }
+
+/* --- La campana y la página de avisos ---------------------------------------- */
+.nav-campana { position: relative; display: inline-flex; align-items: center; justify-content: center;
+  width: 34px; height: 34px; border-radius: 10px; color: var(--lav); border: 1px solid transparent; }
+.nav-campana:hover { background: var(--lav-soft); color: var(--purple-deep); text-decoration: none !important; }
+.nav-campana.con { color: var(--purple-deep); }
+.nav-campana b { position: absolute; top: 2px; right: 1px; min-width: 16px; height: 16px; padding: 0 4px;
+  border-radius: 999px; background: var(--coral); color: #fff; font-size: 10px; font-weight: 800;
+  line-height: 16px; text-align: center; }
+.av-vacio { background: #f0f9f3; border: 1px solid rgba(39,174,96,.28); color: #1e7d47; border-radius: 12px;
+  padding: 14px 16px; font-size: 13.5px; }
+.av-sec { margin: 18px 0 26px; }
+.av-sec h2 { font-size: 15px; margin: 0 0 10px; color: var(--purple-deep); display: flex; align-items: center; gap: 8px; }
+.av-cnt { background: var(--lav-soft); color: var(--purple); border-radius: 999px; padding: 1px 8px; font-size: 12px; }
+.av-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.av-item { display: flex; gap: 12px; align-items: flex-start; background: var(--card); border: 1px solid var(--border);
+  border-left: 4px solid var(--yellow); border-radius: 12px; padding: 12px 14px; }
+.av-item.rojo { border-left-color: var(--coral); }
+.av-item.verif { opacity: .75; border-left-color: var(--lav); }
+.av-n { min-width: 40px; font-size: 20px; font-weight: 800; color: var(--purple-deep); font-variant-numeric: tabular-nums; }
+.av-cuerpo { flex: 1; min-width: 0; }
+.av-tit { font-weight: 700; color: var(--ink); font-size: 13.5px; }
+.av-det { color: var(--lav); font-size: 12.5px; margin-top: 3px; word-break: break-word; }
+.av-que { font-size: 12.5px; margin-top: 4px; color: var(--purple-deep); }
+.av-desde { font-size: 11px; color: var(--lav); margin-top: 4px; }
+.av-tag { display: inline-block; margin-left: 8px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em;
+  background: var(--lav-soft); color: var(--purple); border-radius: 999px; padding: 1px 7px; vertical-align: middle; }
+.av-tag.verif { text-transform: none; letter-spacing: 0; }
+.av-acc { display: flex; flex-direction: column; gap: 6px; align-items: flex-end; }
+.av-ir { background: var(--purple); color: #fff !important; border-radius: 8px; padding: 6px 12px; font-size: 12px; font-weight: 700; text-decoration: none !important; }
+.av-form { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.av-form input { font-size: 13px; padding: 6px 8px; border-radius: 8px; border: 1px solid var(--border); min-width: 180px; }
+.av-err { color: var(--coral); font-size: 12px; font-weight: 600; width: 100%; }
+@media (max-width: 640px) {
+  .av-item { flex-wrap: wrap; }
+  .av-acc { flex-direction: row; width: 100%; justify-content: flex-end; }
+}

@@ -141,7 +141,7 @@ asumiéndolo.
 ```bash
 for t in nit bancos candado_aprobacion permisos documentos retenciones_excel espina_dian \
          desvio_titular nombre_pago modal_portal enlaces_basepath \
-         aislamiento_pruebas causacion semana_pagos revertir_pago bitacora retenciones_adelanto retenciones_signo retenciones_precarga; do
+         aislamiento_pruebas causacion semana_pagos revertir_pago bitacora retenciones_adelanto retenciones_signo retenciones_precarga avisos; do
   node scripts/test_$t.js; done
 python3 scripts/test_enriquecimiento_xml.py   # base REAL, con ROLLBACK
 python3 scripts/test_intake_a_pagos.py     # contra la base REAL, con ROLLBACK
@@ -261,6 +261,7 @@ Los centinelas de datos (no de código) viven en el otro repo:
 |---|---|
 | `app/(portal)/contabilidad/` | el portal interno (conciliación, pagos, causaciones, maestros, bandejas) |
 | `lib/causacion.ts` | qué se puede causar y con qué cuenta (módulo puro) |
+| `lib/avisos.ts` · `/contabilidad/avisos` | la campana: casos de los centinelas (`centinela_caso`, los escribe la VM) + lo operativo contado en vivo; «ya lo resolví» → en_verificacion, confirma el centinela |
 | `lib/semana-pago.ts` | en qué semana se paga cada factura: atrasada · esta semana · próxima (módulo puro) |
 | `app/cuentas-de-cobro/`, `app/cotizaciones/`, `app/completar/` | landings PÚBLICAS (fuera del middleware) |
 | `lib/permisos.ts` | capacidades por rol — `ver_*` es leer, el resto es operar |

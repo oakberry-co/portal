@@ -79,7 +79,10 @@ check(!/Math\.round\(\(subtotal \*/.test(modal),
   "no vuelve a multiplicar por `subtotal` directo");
 check(/montoRetencion\(baseRf, rf\)/.test(modal), "ReteFuente se calcula sobre baseRf");
 check(/montoRetencion\(baseIva, ri\)/.test(modal), "ReteIVA se calcula sobre baseIva");
-check(/disabled=\{faltaBase\}/.test(modal), "el botón de confirmar se traba con faltaBase");
+// Desde el 11-sep el botón se traba por más de un motivo (faltaBase, el adelanto
+// en Otros, un adicional sin concepto): lo que se fija es que faltaBase SIGA
+// siendo uno de ellos, no que sea el único.
+check(/disabled=\{faltaBase(\s*\|\|[^}]*)?\}/.test(modal), "el botón de confirmar se traba con faltaBase");
 // Regla 18: un botón trabado sin motivo escrito es un lazo que no cierra.
 check(/ret-motivo/.test(modal), "dice POR QUÉ está trabado, al lado del botón");
 check(/\.ret-motivo\s*\{/.test(leer("app/globals.css")), "la clase del motivo existe en el CSS");

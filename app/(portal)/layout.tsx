@@ -5,6 +5,8 @@ import { signOut } from "@/auth";
 import { AsistenteFloating } from "./AsistenteFloating";
 import { ruta } from "@/lib/ruta";
 import { SelectorRolPruebas } from "./SelectorRolPruebas";
+import { cargarAvisos } from "@/lib/avisos-cache";
+import { Campana } from "./Campana";
 
 // El portal interno: menú + sesión. Las landings públicas (/cuentas-de-cobro y
 // /cotizaciones) quedan FUERA de este grupo y por eso no lo heredan.
@@ -65,6 +67,11 @@ function menuPara(rol: Rol): GrupoMenu[] {
 
 export default async function PortalLayout({ children }: { children: React.ReactNode }) {
   const user = await getCurrentUserOrNull();
+  // La campana: cuántas cosas tiene que mirar ESTA persona. Cacheado un minuto
+  // para todos (lib/avisos.ts); si la base no responde, la campana no tumba el
+  // portal — se muestra sin número.
+  let pendientes = 0;
+  if (user) { try { pendientes = (await cargarAvisos(user.rol)).avisos.length; } catch (e) { console.error("[campana]", e); } }
   return (
     <>
       {user && (
@@ -75,6 +82,7 @@ export default async function PortalLayout({ children }: { children: React.React
           <MenuPortal grupos={menuPara(user.rol)} />
           <div className="nav-user">
             <SelectorRolPruebas rol={user.rol} />
+            <Campana n={pendientes} />
             <span className="nav-who"><b>{user.email}</b><i>{user.rol}</i></span>
             <form action={async () => { "use server"; await signOut({ redirectTo: "/login" }); }}>
               <button className="nav-out" type="submit">Salir</button>
