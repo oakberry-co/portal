@@ -8,6 +8,7 @@ import { CuentaDestinoModal } from "./CuentaDestinoModal";
 import { guardarClasificacion, marcarTipoPago , devolverUnPaso } from "./actions";
 import { RetencionesModal } from "./RetencionesModal";
 import { RevertirPagoModal } from "./RevertirPagoModal";
+import { CruzarNotaModal } from "./CruzarNotaModal";
 import { EN_PRUEBAS_CLIENTE } from "@/lib/ambiente";
 
 export type FacturaRow = {
@@ -40,6 +41,12 @@ export type FacturaRow = {
   // lo que le quitan las notas que lo corrigen.
   doc_tipo: string | null; ref_numero: string | null; ref_motivo: string | null;
   nc_aplicada: number | null; nc_detalle: string | null;
+  // Si ES una nota: de dónde salió su referencia ('xml' el documento, 'manual'
+  // una persona, 'fuera_portal' declarada sin factura acá) y si todavía no
+  // descuenta de nada (lib/cruzar-nota.ts, 23-sep-2026).
+  ref_cufe: string | null; ref_fuente: string | null;
+  ref_manual_por: string | null; ref_manual_en: string | Date | null; ref_manual_nota: string | null;
+  nc_sin_cruzar: boolean | null;
   n_soportes: number | null;
   destino_drive: string | null;
   estado: Estado;
@@ -97,7 +104,7 @@ function ddmm(d: string | Date | null): string {
 }
 
 export const FacturaCard = memo(function FacturaCard({
-  f, conceptos, destinos, onSaved, puedeClasificar, puedeRevertir,
+  f, conceptos, destinos, onSaved, puedeClasificar, puedeRevertir, puedeCruzar,
 }: {
   f: FacturaRow;
   conceptos: string[];
@@ -105,10 +112,12 @@ export const FacturaCard = memo(function FacturaCard({
   onSaved: (cufe: string, patch: FilaPatch) => void;
   puedeClasificar: boolean;   // false = contador (solo puede Reten., no clasificar)
   puedeRevertir: boolean;     // admin: quitar un pago que nunca salió del banco
+  puedeCruzar: boolean;       // operador/admin: decir de qué factura descuenta una nota crédito
 }) {
   const [modal, setModal] = useState(false);
   const [modalCta, setModalCta] = useState(false);
   const [modalRev, setModalRev] = useState(false);
+  const [modalNc, setModalNc] = useState(false);
   const [det, setDet] = useState(false);
   const [pending, start] = useTransition();
   const [faltaDest, setFaltaDest] = useState(false);
@@ -202,6 +211,15 @@ export const FacturaCard = memo(function FacturaCard({
   // En una nota crédito la retención se guarda en negativo (el documento manda el
   // signo) y se MUESTRA en positivo como débito: es la reversa de la practicada.
   const esNota = f.doc_tipo === "CreditNote";
+  // Qué dice la marca «NC»: cruzada (llena), sin cruzar (hueco), fuera del portal (lavanda).
+  const quien = (s: string | null) => (s ? s.split("@")[0] : "—");
+  const tituloNc = f.nc_sin_cruzar
+    ? (f.ref_numero
+        ? `Nota crédito: el documento dice que corrige ${f.ref_numero}, que no está en el portal. No descuenta de nada todavía.`
+        : "Nota crédito sin factura: no descuenta de nada todavía. «⇄ cruzar» para decir de cuál.")
+    : f.ref_fuente === "fuera_portal"
+      ? `Nota crédito fuera del portal (${quien(f.ref_manual_por)}): ${f.ref_manual_nota ?? ""}`
+      : `Nota crédito de la factura ${f.ref_numero ?? "—"} · ${f.ref_motivo ?? ""}${f.ref_fuente === "manual" ? ` · cruzada a mano por ${quien(f.ref_manual_por)}` : ""}`;
   const retenTotal = f.retencion_ok && f.reten_total != null
     ? num(f.reten_total)
     : num(f.retefuente_sug) + num(f.reteiva_sug) + num(f.reteica_sug);
@@ -253,8 +271,10 @@ export const FacturaCard = memo(function FacturaCard({
           más bajo de lo esperado parece un error del sistema. */}
       <div className="c-num mono" title={`Factura ${f.numero}`}>
         {f.numero}
-        {f.doc_tipo === "CreditNote" && (
-          <span className="c-esnc" title={`Nota crédito de la factura ${f.ref_numero ?? "—"} · ${f.ref_motivo ?? ""}`}>NC</span>
+        {esNota && (
+          <span className={"c-esnc" + (f.nc_sin_cruzar ? " sin" : f.ref_fuente === "fuera_portal" ? " fuera" : "")} title={tituloNc}>
+            {f.nc_sin_cruzar ? "NC sin cruzar" : f.ref_fuente === "fuera_portal" ? "NC fuera" : "NC"}
+          </span>
         )}
         {Number(f.nc_aplicada) > 0 && (
           <span className="c-tienenc" title={`Le descuentan notas crédito: ${f.nc_detalle ?? ""}`}>−NC</span>
@@ -435,6 +455,12 @@ export const FacturaCard = memo(function FacturaCard({
         {revertida && (
           <span className="rev-mini" title={revTitle}>↩ pago quitado</span>
         )}
+        {esNota && puedeCruzar && (f.nc_sin_cruzar || f.ref_fuente === "manual" || f.ref_fuente === "fuera_portal") && (
+          <button type="button" className="rev-btn nc" onClick={() => setModalNc(true)}
+            title={f.nc_sin_cruzar ? "Decir de qué factura de este proveedor descuenta esta nota" : "Ver o quitar el cruce hecho a mano"}>
+            {f.nc_sin_cruzar ? "⇄ cruzar" : "⇄ cruce a mano"}
+          </button>
+        )}
         <button type="button" className={"cd-toggle " + (esDebito ? "deb" : "cred")} disabled={pending || !puedeClasificar} onClick={onTipo}
           title={esDebito
             ? "Débito — NO entra a Pagos (no se paga, ej. Éxito). Clic para volver a Crédito."
@@ -442,6 +468,16 @@ export const FacturaCard = memo(function FacturaCard({
           {esDebito ? "Débito" : "Crédito"}
         </button>
       </div>
+
+      {modalNc && (
+        <CruzarNotaModal
+          cufe={f.cufe}
+          numero={f.numero}
+          proveedor={f.nombre_proveedor ?? f.nit_proveedor}
+          onSaved={onSaved}
+          onClose={() => setModalNc(false)}
+        />
+      )}
 
       {modalRev && (
         <RevertirPagoModal

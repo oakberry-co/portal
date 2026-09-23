@@ -1782,3 +1782,32 @@ tr.desfasada td { background: #fff8e6; }
   .av-item { flex-wrap: wrap; }
   .av-acc { flex-direction: row; width: 100%; justify-content: flex-end; }
 }
+
+/* --- Notas crédito: cruce a mano (lib/cruzar-nota.ts, 23-sep-2026) ----------
+   «NC» lleno = cruzada (el documento o una persona ya dijo de qué factura
+   descuenta). «NC sin cruzar» en hueco = todavía no descuenta de nada.
+   «NC fuera» lavanda = declarada fuera del portal (anuló una factura que
+   nunca entró): no está pendiente y no descuenta de nada. */
+.c-esnc.sin { background: #fff; color: var(--coral); border: 1px solid var(--coral); }
+.c-esnc.fuera { background: var(--lav-soft); color: var(--purple-deep); }
+.rev-btn.nc { border-color: rgba(91,43,123,.45); color: var(--purple-deep); }
+.rev-btn.nc:hover:not(:disabled) { background: var(--lav-soft); }
+.nc-nota-dato { background: #fff8e6; border: 1px solid var(--yellow); border-radius: 10px;
+  padding: 10px 12px; margin: 12px 0; font-size: 12.5px; display: flex; flex-direction: column; gap: 4px; }
+.nc-buscar { width: 100%; box-sizing: border-box; font-size: 16px; padding: 8px 10px;
+  border: 1px solid var(--border); border-radius: 8px; margin-top: 10px; font-family: inherit; }
+.nc-lista { max-height: 46vh; overflow: auto; border: 1px solid var(--border); border-radius: 10px; margin-top: 8px; }
+.nc-lista label { display: grid; grid-template-columns: 18px 1fr auto; gap: 8px; align-items: center;
+  padding: 8px 10px; border-bottom: 1px solid var(--border); font-size: 12.5px; cursor: pointer; }
+.nc-lista label:last-child { border-bottom: 0; }
+.nc-lista label.sel { background: var(--lav-soft); }
+.nc-lista label.pagada { color: #6B6475; }
+.nc-lista label input { margin: 0; width: 16px; height: 16px; }
+.nc-lista .num { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-weight: 700; }
+.nc-lista .mini { font-size: 11px; color: #6B6475; display: block; }
+.nc-lista .saldo { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.nc-lista .saldo i { display: block; font-size: 10.5px; color: #6B6475; font-style: normal; }
+.nc-vacio { padding: 12px; font-size: 12.5px; color: #6B6475; }
+.nc-aviso { margin: 8px 0 0; padding: 8px 10px; border-radius: 8px; font-size: 12.5px; line-height: 1.4;
+  background: #fff8e6; border: 1px solid var(--yellow); }
+.nc-aviso.mal { background: #fff1ed; border-color: var(--coral); color: var(--coral); font-weight: 600; }

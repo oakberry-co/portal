@@ -1354,3 +1354,84 @@ CREATE INDEX IF NOT EXISTS ix_pagos_rev_cufe ON pagos_revertidos (cufe);
 ALTER TABLE usuarios DROP CONSTRAINT IF EXISTS ck_rol;
 ALTER TABLE usuarios ADD CONSTRAINT ck_rol
   CHECK (rol IN ('conciliador','pagador','causador','operador','admin'));
+
+-- ============================================================
+-- CENTINELAS → CASOS (sep-2026)
+-- Los tres centinelas (facturación, CRM, adquisición) ya no mandan cada uno su
+-- correo: registran aquí cada hallazgo como un CASO con historia. De aquí salen
+-- el correo único de la mañana (solo lo nuevo), la campanita del portal y el
+-- aprendizaje (qué se repite → qué debe impedir la app desde la entrada).
+--
+-- Regla del loop humano (R18): un humano NO cierra un caso; lo marca
+-- «ya lo resolví» (en_verificacion) y el CENTINELA lo cierra cuando deja de
+-- verlo. Si lo sigue viendo, vuelve a 'abierto' y cuenta como reapertura.
+-- La escribe centinelas/casos.py (repo datawarehouse) con el DATABASE_URL de acá.
+-- ============================================================
+CREATE TABLE IF NOT EXISTS centinela_caso (
+  id                BIGSERIAL PRIMARY KEY,
+  centinela         TEXT NOT NULL,                 -- facturacion | crm | adquisicion
+  check_id          TEXT NOT NULL,                 -- nombre estable del check
+  clave             TEXT NOT NULL DEFAULT '',      -- entidad puntual ('' = el check entero)
+  titulo            TEXT NOT NULL,
+  detalle           TEXT,                          -- lo último que vio el centinela
+  que_hacer         TEXT,
+  dueno             TEXT NOT NULL DEFAULT 'daniel',-- daniel | compras
+  severidad         TEXT NOT NULL DEFAULT 'rojo',  -- rojo | aviso
+  n                 INTEGER,
+  estado            TEXT NOT NULL DEFAULT 'abierto'
+                    CHECK (estado IN ('abierto','en_verificacion','resuelto')),
+  abierto_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+  ultimo_visto_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+  marcado_por       TEXT,
+  marcado_at        TIMESTAMPTZ,
+  nota_humano       TEXT,
+  resuelto_at       TIMESTAMPTZ,
+  resuelto_por      TEXT,                          -- 'centinela' tras marca humana | 'solo' sin marca
+  veces_reabierto   INTEGER NOT NULL DEFAULT 0,    -- lo marcaron resuelto y no lo estaba
+  veces_reaparecido INTEGER NOT NULL DEFAULT 0,    -- se cerró y volvió a pasar
+  notificado_at     TIMESTAMPTZ,                   -- ya salió en el correo de la mañana
+  UNIQUE (centinela, check_id, clave)
+);
+CREATE INDEX IF NOT EXISTS centinela_caso_abiertos ON centinela_caso (dueno, estado)
+  WHERE estado <> 'resuelto';
+
+CREATE TABLE IF NOT EXISTS centinela_caso_evento (   -- append-only: la historia de cada caso
+  id        BIGSERIAL PRIMARY KEY,
+  caso_id   BIGINT NOT NULL REFERENCES centinela_caso(id),
+  tipo      TEXT NOT NULL,   -- abrio | reaparecio | marcado | confirmado | reabierto | se_fue_solo
+  quien     TEXT NOT NULL,   -- correo del humano o 'centinela'
+  nota      TEXT,
+  at        TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS centinela_caso_evento_caso ON centinela_caso_evento (caso_id, at);
+
+-- -----------------------------------------------------------------------------
+-- 26) CRUCE MANUAL DE NOTAS CRÉDITO (2026-09-23)
+--
+-- Caso Siigo: la nota 105248481 (−$1.247.266) y la factura 952034897
+-- ($8.106.226) entraron por el barrido de la DIAN, sin XML, y el XML es el
+-- único sitio donde una nota dice a qué factura corrige. Sin cruce, la nota
+-- queda con «a pagar $0» y la factura se paga completa. Además hay notas con
+-- XML que no traen referencia (Allianz, Transfrío, Rappi…) y notas que apuntan
+-- a facturas que nunca entraron al portal (el proveedor anuló y re-facturó).
+--
+-- `ref_fuente` dice DE DÓNDE sale la referencia que hoy manda (`ref_cufe`):
+--   NULL           = no hay referencia (nota suelta: la campana la levanta)
+--   'xml'          = la escribió el documento DIAN (no se cambia a mano)
+--   'manual'       = la escogió una persona en Conciliación (queda quién/cuándo/nota)
+--   'fuera_portal' = una persona declaró que la factura corregida no está en el
+--                    portal: la nota deja de estar pendiente sin descontar de nada
+-- El sync (scripts/sync_bq_to_pg.py) NO pisa un cruce manual con lo que traiga
+-- un XML posterior; el centinela `cruce_manual_vs_xml` avisa si difieren.
+-- Idempotente.
+-- -----------------------------------------------------------------------------
+ALTER TABLE facturas
+  ADD COLUMN IF NOT EXISTS ref_fuente      TEXT,
+  ADD COLUMN IF NOT EXISTS ref_manual_por  TEXT,
+  ADD COLUMN IF NOT EXISTS ref_manual_en   TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS ref_manual_nota TEXT;
+ALTER TABLE facturas DROP CONSTRAINT IF EXISTS ck_ref_fuente;
+ALTER TABLE facturas ADD CONSTRAINT ck_ref_fuente
+  CHECK (ref_fuente IS NULL OR ref_fuente IN ('xml', 'manual', 'fuera_portal'));
+-- Lo que ya tenía referencia la trajo el documento.
+UPDATE facturas SET ref_fuente = 'xml' WHERE ref_cufe IS NOT NULL AND ref_fuente IS NULL;

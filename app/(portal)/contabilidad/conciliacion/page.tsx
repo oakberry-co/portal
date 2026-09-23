@@ -7,7 +7,7 @@ import { puede } from "@/lib/permisos";
 import type { FacturaRow } from "./FacturaCard";
 import { type DocNoDianUI } from "./DocsNoDian";
 import { porClasificar } from "@/lib/documentos-no-dian";
-import { NC_APLICADA } from "@/lib/notas-credito";
+import { NC_APLICADA, NC_SIN_CRUZAR, SQL_NC_DETALLE } from "@/lib/notas-credito";
 
 export const dynamic = "force-dynamic"; // siempre lee el estado vivo
 
@@ -59,11 +59,14 @@ async function cargar(): Promise<{ filas: FacturaRow[]; conceptos: string[]; des
             e.cta_dest_banco, e.cta_dest_tipo, e.cta_dest_numero, e.cta_dest_titular,
             e.cta_dest_doc, e.cta_dest_tipo_doc, e.cta_dest_motivo, e.cta_dest_por,
             cb.banco AS cb_banco, cb.num_cuenta AS cb_num_cuenta,
-            -- Notas crédito que corrigen ESTA factura + qué es ella misma.
-            f.doc_tipo, f.ref_numero, f.ref_motivo,
+            -- Notas crédito que corrigen ESTA factura + qué es ella misma. Si ES
+            -- una nota: de dónde salió su referencia (xml / manual / fuera_portal)
+            -- y si todavía no descuenta de nada (lib/cruzar-nota.ts).
+            f.doc_tipo, f.ref_numero, f.ref_motivo, f.ref_cufe, f.ref_fuente,
+            f.ref_manual_por, f.ref_manual_en, f.ref_manual_nota,
+            ${NC_SIN_CRUZAR("f")} AS nc_sin_cruzar,
             ${NC_APLICADA("f")}::float AS nc_aplicada,
-            (SELECT string_agg(nc.numero || ' · ' || coalesce(nc.ref_motivo,'nota crédito'), ' | ')
-               FROM facturas nc WHERE nc.ref_cufe = f.cufe AND nc.doc_tipo = 'CreditNote') AS nc_detalle
+            ${SQL_NC_DETALLE("f")} AS nc_detalle
        FROM facturas f
        JOIN factura_estado e USING (cufe)
        LEFT JOIN factura_propuesta p USING (cufe)
@@ -149,7 +152,7 @@ export default async function ConciliacionPage() {
       <ConciliacionView filas={filas} conceptos={conceptos} destinos={destinos} noDian={docsNoDian}
                         puedeClasificar={puedeClasificar} puedeExport={puede(rol, "retenciones")}
                         puedeRetenciones={puedeRetenciones}
-                        puedeRevertir={puede(rol, "revertir_pago")} />
+                        puedeRevertir={puede(rol, "revertir_pago")} puedeCruzar={puede(rol, "cruzar_nota")} />
 
       <p className="chain-note">
         🔒 Cada guardado escribe el cambio <em>y</em> su evento en la misma transacción; la bitácora

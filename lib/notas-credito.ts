@@ -67,3 +67,24 @@ export const SQL_NOTAS_DE = `
  *  "arregla" quitándole el signo). */
 export const NO_ES_NOTA = (pfx: string) =>
   `coalesce(${pfx}.doc_tipo, 'Invoice') <> 'CreditNote'`;
+
+/** Las notas de UNA factura en una línea («516 · Devolución parcial | …»), para
+ *  la fila de Conciliación y para el parche que devuelve el cruce manual: una
+ *  sola expresión, no dos copias. */
+export const SQL_NC_DETALLE = (pfx: string) => `
+  (SELECT string_agg(nc.numero || ' · ' || coalesce(nc.ref_motivo, 'nota crédito'), ' | ')
+     FROM facturas nc WHERE nc.ref_cufe = ${pfx}.cufe AND nc.doc_tipo = 'CreditNote')`;
+
+/** UNA NOTA CRÉDITO QUE TODAVÍA NECESITA QUE UNA PERSONA LA MIRE (23-sep-2026).
+ *
+ *  No dice a qué factura corrige, o dice una que no está en el portal, y nadie
+ *  la ha cruzado a mano ni la ha declarado fuera del portal. Mientras esté así
+ *  no descuenta de nada y su factura se paga completa (Siigo 105248481).
+ *
+ *  La MISMA condición la usan la campana, la fila de Conciliación (marca «NC sin
+ *  cruzar» y el token de búsqueda `nc-sin-cruzar`) y el centinela Python
+ *  `nota_credito_sin_referencia` (health_check.py): si cambia acá, cambia allá. */
+export const NC_SIN_CRUZAR = (pfx: string) => `
+  (${pfx}.doc_tipo = 'CreditNote'
+   AND coalesce(${pfx}.ref_fuente, '') <> 'fuera_portal'
+   AND NOT EXISTS (SELECT 1 FROM facturas x WHERE x.cufe = ${pfx}.ref_cufe))`;

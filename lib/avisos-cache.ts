@@ -6,13 +6,13 @@ import { todosLosAvisos, visible, type Aviso } from "./avisos";
 import type { Rol } from "./auth";
 
 /** Se calcula a lo sumo una vez por minuto para TODOS: el layout la pide en
- *  cada página y son nueve consultas. Marcar un caso invalida la caché. */
+ *  cada página y son nueve consultas. */
 const cacheAvisos = unstable_cache(todosLosAvisos, ["avisos-portal"], { revalidate: 60, tags: ["avisos"] });
 
-/** Lo que ESTA persona tiene que mirar. */
-export async function cargarAvisos(rol: Rol): Promise<{ avisos: Aviso[]; ultimaCorrida: string | null }> {
-  const { avisos, ultimaCorrida } = await cacheAvisos();
-  return { avisos: avisos.filter((a) => visible(a, rol)), ultimaCorrida };
+/** Lo que ESTA persona puede hacer hoy. */
+export async function cargarAvisos(rol: Rol): Promise<{ avisos: Aviso[] }> {
+  const { avisos } = await cacheAvisos();
+  return { avisos: avisos.filter((a) => visible(a, rol)) };
 }
 
 export function invalidarAvisos(): void {

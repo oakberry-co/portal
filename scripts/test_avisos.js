@@ -2,25 +2,23 @@
 /* eslint-disable */
 // CENTINELA DE LA CAMPANA (Regla 14).
 //
-// Daniel buscó la campana el 21-sep-2026 y no existía: las alertas vivían en el
-// correo de la mañana y pegadas a cada fila. Esto fija que la campana:
-//   1. filtra por rol como dice `visible`: el admin ve todo, el equipo ve los
-//      casos de «compras» y lo operativo de sus pantallas, el contador solo lo
-//      que puede causar;
-//   2. contra la base real, todo aviso con enlace lleva a una pantalla que
-//      EXISTE en el portal (un aviso al que no se puede ir es ruido), y todo lo
-//      operativo tiene su capacidad;
-//   3. «ya lo resolví» deja el caso en en_verificacion con quién y nota, no en
-//      resuelto (eso lo confirma el centinela), y no se marca dos veces;
-//   4. cada pantalla del mapa PANTALLA corresponde a un check real del
-//      health_check (si el repo datawarehouse está en la VM);
-//   5. el correo de la mañana dice «campanita» y la ruta /contabilidad/avisos existe.
+// Daniel buscó la campana el 21-sep-2026 y no existía. El 23-sep decidió qué va
+// en ella: SOLO tareas que se ejecutan y corrigen en el portal; los centinelas
+// se quedan en el correo de la mañana. Esto fija que la campana:
+//   1. filtra por la capacidad de HACER lo que pide (regla pura `visible`);
+//   2. contra la base real, todo aviso lleva a una pantalla que EXISTE en el
+//      portal, tiene capacidad y no está en cero;
+//   3. NO lee los casos de los centinelas (`centinela_caso`) ni tiene botón de
+//      «ya lo resolví»: eso vive en el correo;
+//   4. el aviso de notas crédito sin cruzar usa la MISMA condición que la fila
+//      de Conciliación (`NC_SIN_CRUZAR`) y su enlace cae en un filtro que la
+//      pantalla entiende (`?q=nc-sin-cruzar`);
+//   5. el correo de la mañana ya no manda a la «campanita».
 //
 //   node scripts/test_avisos.js
 
 const { execFileSync } = require("child_process");
 const fs = require("fs"), path = require("path");
-const { Client } = require("pg");
 
 const RAIZ = path.dirname(__dirname);
 const fallos = [];
@@ -36,73 +34,58 @@ const cache = path.join(RAIZ, "node_modules", ".cache"); fs.mkdirSync(cache, { r
 const tmp = fs.mkdtempSync(path.join(cache, "tav-"));
 process.on("exit", () => { try { fs.rmSync(tmp, { recursive: true, force: true }); } catch {} });
 try {
-  execFileSync("npx", ["tsc", "lib/avisos.ts", "lib/eventos.ts", "lib/permisos.ts", "lib/db.ts", "--outDir", tmp,
+  execFileSync("npx", ["tsc", "lib/avisos.ts", "lib/notas-credito.ts", "lib/permisos.ts", "lib/db.ts", "--outDir", tmp,
                        "--module", "commonjs", "--target", "es2020", "--skipLibCheck", "--esModuleInterop"], { cwd: RAIZ, stdio: "pipe" });
 } catch (e) { if (!fs.existsSync(path.join(tmp, "avisos.js"))) { console.error("No compiló:\n" + (e.stdout || e.message)); process.exit(1); } }
 for (const f of fs.readdirSync(tmp)) { const p = path.join(tmp, f); fs.writeFileSync(p, fs.readFileSync(p, "utf8").replace(/require\("@\/lib\//g, 'require("./')); }
-const { todosLosAvisos, visible, marcarCasoResuelto } = require(path.join(tmp, "avisos.js"));
+const { todosLosAvisos, visible } = require(path.join(tmp, "avisos.js"));
 const { getPool } = require(path.join(tmp, "db.js"));
 
 (async () => {
   console.log("CENTINELA · la campana\n");
-  console.log("1) Quién ve qué (regla pura)");
-  const casoCompras = { origen: "centinela", dueno: "compras", cap: null };
-  const casoDaniel = { origen: "centinela", dueno: "daniel", cap: null };
-  const opPagos = { origen: "operacion", cap: "pagos", dueno: null };
-  const opCausar = { origen: "operacion", cap: "causar", dueno: null };
-  check(visible(casoCompras, "admin") && visible(casoDaniel, "admin") && visible(opPagos, "admin") && visible(opCausar, "admin"), "admin ve todo");
-  check(visible(casoCompras, "operador") && !visible(casoDaniel, "operador"), "operador ve los casos de compras, no los de Daniel");
-  check(visible(opPagos, "operador") && visible(opCausar, "operador"), "operador ve lo operativo de sus pantallas");
-  check(!visible(casoCompras, "causador") && !visible(opPagos, "causador") && visible(opCausar, "causador"), "el contador solo ve lo que puede causar");
+  console.log("1) Quién ve qué (regla pura: la capacidad de HACER)");
+  const opPagos = { cap: "pagos" }, opCausar = { cap: "causar" }, opCruzar = { cap: "cruzar_nota" }, opRet = { cap: "retenciones" };
+  check(visible(opPagos, "admin") && visible(opCausar, "admin") && visible(opCruzar, "admin"), "admin ve todo");
+  check(visible(opPagos, "operador") && visible(opCruzar, "operador") && visible(opCausar, "operador"), "operador ve lo operativo, incluido cruzar notas");
+  check(!visible(opPagos, "causador") && !visible(opCruzar, "causador") && visible(opCausar, "causador") && visible(opRet, "causador"),
+        "el contador solo ve lo que puede causar o retener, no pagos ni cruces");
   check(visible(opPagos, "pagador") && !visible(opCausar, "pagador"), "pagador ve pagos, no causaciones");
+  check(!visible({ cap: null }, "admin"), "un aviso sin capacidad no lo ve nadie (control)");
 
-  console.log("\n2) Contra la base real: enlaces y capacidades");
-  const { avisos, ultimaCorrida } = await todosLosAvisos();
-  check(Array.isArray(avisos), `${avisos.length} aviso(s) hoy`, `última corrida del centinela: ${ultimaCorrida ?? "—"}`);
+  console.log("\n2) Contra la base real: enlaces, capacidades, nada en cero");
+  const { avisos } = await todosLosAvisos();
+  check(Array.isArray(avisos), `${avisos.length} aviso(s) hoy`, avisos.map((a) => `${a.clave}=${a.n}`).join(", "));
   const rutas = new Set(fs.readdirSync(path.join(RAIZ, "app", "(portal)", "contabilidad")).map((d) => "/contabilidad/" + d));
-  const rotos = avisos.filter((a) => a.href && !rutas.has(a.href.split("?")[0]));
-  check(rotos.length === 0, "todo aviso con enlace lleva a una pantalla que existe", rotos.map((a) => a.href).join(", "));
-  check(avisos.filter((a) => a.origen === "operacion").every((a) => a.cap), "todo aviso operativo tiene capacidad");
-  check(avisos.every((a) => a.titulo && (a.n == null || a.n > 0)), "ningún aviso vacío ni en cero");
+  const rotos = avisos.filter((a) => !a.href || !rutas.has(a.href.split("?")[0]));
+  check(rotos.length === 0, "todo aviso lleva a una pantalla que existe", rotos.map((a) => a.href).join(", "));
+  check(avisos.every((a) => a.cap), "todo aviso tiene capacidad");
+  check(avisos.every((a) => a.titulo && a.queHacer && a.n > 0), "ningún aviso vacío, sin qué hacer, ni en cero");
 
-  console.log("\n3) «Ya lo resolví» (ROLLBACK)");
-  const c = await getPool().connect();
-  await c.query("BEGIN");
-  try {
-    const ab = (await c.query("SELECT id FROM centinela_caso WHERE estado = 'abierto' ORDER BY id LIMIT 1")).rows[0];
-    if (!ab) console.log("  (sin casos abiertos para probar; se salta)");
-    else {
-      await marcarCasoResuelto(c, ab.id, { email: "centinela@test", rol: "admin" }, "probando");
-      const r = (await c.query("SELECT estado, marcado_por, nota_humano FROM centinela_caso WHERE id = $1", [ab.id])).rows[0];
-      check(r.estado === "en_verificacion" && r.marcado_por === "centinela@test" && r.nota_humano === "probando", "queda en en_verificacion con quién y nota", r.estado);
-      const ev = (await c.query("SELECT tipo, quien FROM centinela_caso_evento WHERE caso_id = $1 ORDER BY id DESC LIMIT 1", [ab.id])).rows[0];
-      check(ev?.tipo === "marcado_resuelto" && ev?.quien === "centinela@test", "y el evento del caso lo dice");
-      const bit = (await c.query("SELECT 1 FROM eventos WHERE tipo = 'marca_caso_resuelto' AND actor = 'centinela@test' ORDER BY id DESC LIMIT 1")).rowCount;
-      check(bit === 1, "y la bitácora del portal también");
-      let e2 = null; try { await marcarCasoResuelto(c, ab.id, { email: "x@test", rol: "admin" }, null); } catch (e) { e2 = e; }
-      check(!!e2 && /marcado/.test(e2.message), "marcarlo dos veces se rechaza y dice por qué", e2?.message);
-    }
-    const res = (await c.query("SELECT id FROM centinela_caso WHERE estado = 'resuelto' LIMIT 1")).rows[0];
-    if (res) { let e3 = null; try { await marcarCasoResuelto(c, res.id, { email: "x@test", rol: "admin" }, null); } catch (e) { e3 = e; }
-      check(!!e3 && /resuelto/.test(e3.message), "un caso resuelto no se marca"); }
-  } finally { await c.query("ROLLBACK"); c.release(); }
-
-  console.log("\n4) El mapa de pantallas apunta a checks reales");
-  const hc = "/home/daniel/proyectos/datawarehouse/contabilidad/facturacion/health_check.py";
-  if (fs.existsSync(hc)) {
-    const src = fs.readFileSync(hc, "utf8");
-    const mapa = fs.readFileSync(path.join(RAIZ, "lib", "avisos.ts"), "utf8").split("const PANTALLA")[1].split("};")[0];
-    const claves = [...mapa.matchAll(/([a-z_0-9]+):\s*"/g)].map((m) => m[1]);
-    const huerfanas = claves.filter((k) => !src.includes(`"${k}"`));
-    check(huerfanas.length === 0, `${claves.length} pantallas mapeadas, todas a checks del health_check`, huerfanas.join(", "));
-  } else console.log("  (health_check.py no está en esta máquina; se salta)");
-
-  console.log("\n5) El correo de la mañana y la ruta");
-  const correo = "/home/daniel/proyectos/datawarehouse/centinelas/correo_diario.py";
+  console.log("\n3) La campana no lee a los centinelas");
+  const src = fs.readFileSync(path.join(RAIZ, "lib", "avisos.ts"), "utf8");
+  check(!/centinela_caso/.test(src), "lib/avisos.ts no consulta centinela_caso");
+  check(!/marcarCasoResuelto|en_verificacion/.test(src), "no existe «ya lo resolví» en la campana");
+  check(!fs.existsSync(path.join(RAIZ, "app", "(portal)", "contabilidad", "avisos", "MarcarResuelto.tsx")), "ni el botón en la pantalla de avisos");
   check(fs.existsSync(path.join(RAIZ, "app", "(portal)", "contabilidad", "avisos", "page.tsx")), "/contabilidad/avisos existe");
-  if (fs.existsSync(correo)) check(/campanita/.test(fs.readFileSync(correo, "utf8")), "el correo de la mañana manda a la campanita");
 
-  await getPool().end();
-  console.log("\n" + (fallos.length ? "❌ FALLÓ: " + fallos.join("; ") : "✅ OK — la campana muestra lo que toca a quien le toca, y no cierra nada sola."));
+  console.log("\n4) Notas crédito sin cruzar: una sola condición, y el enlace cae en un filtro real");
+  check(/NC_SIN_CRUZAR\("f"\)/.test(src), "el aviso usa NC_SIN_CRUZAR de lib/notas-credito.ts (no una copia)");
+  const vista = fs.readFileSync(path.join(RAIZ, "app", "(portal)", "contabilidad", "conciliacion", "ConciliacionView.tsx"), "utf8");
+  check(/nc-sin-cruzar/.test(vista) && /q=nc-sin-cruzar/.test(src), "Conciliación entiende el token `nc-sin-cruzar` y la campana lo usa");
+  const pagina = fs.readFileSync(path.join(RAIZ, "app", "(portal)", "contabilidad", "conciliacion", "page.tsx"), "utf8");
+  check(/NC_SIN_CRUZAR\("f"\)\}\s+AS nc_sin_cruzar/.test(pagina), "la fila de Conciliación calcula nc_sin_cruzar con la misma condición");
+  const pool = getPool();
+  const n = (await pool.query(`SELECT count(*)::int AS n FROM facturas f WHERE f.doc_tipo = 'CreditNote'
+      AND coalesce(f.ref_fuente,'') <> 'fuera_portal' AND NOT EXISTS (SELECT 1 FROM facturas x WHERE x.cufe = f.ref_cufe)`)).rows[0].n;
+  const av = avisos.find((a) => a.clave === "notas_sin_cruzar");
+  check((av?.n ?? 0) === n, "el número de la campana es el de la base", `${av?.n ?? 0} vs ${n}`);
+
+  console.log("\n5) El correo de la mañana");
+  const correo = "/home/daniel/proyectos/datawarehouse/centinelas/correo_diario.py";
+  if (fs.existsSync(correo)) check(!/campanita/.test(fs.readFileSync(correo, "utf8")), "ya no manda a la «campanita»: los centinelas viven en el correo");
+  else console.log("  (correo_diario.py no está en esta máquina; se salta)");
+
+  await pool.end();
+  console.log("\n" + (fallos.length ? "❌ FALLÓ: " + fallos.join("; ") : "✅ OK — la campana muestra solo lo que se puede hacer en el portal, a quien puede hacerlo."));
   process.exit(fallos.length ? 1 : 0);
 })().catch((e) => { console.error("💥", e); process.exit(1); });

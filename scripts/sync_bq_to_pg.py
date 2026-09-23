@@ -485,7 +485,7 @@ def run_sync(conn, filas, *, purge_demo=False, actor="sistema", origen="sync",
           (cufe, nit_proveedor, nombre_proveedor, numero, consecutivo_num,
            fecha_emision, subtotal, iva, total, moneda, es_exterior,
            responsabilidad_dian, link_drive, gcs_xml_path, sincronizado_en,
-           doc_tipo, ref_numero, ref_cufe, ref_motivo, origen)
+           doc_tipo, ref_numero, ref_cufe, ref_motivo, origen, ref_fuente)
         VALUES %s
         ON CONFLICT (cufe) DO UPDATE SET
           link_drive   = COALESCE(EXCLUDED.link_drive,   facturas.link_drive),
@@ -495,9 +495,19 @@ def run_sync(conn, filas, *, purge_demo=False, actor="sistema", origen="sync",
           -- cargadas, así que llega en una corrida posterior. Nunca se borra
           -- (COALESCE): lo que ya sabemos no se pierde por una fila incompleta.
           doc_tipo   = COALESCE(EXCLUDED.doc_tipo,   facturas.doc_tipo),
-          ref_numero = COALESCE(EXCLUDED.ref_numero, facturas.ref_numero),
-          ref_cufe   = COALESCE(EXCLUDED.ref_cufe,   facturas.ref_cufe),
-          ref_motivo = COALESCE(EXCLUDED.ref_motivo, facturas.ref_motivo),
+          -- CRUCE MANUAL (23-sep-2026): si una persona cruzó la nota en el portal
+          -- (ref_fuente 'manual' / 'fuera_portal'), un XML que llegue después NO
+          -- la pisa en silencio: eso movería el descuento de una factura a otra
+          -- sin que nadie lo viera. Lo levanta el centinela `cruce_manual_vs_xml`.
+          ref_numero = CASE WHEN facturas.ref_fuente IN ('manual','fuera_portal') THEN facturas.ref_numero
+                            ELSE COALESCE(EXCLUDED.ref_numero, facturas.ref_numero) END,
+          ref_cufe   = CASE WHEN facturas.ref_fuente IN ('manual','fuera_portal') THEN facturas.ref_cufe
+                            ELSE COALESCE(EXCLUDED.ref_cufe,   facturas.ref_cufe) END,
+          ref_motivo = CASE WHEN facturas.ref_fuente IN ('manual','fuera_portal') THEN facturas.ref_motivo
+                            ELSE COALESCE(EXCLUDED.ref_motivo, facturas.ref_motivo) END,
+          ref_fuente = CASE WHEN facturas.ref_fuente IN ('manual','fuera_portal') THEN facturas.ref_fuente
+                            WHEN COALESCE(EXCLUDED.ref_cufe, facturas.ref_cufe) IS NOT NULL THEN 'xml'
+                            ELSE facturas.ref_fuente END,
 
           -- ENRIQUECIMIENTO TARDÍO (2026-08-27). Una factura que entró por la
           -- espina DIAN no tiene subtotal, IVA ni responsabilidad: eso vive en
@@ -523,7 +533,9 @@ def run_sync(conn, filas, *, purge_demo=False, actor="sistema", origen="sync",
                         ELSE facturas.origen END
         WHERE facturas.link_drive   IS DISTINCT FROM COALESCE(EXCLUDED.link_drive,   facturas.link_drive)
            OR facturas.gcs_xml_path IS DISTINCT FROM COALESCE(EXCLUDED.gcs_xml_path, facturas.gcs_xml_path)
-           OR facturas.ref_cufe     IS DISTINCT FROM COALESCE(EXCLUDED.ref_cufe,     facturas.ref_cufe)
+           OR (facturas.ref_fuente IS DISTINCT FROM 'manual' AND facturas.ref_fuente IS DISTINCT FROM 'fuera_portal'
+               AND facturas.ref_cufe IS DISTINCT FROM COALESCE(EXCLUDED.ref_cufe, facturas.ref_cufe))
+           OR (facturas.ref_fuente IS NULL AND facturas.ref_cufe IS NOT NULL)
            OR facturas.doc_tipo     IS DISTINCT FROM COALESCE(EXCLUDED.doc_tipo,     facturas.doc_tipo)
            OR (facturas.subtotal IS NULL AND EXCLUDED.subtotal IS NOT NULL)
            OR (facturas.iva      IS NULL AND EXCLUDED.iva      IS NOT NULL)
@@ -538,7 +550,8 @@ def run_sync(conn, filas, *, purge_demo=False, actor="sistema", origen="sync",
         r["link_drive"], r["gcs_xml_path"], r["recepcion"],
         r.get("doc_tipo"), r.get("ref_numero"), r.get("ref_cufe"), r.get("ref_motivo"),
         r.get("origen", "xml"),
-    ) for r in filas], template="(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+        "xml" if r.get("ref_cufe") else None,
+    ) for r in filas], template="(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
         page_size=1000, fetch=True)
     n_facturas = sum(1 for row in ret if row[0])       # insertadas
     # Filas que existían y se COMPLETARON: enlace, referencia de nota crédito,

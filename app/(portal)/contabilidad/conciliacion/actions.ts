@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { invalidarAvisos } from "@/lib/avisos-cache";
 import { withTx } from "@/lib/db";
 import { registrarEvento } from "@/lib/eventos";
 import { exigirCap } from "@/lib/auth";
@@ -13,6 +14,7 @@ import { revisarTitularDestino } from "@/lib/cuenta-destino";
 import { EN_PRUEBAS } from "@/lib/ambiente";
 import { asegurarConcepto, asegurarDestino } from "@/lib/maestros";
 import { pagoActivoDe, revertirPago, type Revertible, type ResultadoReversion } from "@/lib/revertir-pago";
+import { candidatasPara, cruzarNota, quitarCruce, type Cruzable, type ResultadoCruce } from "@/lib/cruzar-nota";
 import type { PoolClient } from "pg";
 
 /** El "apartado" de extracción: registra una solicitud de sync manual. La VM
@@ -575,6 +577,54 @@ export async function revertirPagoFactura(fd: FormData): Promise<Resultado & { p
   } catch (e) {
     const error = e instanceof Error ? e.message : String(e);
     console.error("[revertir pago]", error, e);
+    return { ok: false, error };
+  }
+}
+
+// ── CRUZAR UNA NOTA CRÉDITO A MANO (ver lib/cruzar-nota.ts) ──────────────────
+// Caso Siigo (23-sep-2026): nota y factura entraron por el barrido de la DIAN sin
+// XML, y el XML es el único sitio donde la nota dice a qué factura corrige.
+
+export async function candidatasDeNota(cufe: string): Promise<Cruzable> {
+  await exigirCap("cruzar_nota");
+  return withTx((c) => candidatasPara(c, cufe));
+}
+
+export async function cruzarNotaCredito(fd: FormData): Promise<Resultado & { patch?: ResultadoCruce }> {
+  try {
+    const user = await exigirCap("cruzar_nota");
+    const cufe = String(fd.get("cufe") ?? "").trim();
+    if (!cufe) throw new Error("Falta la nota.");
+    const fuera = String(fd.get("fuera_portal") ?? "");
+    const patch = await withTx((c) => cruzarNota(c, cufe, {
+      cufeFactura: String(fd.get("cufe_factura") ?? "").trim() || null,
+      fueraPortal: fuera === "1" || fuera === "on" || fuera === "true",
+      nota: limpiarTextoHumano(String(fd.get("nota") ?? "")) || null,
+    }, user, "web"));
+    invalidarAvisos();
+    revalidatePath("/contabilidad/conciliacion");
+    revalidatePath("/contabilidad/pagos");
+    return { ok: true, patch };
+  } catch (e) {
+    const error = e instanceof Error ? e.message : String(e);
+    console.error("[cruzar nota]", error, e);
+    return { ok: false, error };
+  }
+}
+
+export async function quitarCruceNota(fd: FormData): Promise<Resultado & { patch?: ResultadoCruce }> {
+  try {
+    const user = await exigirCap("cruzar_nota");
+    const cufe = String(fd.get("cufe") ?? "").trim();
+    if (!cufe) throw new Error("Falta la nota.");
+    const patch = await withTx((c) => quitarCruce(c, cufe, limpiarTextoHumano(String(fd.get("motivo") ?? "")) ?? "", user, "web"));
+    invalidarAvisos();
+    revalidatePath("/contabilidad/conciliacion");
+    revalidatePath("/contabilidad/pagos");
+    return { ok: true, patch };
+  } catch (e) {
+    const error = e instanceof Error ? e.message : String(e);
+    console.error("[quitar cruce nota]", error, e);
     return { ok: false, error };
   }
 }

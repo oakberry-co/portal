@@ -15,12 +15,17 @@ export type Cap =
   // que devuelve una factura a la cola de Pagos, o sea la única que puede
   // terminar en un pago doble: solo admin, con motivo, y solo pagos sin
   // comprobante (ver lib/revertir-pago.ts).
-  | "revertir_pago";
+  | "revertir_pago"
+  // Decir a mano a qué factura descuenta una nota crédito que llegó sin
+  // referencia (barrido DIAN sin XML, o XML que no la trae). Cambia cuánto se
+  // paga, como las retenciones: lo hace quien opera, no el contador externo
+  // (ver lib/cruzar-nota.ts).
+  | "cruzar_nota";
 
 const TODAS: Cap[] = [
   "ver_conciliacion", "clasificar", "retenciones", "tipo_pago",
   "ver_pagos", "pagos", "export_historial", "causar", "maestros", "maestro_retenciones",
-  "ver_intake", "intake", "dashboard", "asistente", "usuarios", "revertir_pago",
+  "ver_intake", "intake", "dashboard", "asistente", "usuarios", "revertir_pago", "cruzar_nota",
 ];
 
 // VER ≠ OPERAR. La bandeja del intake se parte en dos capacidades porque quien
