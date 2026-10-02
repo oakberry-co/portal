@@ -1,6 +1,7 @@
 "use client";
 
-import { Fragment, useState, useTransition } from "react";
+import { Fragment, useState, useTransition, useEffect } from "react";
+import { usarArchivoLiviano } from "@/lib/archivo-liviano";
 import { asignarCuenta, quitarCuenta, confirmarPago, agregarCuentaPago, toggleCuentaPago, guardarDiaPago,
          asignarCuentaIntake, confirmarPagoIntake, descontarAdelanto, quitarAdelanto,
          revisarCuentasBancarias, vincularCuentaBancaria, type RevisionCuentas } from "./actions";
@@ -604,6 +605,7 @@ function ItemIntake({ it, ctas, cuenta0, pending, start, onPagar }: {
 }
 
 function ModalConfirmarIntake({ it, onClose }: { it: FilaIntake; onClose: () => void }) {
+  const [ocupado, setOcupado] = useState(false);   // el comprobante se está alivianando
   const [monto, setMonto] = useState(String(Math.round(it.monto)));
   const hoy = new Date().toISOString().slice(0, 10);
   return (
@@ -620,13 +622,14 @@ function ModalConfirmarIntake({ it, onClose }: { it: FilaIntake; onClose: () => 
         <form action={async (fd) => {
           fd.set("tipo", it.tipo); fd.set("id", String(it.id));
           const r = await confirmarPagoIntake(fd);
+          if (r?.error) { alert(r.error); return; }
           if (r?.aviso) alert(r.aviso);
           onClose();
         }}>
           <div className="pg-form">
             <label>Monto pagado<input name="monto" value={monto} onChange={(e) => setMonto(e.target.value)} inputMode="numeric" /></label>
             <label>Fecha de pago<input type="date" name="fecha_pago" defaultValue={hoy} /></label>
-            <CampoComprobante />
+            <CampoComprobante onOcupado={setOcupado} />
             <label>Nota (opcional)<input name="nota" placeholder="referencia, banco…" /></label>
           </div>
           {it.tipo === "cotizacion" && (
@@ -635,7 +638,7 @@ function ModalConfirmarIntake({ it, onClose }: { it: FilaIntake; onClose: () => 
           )}
           <div className="modal-foot">
             <button type="button" className="ghost" onClick={onClose}>Cancelar</button>
-            <button type="submit">Confirmar pagada</button>
+            <button type="submit" disabled={ocupado}>Confirmar pagada</button>
           </div>
         </form>
       </div>
@@ -773,21 +776,24 @@ function ConfigView({ cuentas, diaPago }: { cuentas: CuentaPago[]; diaPago: numb
  *  respaldo. El archivo va a CONTABILIDAD/Comprobantes de pago/{proveedor}/{mes}
  *  y, además, es el que se le adjunta al proveedor en el correo de "ya te
  *  pagamos". */
-function CampoComprobante() {
-  const [nombre, setNombre] = useState<string | null>(null);
+function CampoComprobante({ onOcupado }: { onOcupado?: (ocupado: boolean) => void }) {
+  // Se aliviana la foto y se pesa ANTES de enviar (lib/archivo-liviano.ts): un
+  // comprobante de más de 4 MB tumbaba la página entera (2-oct-2026).
+  const c = usarArchivoLiviano("Comprobante de pago");
+  useEffect(() => { onOcupado?.(c.preparando); }, [c.preparando, onOcupado]);
   return (
     <label className="pg-comp">Comprobante de pago
-      <span className={"pg-comp-caja" + (nombre ? " puesto" : "")}>
-        <input type="file" name="comprobante" accept=".pdf,image/*"
-               onChange={(e) => setNombre(e.target.files?.[0]?.name ?? null)} />
-        <b>{nombre ? "✓" : "+"}</b>
-        <i>{nombre ?? "Adjuntar PDF o foto (opcional)"}</i>
+      <span className={"pg-comp-caja" + (c.nombre ? " puesto" : "") + (c.error ? " malo" : "")}>
+        <input type="file" name="comprobante" accept=".pdf,image/*" ref={c.ref} onChange={c.onChange} />
+        <b>{c.preparando ? "…" : c.nombre ? "✓" : c.error ? "!" : "+"}</b>
+        <i>{c.preparando ? "Preparando el archivo…" : c.error ? `⚠ ${c.error}` : c.nombre ?? "Adjuntar PDF o foto (opcional)"}</i>
       </span>
     </label>
   );
 }
 
 function ModalConfirmar({ grupo, onClose }: { grupo: Grupo; onClose: () => void }) {
+  const [ocupado, setOcupado] = useState(false);   // el comprobante se está alivianando
   const total = grupo.facturas.reduce((s, f) => s + saldo(f), 0);
   const [monto, setMonto] = useState(String(Math.round(total)));
   const m = Number(monto.replace(/[^\d.-]/g, "")) || 0;
@@ -811,12 +817,12 @@ function ModalConfirmar({ grupo, onClose }: { grupo: Grupo; onClose: () => void 
             <label>Monto pagado<input name="monto" value={monto} onChange={(e) => setMonto(e.target.value)} inputMode="numeric" />
               {esAbono ? <i className="pg-abono-tag">abono (saldo queda {$(total - m)})</i> : <i className="muted">pago completo</i>}</label>
             <label>Fecha de pago<input type="date" name="fecha_pago" defaultValue={hoy} /></label>
-            <CampoComprobante />
+            <CampoComprobante onOcupado={setOcupado} />
             <label>Nota (opcional)<input name="nota" placeholder="referencia, banco…" /></label>
           </div>
           <div className="modal-foot">
             <button type="button" className="ghost" onClick={onClose}>Cancelar</button>
-            <button type="submit">{esAbono ? "Registrar abono" : "Confirmar pagada"}</button>
+            <button type="submit" disabled={ocupado}>{esAbono ? "Registrar abono" : "Confirmar pagada"}</button>
           </div>
         </form>
       </div>

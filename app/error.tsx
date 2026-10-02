@@ -37,7 +37,8 @@ export default function Error({ error, reset }: { error: Error & { digest?: stri
         <h1 className="pub-title">Se nos cayó la página</h1>
         <p className="pub-sub">
           Casi siempre pasa porque actualizamos la aplicación mientras la tenías abierta.
-          <b> Recarga y sigue</b>.
+          <b> Recarga y sigue</b>. Si estabas adjuntando un archivo, puede que pese más de
+          4 MB, que es lo máximo por envío: recórtalo o guárdalo como PDF más liviano.
         </p>
 
         <button className="pub-btn" type="button" onClick={() => { reset(); location.reload(); }}>

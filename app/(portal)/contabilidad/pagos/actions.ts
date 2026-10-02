@@ -281,7 +281,20 @@ export async function asignarCuentaIntake(fd: FormData) {
  *  factura — y cierra el envío. En una COTIZACIÓN además registra el abono: es
  *  lo que hace que, cuando llegue la factura final y se enlace, Pagos le
  *  descuente el adelanto. Sin ese registro se pagaría dos veces. */
-export async function confirmarPagoIntake(fd: FormData) {
+/** Un «ya tiene un pago», «no está aprobada» o «le falta destino» se le DICE a
+ *  quien paga; antes se lanzaba y la pantalla entera se caía (visto en los logs
+ *  el 2-oct-2026: digest 884044549). */
+export async function confirmarPagoIntake(fd: FormData): Promise<{ aviso?: string; error?: string }> {
+  try {
+    return await confirmarPagoIntakeOFalla(fd);
+  } catch (e) {
+    const error = e instanceof Error ? e.message : String(e);
+    console.error("[confirmar pago intake]", error);
+    return { error };
+  }
+}
+
+async function confirmarPagoIntakeOFalla(fd: FormData): Promise<{ aviso?: string }> {
   const user = await guardPagador();
   const tipo = tipoIntake(fd.get("tipo"));
   const id = Number(fd.get("id"));

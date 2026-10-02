@@ -136,13 +136,19 @@ export async function revisarArchivos(
  */
 export function motivoPorPesoTotal(
   archivos: { nombre: string; peso: number; etiqueta: string }[],
+  // Qué hacer: por defecto le habla al proveedor (formularios públicos); los
+  // formularios internos pasan su propia salida (lib/archivo-liviano.ts).
+  salida: string = "quítalo, manda el resto, y te enviamos un enlace para subir ese solo. "
+    + "Si es un escaneo, guardarlo de nuevo desde \"Imprimir → Guardar como PDF\" suele "
+    + "dejarlo en la décima parte.",
 ): string | null {
   const total = archivos.reduce((a, x) => a + x.peso, 0);
   if (total <= TOPE_ENVIO_BYTES) return null;
   const gordo = archivos.reduce((a, x) => (x.peso > a.peso ? x : a), archivos[0]);
-  return `Tus documentos juntos pesan ${pesoLegible(total)} y solo podemos recibir `
-    + `${pesoLegible(TOPE_ENVIO_BYTES)} por envío. El más pesado es ${gordo.etiqueta} `
-    + `(${gordo.nombre}, ${pesoLegible(gordo.peso)}): quítalo, manda el resto, y te enviamos `
-    + `un enlace para subir ese solo. Si es un escaneo, guardarlo de nuevo desde `
-    + `"Imprimir → Guardar como PDF" suele dejarlo en la décima parte.`;
+  const juntos = archivos.length > 1
+    ? `Tus documentos juntos pesan ${pesoLegible(total)} y solo podemos recibir `
+      + `${pesoLegible(TOPE_ENVIO_BYTES)} por envío. El más pesado es ${gordo.etiqueta} `
+    : `${gordo.etiqueta} pesa ${pesoLegible(total)} y solo podemos recibir `
+      + `${pesoLegible(TOPE_ENVIO_BYTES)} por envío `;
+  return `${juntos}(${gordo.nombre}, ${pesoLegible(gordo.peso)}): ${salida}`;
 }

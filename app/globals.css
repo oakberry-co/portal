@@ -1811,3 +1811,9 @@ tr.desfasada td { background: #fff8e6; }
 .nc-aviso { margin: 8px 0 0; padding: 8px 10px; border-radius: 8px; font-size: 12.5px; line-height: 1.4;
   background: #fff8e6; border: 1px solid var(--yellow); }
 .nc-aviso.mal { background: #fff1ed; border-color: var(--coral); color: var(--coral); font-weight: 600; }
+
+/* --- Archivo que no cabe (lib/archivo-liviano.ts, 2-oct-2026) ------------- */
+.campo.malo i { color: var(--coral); font-weight: 600; }
+.pg-comp-caja.malo { border-style: solid; border-color: var(--coral); background: #fff1ed; }
+.pg-comp-caja.malo b { background: var(--coral); color: #fff; border-color: var(--coral); }
+.pg-comp-caja.malo i { color: var(--coral); font-weight: 600; white-space: normal; }

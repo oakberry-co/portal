@@ -5,6 +5,7 @@ import { crearGastoSinFactura } from "./actions";
 import { TIPOS_GASTO, DIAS_AVISO } from "@/lib/gastos-periodicos";
 import type { Resultado } from "@/lib/resultado";
 import { ruta } from "@/lib/ruta";
+import { usarArchivoLiviano } from "@/lib/archivo-liviano";
 
 /** El valor se escribe como se escribe en Colombia: con puntos de miles. Se
  *  formatea mientras se teclea para que nadie mande $9.870 creyendo que puso
@@ -22,7 +23,9 @@ export function FormGasto({ proveedores }: { proveedores: ProveedorConocido[] })
   const [razon, setRazon] = useState("");
   const [nit, setNit] = useState("");
   const [valor, setValor] = useState("");
-  const [archivo, setArchivo] = useState<string | null>(null);
+  // El soporte se aliviana y se pesa ANTES de enviar (lib/archivo-liviano.ts):
+  // una foto de celular de 6 MB tumbaba la página entera (2-oct-2026).
+  const soporte = usarArchivoLiviano("Documento soporte");
   const [repite, setRepite] = useState(false);
 
   // A quién ya le hemos pagado. Escribir el nombre trae el NIT solo: el NIT es
@@ -104,11 +107,14 @@ export function FormGasto({ proveedores }: { proveedores: ProveedorConocido[] })
           <i>Dónde se paga. Aparece al lado de la referencia cuando toque pagarlo.</i>
         </label>
 
-        <label className="campo ancho">
+        <label className={"campo ancho" + (soporte.error ? " malo" : "")}>
           <span>Documento soporte (opcional)</span>
           <input name="doc_soporte" type="file" accept=".pdf,.doc,.docx,image/*"
-                 onChange={(e) => setArchivo(e.target.files?.[0]?.name ?? null)} />
-          <i>{archivo ? `📎 ${archivo}` : "El recibo. Si no lo tienes ahora, se puede adjuntar después — pero el gasto queda sin respaldo hasta entonces."}</i>
+                 ref={soporte.ref} onChange={soporte.onChange} />
+          <i>{soporte.preparando ? "Preparando el archivo…"
+              : soporte.error ? `⚠ ${soporte.error}`
+              : soporte.nombre ? `📎 ${soporte.nombre}`
+              : "El recibo. Si no lo tienes ahora, se puede adjuntar después — pero el gasto queda sin respaldo hasta entonces."}</i>
         </label>
       </div>
 
@@ -143,7 +149,7 @@ export function FormGasto({ proveedores }: { proveedores: ProveedorConocido[] })
       </div>
 
       <div className="gasto-pie">
-        <button type="submit" className="btn" disabled={pending}>
+        <button type="submit" className="btn" disabled={pending || soporte.preparando}>
           {pending ? "Guardando…" : repite ? "Guardar y programar" : "Guardar y enviar a Conciliación"}
         </button>
         {res && !res.ok && <span className="gasto-err">⚠ {res.error}</span>}

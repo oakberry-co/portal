@@ -100,5 +100,32 @@ console.log("\n6) Los pesos se leen en cristiano");
 check(pesoLegible(4 * 1000 * 1000) === "4,0 MB", "4 MB", pesoLegible(4 * 1000 * 1000));
 check(pesoLegible(250 * 1000) === "250 KB", "250 KB", pesoLegible(250 * 1000));
 
+console.log("\n7) TODO <input type=\"file\"> del portal pasa por el control de peso");
+// El 2-oct-2026 el portal se cayó tres veces (`Body exceeded 4mb limit`, digest
+// 14048465): «Gasto sin factura» y el comprobante de pago tenían el input pelado,
+// sin la disciplina que los formularios públicos ya tenían desde el 21-ago. La
+// regla: o CasillasDocumentos, o el hook usarArchivoLiviano; el único exento es
+// el Excel de retenciones (.xlsx, lo lee el servidor y pesa kilobytes).
+function conInputDeArchivo(dir, acc = []) {
+  for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+    const p = path.join(dir, e.name);
+    if (e.isDirectory()) conInputDeArchivo(p, acc);
+    else if (e.name.endsWith(".tsx") && /type="file"/.test(fs.readFileSync(p, "utf8"))) acc.push(p);
+  }
+  return acc;
+}
+const inputs = conInputDeArchivo(path.join(RAIZ, "app"));
+check(inputs.length >= 4, `${inputs.length} componente(s) con <input type="file">`);
+for (const f of inputs) {
+  const src = fs.readFileSync(f, "utf8");
+  const rel = path.relative(RAIZ, f);
+  const soloExcel = (src.match(/type="file"/g) || []).length === 1 && /accept="\.xlsx[^"]*"/.test(src);
+  const cuidado = /usarArchivoLiviano\(|motivoPorPesoTotal\(|<CasillasDocumentos\b/.test(src);
+  check(soloExcel || cuidado, `${rel} aliviana y pesa el archivo antes de enviar`, soloExcel ? "solo Excel, exento" : "");
+}
+const hook = fs.readFileSync(path.join(RAIZ, "lib", "archivo-liviano.ts"), "utf8");
+check(/comprimirFoto\(/.test(hook) && /motivoPorPesoTotal\(/.test(hook) && /motivoRechazo\(/.test(hook) && /value = ""/.test(hook),
+      "el hook aliviana, pesa, filtra formato y VACÍA el input cuando no cabe");
+
 console.log(`\n${fallos.length ? "🔴 " + fallos.length + " fallo(s): " + fallos.join(", ") : "🟢 todo OK"}`);
 process.exit(fallos.length ? 1 : 0);
