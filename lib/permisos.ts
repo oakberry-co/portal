@@ -20,12 +20,15 @@ export type Cap =
   // referencia (barrido DIAN sin XML, o XML que no la trae). Cambia cuánto se
   // paga, como las retenciones: lo hace quien opera, no el contador externo
   // (ver lib/cruzar-nota.ts).
-  | "cruzar_nota";
+  | "cruzar_nota"
+  // La ventana Nómina (borrador visual del módulo RRHH, spec 04_rrhh v3). Por
+  // ahora solo la ve el decisor: muestra salarios reales del maestro.
+  | "nomina";
 
 const TODAS: Cap[] = [
   "ver_conciliacion", "clasificar", "retenciones", "tipo_pago",
   "ver_pagos", "pagos", "export_historial", "causar", "maestros", "maestro_retenciones",
-  "ver_intake", "intake", "dashboard", "asistente", "usuarios", "revertir_pago", "cruzar_nota",
+  "ver_intake", "intake", "dashboard", "asistente", "usuarios", "revertir_pago", "cruzar_nota", "nomina",
 ];
 
 // VER ≠ OPERAR. La bandeja del intake se parte en dos capacidades porque quien
@@ -41,7 +44,7 @@ const IMPLICA: Partial<Record<Cap, Cap[]>> = {
 // LO QUE SOLO HACE EL DECISOR. Daniel es el decisor máximo y el único admin
 // (2026-09-10): dar y quitar accesos, y deshacer un pago —la única acción que
 // devuelve una factura a la cola de Pagos— no las hace quien opera a diario.
-const SOLO_DECISOR: Cap[] = ["usuarios", "revertir_pago"];
+const SOLO_DECISOR: Cap[] = ["usuarios", "revertir_pago", "nomina"];
 
 // Rol → qué puede hacer.
 const MATRIZ: Record<Rol, Cap[]> = {

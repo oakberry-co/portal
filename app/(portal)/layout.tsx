@@ -38,6 +38,8 @@ const MENU: Grupo[] = [
     ],
   },
   { label: "Causaciones", items: [{ label: "Causaciones", href: "/contabilidad/causaciones", cap: "causar" }] },
+  // Borrador visual del módulo RRHH (solo el decisor mientras sea maqueta).
+  { label: "Nómina", href: "/nomina", cap: "nomina" },
   {
     label: "Configuraciones",
     items: [

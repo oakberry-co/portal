@@ -1435,3 +1435,25 @@ ALTER TABLE facturas ADD CONSTRAINT ck_ref_fuente
   CHECK (ref_fuente IS NULL OR ref_fuente IN ('xml', 'manual', 'fuera_portal'));
 -- Lo que ya tenía referencia la trajo el documento.
 UPDATE facturas SET ref_fuente = 'xml' WHERE ref_cufe IS NOT NULL AND ref_fuente IS NULL;
+
+-- ---------------------------------------------------------------------------
+-- RRHH / Nómina (módulo en construcción, spec gs://oakberry-col-core/04_rrhh).
+-- El maestro de empleados es la ÚNICA biblia de personas: viene del Excel de
+-- RRHH vía BigQuery (rrhh_manelfoods.v_maestro_nomina) y lo refresca
+-- scripts/sync_rrhh_maestro.py. Acá NO van cédula, celular ni correo: el portal
+-- no los necesita para mostrar turnos ni costos. Se reemplaza entero en cada
+-- sync (es un reflejo, no se edita a mano en el portal).
+CREATE TABLE IF NOT EXISTS rrhh_empleados (
+  activo_id           INTEGER PRIMARY KEY,
+  nombre_completo     TEXT NOT NULL,
+  punto               TEXT NOT NULL,            -- tienda, normalizada (CALLE 109, ZONA G…)
+  cargo               TEXT,
+  salario             BIGINT NOT NULL,          -- COP/mes, del contrato
+  auxilio_transporte  BOOLEAN NOT NULL DEFAULT TRUE,
+  fecha_ingreso       DATE,
+  tipo_contrato       TEXT,
+  eps TEXT, afp TEXT, arl TEXT, ccf TEXT,
+  ciudad_expedicion   TEXT,
+  snapshot_date       DATE NOT NULL,            -- fecha del maestro del que salió
+  actualizado_en      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
