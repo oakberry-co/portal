@@ -1,12 +1,56 @@
+/* ===== CÁSCARA estilo Oak-Crew: barra lateral blanca + cabecera + fondo gris claro ===== */
+.oc { --oc-purple: #6d3182; --oc-purple-soft: #f1e9f5; --oc-bg: #f6f6f9; --oc-line: #e8e6ee; --oc-ink: #1f1a2b; --oc-mute: #7c7691;
+  display: grid; grid-template-columns: 250px 1fr; min-height: 100vh; background: var(--oc-bg); color: var(--oc-ink); font-family: var(--sans); }
+.oc-side { background: #fff; border-right: 1px solid var(--oc-line); display: flex; flex-direction: column; position: sticky; top: 0; height: 100vh; overflow-y: auto; }
+.oc-brand { display: flex; align-items: center; gap: 8px; padding: 16px 18px 12px; border-bottom: 1px solid var(--oc-line); }
+.oc-logo { width: 32px; height: 32px; border-radius: 50%; background: var(--oc-purple-soft); display: inline-flex; align-items: center; justify-content: center; font-size: 17px; }
+.oc-brand b { font-family: var(--display); font-size: 20px; letter-spacing: .5px; color: var(--oc-ink); } .oc-brand small { color: var(--oc-mute); font-size: 11px; font-weight: 600; margin-left: auto; }
+.oc-nav { padding: 8px 12px 16px; flex: 1; }
+.oc-grupo h4 { margin: 14px 8px 4px; font-size: 10px; letter-spacing: .14em; text-transform: uppercase; color: var(--oc-mute); font-weight: 700; }
+.oc-grupo a { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 8px; font-size: 13.5px; font-weight: 500; color: var(--oc-ink); }
+.oc-grupo a:hover { background: var(--oc-purple-soft); text-decoration: none; }
+.oc-grupo a.on { background: var(--oc-purple); color: #fff; font-weight: 600; }
+.oc-grupo a i { font-style: normal; width: 18px; text-align: center; font-size: 14px; opacity: .9; }
+.oc-user { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-top: 1px solid var(--oc-line); background: var(--oc-purple-soft); }
+.oc-avatar { width: 34px; height: 34px; border-radius: 50%; background: var(--oc-purple); color: #fff; font-weight: 800; font-size: 12px; display: inline-flex; align-items: center; justify-content: center; flex: none; }
+.oc-user div { min-width: 0; flex: 1; line-height: 1.15; } .oc-user b { display: block; font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .oc-user i { font-style: normal; font-size: 11px; color: var(--oc-mute); }
+.oc-user button { background: none; border: none; color: var(--oc-mute); font-size: 16px; padding: 4px; cursor: pointer; } .oc-user button:hover { color: var(--oc-purple); filter: none; }
+.oc-body { min-width: 0; display: flex; flex-direction: column; }
+.oc-top { position: sticky; top: 0; z-index: 10; background: #fff; border-bottom: 1px solid var(--oc-line); height: 54px; display: flex; align-items: center; justify-content: space-between; padding: 0 24px; gap: 12px; }
+.oc-top-l { font-size: 13px; color: var(--oc-mute); } .oc-top-l b { color: var(--oc-ink); }
+.oc-pruebas { margin-left: 12px; font-size: 11px; font-weight: 700; color: #b7791f; background: #fff4e5; border: 1px solid #f3dcb3; border-radius: 999px; padding: 2px 9px; }
+.oc-top-r { display: flex; align-items: center; gap: 12px; }
+.oc-link { font-size: 12.5px; color: var(--oc-mute); } .oc-link:hover { color: var(--oc-purple); }
+.oc-salir { background: none; border: 1px solid var(--oc-line); color: var(--oc-ink); font-size: 12.5px; font-weight: 600; padding: 6px 12px; border-radius: 8px; } .oc-salir:hover { border-color: var(--oc-purple); color: var(--oc-purple); filter: none; }
+.oc-como { display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; color: #b7791f; font-weight: 700; background: #fff4e5; border: 1px solid #f3dcb3; border-radius: 8px; padding: 3px 6px 3px 9px; }
+.oc-como select { font: inherit; font-size: 12px; font-weight: 500; color: var(--oc-ink); padding: 3px 6px; border: 1px solid #f3dcb3; border-radius: 6px; background: #fff; max-width: 260px; }
+.oc-como button { font-size: 11px; padding: 4px 9px; border-radius: 6px; }
+.oc-main { padding: 24px 28px 60px; max-width: 1500px; width: 100%; }
+/* dentro: tono Oak-Crew para las piezas ya existentes */
+.oc .nm-head h1 { font-size: 24px; color: var(--oc-ink); } .oc .sub { color: var(--oc-mute); }
+.oc .nm-kpi, .oc .nm-card, .oc .nm-emp .c, .oc .nm-modal { border-color: var(--oc-line); box-shadow: 0 1px 2px rgba(31,26,43,.04); border-radius: 12px; }
+.oc .nm-kpi b { color: var(--oc-ink); } .oc .nm-kpi.hl { border-left-color: var(--oc-purple); }
+.oc .nm-card h3 { color: var(--oc-ink); }
+.oc .nm-sem .h { background: #faf9fc; color: var(--oc-ink); }
+.oc button:not(.ghost):not(.danger):not(.oc-salir) { background: var(--oc-purple); border-color: var(--oc-purple); }
+.oc button.ghost, .oc a.btn.ghost { color: var(--oc-purple); border-color: var(--oc-line); } .oc a.btn { background: var(--oc-purple); border-color: var(--oc-purple); }
+.oc .nm-pill { background: var(--oc-purple-soft); color: var(--oc-purple); }
+.oc .nm-pill.ok { background: #e6f4ea; color: #1e7d47; } .oc .nm-pill.warn { background: #fff4e5; color: #b7791f; } .oc .nm-pill.bad { background: #fdecea; color: #c0392b; } .oc .nm-pill.info { background: #e8eefc; color: #1b4fd6; } .oc .nm-pill.gris { background: #f1f0f5; color: var(--oc-mute); }
+.oc .nm-tabla th { color: var(--oc-mute); } .oc .nm-tabla .tot td { background: var(--oc-purple-soft); }
+.oc .nm-filtros select, .oc .nm-filtros input, .oc .nm-form input, .oc .nm-form select { border-color: var(--oc-line); }
+.oc .nm-leyenda { justify-content: flex-end; }
+@media (max-width: 900px) {
+  .oc { grid-template-columns: 1fr; } .oc-side { position: sticky; top: 0; z-index: 11; height: auto; overflow: visible; border-right: none; border-bottom: 1px solid var(--oc-line); }
+  .oc-brand { padding: 10px 14px 6px; border-bottom: none; }
+  .oc-nav { display: flex; flex-wrap: nowrap; overflow-x: auto; gap: 6px; padding: 4px 12px 10px; -webkit-overflow-scrolling: touch; scrollbar-width: none; } .oc-nav::-webkit-scrollbar { display: none; }
+  .oc-grupo { display: contents; } .oc-grupo h4 { display: none; }
+  .oc-grupo a { flex: none; padding: 6px 11px; font-size: 12.5px; border: 1px solid var(--oc-line); border-radius: 999px; background: #fff; }
+  .oc-user { display: none; }
+  .oc-top { position: static; height: auto; padding: 8px 12px; flex-wrap: wrap; gap: 8px; } .oc-top-l { font-size: 12px; } .oc-link { display: none; } .oc-pruebas { margin-left: 6px; }
+  .oc-como { flex-wrap: wrap; font-size: 11px; } .oc-como select { max-width: 200px; }
+  .oc-main { padding: 14px 12px 40px; }
+}
 /* Ventana Nómina — borrador visual (prefijo nm-). Hereda tokens de globals.css. */
-.nm-wrap { display: grid; grid-template-columns: 220px 1fr; gap: 24px; max-width: 1500px; margin: 0 auto; padding: 24px 24px 60px; }
-.nm-side { position: sticky; top: 76px; align-self: start; display: flex; flex-direction: column; gap: 14px; }
-.nm-side h4 { margin: 10px 0 4px; font-family: var(--mono); font-size: 9.5px; letter-spacing: .12em; text-transform: uppercase; color: var(--lav); }
-.nm-side a { display: flex; align-items: center; gap: 8px; padding: 7px 10px; border-radius: 9px; font-size: 13px; font-weight: 600; color: var(--ink); }
-.nm-side a:hover { background: var(--lav-soft); text-decoration: none; }
-.nm-side a.on { background: var(--purple); color: #fff; }
-.nm-side a i { font-style: normal; width: 18px; text-align: center; opacity: .85; }
-.nm-borrador { font-size: 11px; color: var(--warn); background: #fff4e5; border: 1px solid #f3dcb3; border-radius: 10px; padding: 8px 10px; line-height: 1.4; }
 .nm-main { min-width: 0; }
 .nm-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 16px; }
 .nm-head h1 { margin: 0; }
@@ -94,15 +138,11 @@ button.danger, a.btn.danger { background: #fff; color: var(--danger); border-col
 .nm-geo .r { position: absolute; left: 50%; top: 50%; width: 150px; height: 150px; border-radius: 50%; border: 2px dashed var(--purple); background: rgba(95,75,139,.08); transform: translate(-50%,-50%); }
 .nm-geo .p { position: absolute; width: 12px; height: 12px; border-radius: 50%; transform: translate(-50%,-50%); border: 2px solid #fff; box-shadow: 0 1px 4px rgba(0,0,0,.25); }
 .nm-geo .p.ok { background: var(--ok); } .nm-geo .p.bad { background: var(--danger); } .nm-geo .t { background: var(--purple); width: 16px; height: 16px; }
-@media (max-width: 900px) { .nm-wrap { grid-template-columns: 1fr; padding: 14px 12px 40px; } .nm-side { position: static; gap: 6px; } .nm-side h4 { display: none; } .nm-side > div { display: flex; flex-wrap: wrap; gap: 4px; } .nm-side a { padding: 5px 9px; font-size: 12px; border: 1px solid var(--border); background: #fff; } .nm-side a.on { border-color: var(--purple); } .nm-head h1 { font-size: 19px; } .nm-phone { width: 100%; max-width: 330px; } .nm-grid2, .nm-grid3 { grid-template-columns: 1fr; } .nm-sem { font-size: 10px; grid-template-columns: 120px repeat(7, 1fr); } }
-/* avisos de acciones, filtros GET, actuar como, formularios en línea */
+@media (max-width: 900px) { .nm-head h1 { font-size: 19px; } .nm-phone { width: 100%; max-width: 330px; } .nm-grid2, .nm-grid3 { grid-template-columns: 1fr; } .nm-sem { font-size: 10px; grid-template-columns: 120px repeat(7, 1fr); } }
+/* avisos de acciones, filtros GET, formularios en línea */
 .nm-aviso { border-radius: 10px; padding: 9px 12px; font-size: 12.5px; font-weight: 600; margin: 0 0 14px; }
 .nm-aviso.ok { background: #e6f4ea; color: #1e7d47; border: 1px solid #bfe3c9; } .nm-aviso.err { background: #fdecea; color: var(--danger); border: 1px solid #f3c6c0; }
 .nm-filtros-form .nm-aplicar { font-size: 12px; padding: 6px 11px; }
-.nm-como { background: #fff4e5; border: 1px solid #f3dcb3; border-radius: 10px; padding: 8px 10px; margin-bottom: 12px; display: flex; flex-direction: column; gap: 6px; font-size: 11.5px; }
-.nm-como label { font-weight: 700; color: var(--warn); font-size: 10.5px; text-transform: uppercase; letter-spacing: .05em; } .nm-como label small { text-transform: none; font-weight: 500; letter-spacing: 0; }
-.nm-como select { font: inherit; font-size: 12px; padding: 5px 7px; border: 1px solid #f3dcb3; border-radius: 8px; background: #fff; max-width: 100%; }
-.nm-como button { font-size: 11.5px; padding: 5px 10px; } .nm-como-quien { color: var(--ink); font-weight: 600; }
 .nm-inline { display: inline-flex; gap: 6px; align-items: center; } .nm-inline input, .nm-inline select { font: inherit; font-size: 12px; padding: 4px 7px; border: 1px solid var(--border); border-radius: 7px; }
 .nm-inline button { font-size: 11.5px; padding: 4px 9px; }
 .nm-sem .cel { position: relative; } .nm-sem .cel a, .nm-sem .cel button { all: unset; cursor: pointer; width: 100%; display: block; }
