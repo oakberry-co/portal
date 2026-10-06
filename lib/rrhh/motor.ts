@@ -72,10 +72,10 @@ export const FESTIVOS = new Set([
 ]);
 
 export type Turno = {
-  id: string; empleadoId: number; tiendaId: string; fecha: string;      // YYYY-MM-DD
+  id: string | number; empleadoId: number; tiendaId: string; fecha: string;      // YYYY-MM-DD
   inicio: number; fin: number;                                           // horas decimales (13.5 = 1:30 pm)
   tipo: "programado" | "descanso" | "ausencia"; almuerzoMin: number;
-  estado?: "planeado" | "marcado" | "aprobado";
+  estado?: string;
 };
 
 export type Horas = Record<TipoHora, number>;

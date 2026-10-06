@@ -281,3 +281,30 @@ Los centinelas de datos (no de código) viven en el otro repo:
   pasó y qué hacer, no un código.
 - Los scripts que tocan datos van en **ensayo por defecto** y solo escriben con
   `--aplicar`, dejando registro en la bitácora.
+
+## Módulo RRHH / Nómina (`/nomina`)
+
+Spec de negocio: `gs://oakberry-col-core/04_rrhh/00_README.md` (v3). Modelado
+sobre Oak-Crew (app de referencia); se replica lo que hace, no su código.
+
+- **Código:** `app/(portal)/nomina/*` (pantallas) + `lib/rrhh/*` (motor de
+  horas/costos, datos, acciones, perspectiva). **Un solo motor**
+  (`lib/rrhh/motor.ts` + `calc.ts`): Reportes, Costos, Nómina y Cumplimiento
+  salen del mismo `periodo()`. Reglas legales con vigencia en `REGLAS`.
+- **Datos:** tablas `rrhh_*` en Postgres. El maestro de empleados
+  (`rrhh_empleados`) es la biblia: en **producción** viene del Excel de RRHH vía
+  BigQuery (`scripts/sync_rrhh_maestro.py`, UPSERT, se niega contra pruebas); en
+  **pruebas** son personas INVENTADAS (`scripts/sembrar_rrhh_pruebas.py
+  --aplicar`, candado al host de pruebas). Ventas por tienda y día:
+  `scripts/sync_rrhh_ventas.py` (DW → `rrhh_ventas_dia`), sirve en ambas.
+- **Perspectiva** (`lib/rrhh/perspectiva.ts`): RRHH (cap `nomina` o rol del
+  portal) · administrador de punto (su tienda) · colaborador (lo suyo). Sale del
+  correo de `rrhh_empleados.email`. En pruebas, "Actuar como" (cookie
+  `rrhh_como`) permite mirar como cualquier persona inventada.
+- **Nómina = marcación aprobada**, no turno planeado. Básico fijo del contrato
+  ÷ 2; las horas solo suman recargos. Un turno sin marcación = 0 h + alerta.
+- **Marcación:** `/nomina/marcar` (cámara + GPS del navegador; la selfie se
+  guarda en `rrhh_marcaciones.selfie` como JPEG pequeño; hora del servidor;
+  geocerca `rrhh_tiendas.radio_m`). Exige `consentimiento_firmado_en`.
+- Las acciones (`lib/rrhh/actions.ts`) devuelven a la página con `?aviso=` /
+  `?error=`; toda escritura deja fila en `rrhh_eventos`.

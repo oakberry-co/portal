@@ -95,3 +95,21 @@ button.danger, a.btn.danger { background: #fff; color: var(--danger); border-col
 .nm-geo .p { position: absolute; width: 12px; height: 12px; border-radius: 50%; transform: translate(-50%,-50%); border: 2px solid #fff; box-shadow: 0 1px 4px rgba(0,0,0,.25); }
 .nm-geo .p.ok { background: var(--ok); } .nm-geo .p.bad { background: var(--danger); } .nm-geo .t { background: var(--purple); width: 16px; height: 16px; }
 @media (max-width: 900px) { .nm-wrap { grid-template-columns: 1fr; padding: 14px 12px 40px; } .nm-side { position: static; gap: 6px; } .nm-side h4 { display: none; } .nm-side > div { display: flex; flex-wrap: wrap; gap: 4px; } .nm-side a { padding: 5px 9px; font-size: 12px; border: 1px solid var(--border); background: #fff; } .nm-side a.on { border-color: var(--purple); } .nm-head h1 { font-size: 19px; } .nm-phone { width: 100%; max-width: 330px; } .nm-grid2, .nm-grid3 { grid-template-columns: 1fr; } .nm-sem { font-size: 10px; grid-template-columns: 120px repeat(7, 1fr); } }
+/* avisos de acciones, filtros GET, actuar como, formularios en línea */
+.nm-aviso { border-radius: 10px; padding: 9px 12px; font-size: 12.5px; font-weight: 600; margin: 0 0 14px; }
+.nm-aviso.ok { background: #e6f4ea; color: #1e7d47; border: 1px solid #bfe3c9; } .nm-aviso.err { background: #fdecea; color: var(--danger); border: 1px solid #f3c6c0; }
+.nm-filtros-form .nm-aplicar { font-size: 12px; padding: 6px 11px; }
+.nm-como { background: #fff4e5; border: 1px solid #f3dcb3; border-radius: 10px; padding: 8px 10px; margin-bottom: 12px; display: flex; flex-direction: column; gap: 6px; font-size: 11.5px; }
+.nm-como label { font-weight: 700; color: var(--warn); font-size: 10.5px; text-transform: uppercase; letter-spacing: .05em; } .nm-como label small { text-transform: none; font-weight: 500; letter-spacing: 0; }
+.nm-como select { font: inherit; font-size: 12px; padding: 5px 7px; border: 1px solid #f3dcb3; border-radius: 8px; background: #fff; max-width: 100%; }
+.nm-como button { font-size: 11.5px; padding: 5px 10px; } .nm-como-quien { color: var(--ink); font-weight: 600; }
+.nm-inline { display: inline-flex; gap: 6px; align-items: center; } .nm-inline input, .nm-inline select { font: inherit; font-size: 12px; padding: 4px 7px; border: 1px solid var(--border); border-radius: 7px; }
+.nm-inline button { font-size: 11.5px; padding: 4px 9px; }
+.nm-sem .cel { position: relative; } .nm-sem .cel a, .nm-sem .cel button { all: unset; cursor: pointer; width: 100%; display: block; }
+.nm-sem .cel:hover .nm-chip { outline: 2px solid var(--purple); }
+.nm-sem .borrador { opacity: .75; border: 1px dashed var(--purple); }
+.nm-modal { background: #fff; border: 1px solid var(--border-lav); border-radius: 14px; box-shadow: var(--shadow-lg); padding: 16px 18px; margin-bottom: 16px; }
+.nm-mini-table td { padding: 4px 8px; font-size: 12px; }
+.nm-selfie { width: 44px; height: 44px; border-radius: 8px; object-fit: cover; background: var(--cream-2); }
+details.nm-det summary { cursor: pointer; font-weight: 700; color: var(--purple); font-size: 12.5px; }
+.nm-tabla .acts { display: flex; gap: 6px; flex-wrap: wrap; } .nm-tabla .acts button { font-size: 11px; padding: 4px 9px; }

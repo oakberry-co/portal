@@ -1457,3 +1457,132 @@ CREATE TABLE IF NOT EXISTS rrhh_empleados (
   snapshot_date       DATE NOT NULL,            -- fecha del maestro del que salió
   actualizado_en      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- Columnas que la app de RRHH necesita sobre el maestro (el sync NO las pisa:
+-- ver scripts/sync_rrhh_maestro.py, que hace UPSERT de lo que viene del Excel).
+ALTER TABLE rrhh_empleados ADD COLUMN IF NOT EXISTS email            TEXT;
+ALTER TABLE rrhh_empleados ADD COLUMN IF NOT EXISTS rol_app          TEXT NOT NULL DEFAULT 'colaborador';  -- colaborador | admin_punto | rrhh
+ALTER TABLE rrhh_empleados ADD COLUMN IF NOT EXISTS activo           BOOLEAN NOT NULL DEFAULT TRUE;
+ALTER TABLE rrhh_empleados ADD COLUMN IF NOT EXISTS fecha_retiro     DATE;
+ALTER TABLE rrhh_empleados ADD COLUMN IF NOT EXISTS jornada_semanal  INTEGER NOT NULL DEFAULT 42;
+ALTER TABLE rrhh_empleados ADD COLUMN IF NOT EXISTS banco            TEXT;
+ALTER TABLE rrhh_empleados ADD COLUMN IF NOT EXISTS cuenta           TEXT;
+ALTER TABLE rrhh_empleados ADD COLUMN IF NOT EXISTS consentimiento_firmado_en DATE;   -- Ley 1581: sin esto no marca
+ALTER TABLE rrhh_empleados ADD COLUMN IF NOT EXISTS consentimiento_archivo    TEXT;
+
+CREATE TABLE IF NOT EXISTS rrhh_tiendas (
+  id            TEXT PRIMARY KEY,                 -- = rrhh_empleados.punto (CALLE 109, ZONA G…)
+  nombre        TEXT NOT NULL,
+  direccion     TEXT, ciudad TEXT, centro_costo TEXT,
+  apertura      NUMERIC(4,2) NOT NULL DEFAULT 9,  -- hora decimal
+  cierre        NUMERIC(4,2) NOT NULL DEFAULT 21,
+  lat           DOUBLE PRECISION, lng DOUBLE PRECISION,
+  radio_m       INTEGER NOT NULL DEFAULT 120,     -- geocerca de la marcación
+  almuerzo_min  INTEGER NOT NULL DEFAULT 0,       -- se descuenta del tramo diurno
+  activa        BOOLEAN NOT NULL DEFAULT TRUE
+);
+
+-- Turnos: el PLAN. Los carga el administrador de punto. Uno por persona y día.
+CREATE TABLE IF NOT EXISTS rrhh_turnos (
+  id            BIGSERIAL PRIMARY KEY,
+  empleado_id   INTEGER NOT NULL REFERENCES rrhh_empleados(activo_id),
+  tienda_id     TEXT NOT NULL REFERENCES rrhh_tiendas(id),
+  fecha         DATE NOT NULL,
+  inicio        NUMERIC(4,2) NOT NULL DEFAULT 0,
+  fin           NUMERIC(4,2) NOT NULL DEFAULT 0,
+  tipo          TEXT NOT NULL DEFAULT 'programado',  -- programado | descanso | ausencia
+  estado        TEXT NOT NULL DEFAULT 'borrador',    -- borrador | publicado
+  creado_por    TEXT, creado_en TIMESTAMPTZ NOT NULL DEFAULT now(), actualizado_en TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (empleado_id, fecha)
+);
+CREATE INDEX IF NOT EXISTS rrhh_turnos_tienda_fecha ON rrhh_turnos (tienda_id, fecha);
+
+-- Marcaciones: lo REAL. Selfie + GPS, hora del servidor. Nómina sale de acá.
+CREATE TABLE IF NOT EXISTS rrhh_marcaciones (
+  id            BIGSERIAL PRIMARY KEY,
+  empleado_id   INTEGER NOT NULL REFERENCES rrhh_empleados(activo_id),
+  tienda_id     TEXT NOT NULL REFERENCES rrhh_tiendas(id),
+  ts            TIMESTAMPTZ NOT NULL DEFAULT now(),
+  tipo          TEXT NOT NULL,                       -- entrada | salida
+  lat DOUBLE PRECISION, lng DOUBLE PRECISION, precision_m INTEGER,
+  distancia_m   INTEGER,
+  dentro        BOOLEAN NOT NULL DEFAULT FALSE,      -- dentro de la geocerca
+  metodo        TEXT NOT NULL DEFAULT 'selfie',      -- selfie | qr | nfc | manual
+  selfie        BYTEA,                               -- JPEG pequeño (evidencia; GCS en producción)
+  estado        TEXT NOT NULL DEFAULT 'registrada',  -- registrada | aprobada | rechazada
+  nota          TEXT, revisado_por TEXT, revisado_en TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS rrhh_marcaciones_emp_ts ON rrhh_marcaciones (empleado_id, ts);
+
+CREATE TABLE IF NOT EXISTS rrhh_solicitudes (
+  id            BIGSERIAL PRIMARY KEY,
+  empleado_id   INTEGER NOT NULL REFERENCES rrhh_empleados(activo_id),
+  tipo          TEXT NOT NULL,
+  desde DATE NOT NULL, hasta DATE NOT NULL,
+  dias_habiles  INTEGER NOT NULL,
+  motivo        TEXT, soporte_nombre TEXT,
+  estado        TEXT NOT NULL DEFAULT 'pendiente',   -- pendiente | aprobado | rechazado
+  decidido_por TEXT, decidido_en TIMESTAMPTZ, decision_nota TEXT,
+  creado_por    TEXT, creado_en TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Saldos a una FECHA DE CORTE (ventana de implementación). No se reconstruyen.
+CREATE TABLE IF NOT EXISTS rrhh_saldos_iniciales (
+  empleado_id     INTEGER PRIMARY KEY REFERENCES rrhh_empleados(activo_id),
+  corte           DATE NOT NULL,
+  vacaciones_dias NUMERIC(6,2) NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS rrhh_novedades (                 -- lo que no sale de las horas
+  id            BIGSERIAL PRIMARY KEY,
+  empleado_id   INTEGER NOT NULL REFERENCES rrhh_empleados(activo_id),
+  quincena      DATE NOT NULL,                       -- primer día de la quincena
+  tipo          TEXT NOT NULL,                       -- prestamo | embargo | incentivo | bonificacion | descuento | otro
+  descripcion   TEXT,
+  valor         BIGINT NOT NULL,                     -- + suma, − descuenta
+  creado_por TEXT, creado_en TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS rrhh_quincenas (
+  desde         DATE PRIMARY KEY,
+  hasta         DATE NOT NULL,
+  estado        TEXT NOT NULL DEFAULT 'borrador',    -- borrador | aprobada
+  aprobada_por TEXT, aprobada_en TIMESTAMPTZ,
+  total_neto    BIGINT, total_costo BIGINT,
+  snapshot      JSONB                                -- las líneas tal como se aprobaron
+);
+
+CREATE TABLE IF NOT EXISTS rrhh_incentivo_mes (
+  tienda_id TEXT NOT NULL REFERENCES rrhh_tiendas(id), anio INTEGER NOT NULL, mes INTEGER NOT NULL,
+  indicadores JSONB NOT NULL DEFAULT '{}'::jsonb,    -- {"rappi_recompra":true,…,"servicio":{"<empleado_id>":true}}
+  metas       JSONB NOT NULL DEFAULT '{}'::jsonb,
+  estado      TEXT NOT NULL DEFAULT 'abierto',       -- abierto | cerrado
+  cerrado_por TEXT, cerrado_en TIMESTAMPTZ,
+  PRIMARY KEY (tienda_id, anio, mes)
+);
+
+CREATE TABLE IF NOT EXISTS rrhh_liquidaciones (
+  id BIGSERIAL PRIMARY KEY,
+  empleado_id INTEGER NOT NULL REFERENCES rrhh_empleados(activo_id),
+  fecha_retiro DATE NOT NULL, causa TEXT NOT NULL,
+  detalle JSONB NOT NULL, total BIGINT NOT NULL,
+  creado_por TEXT, creado_en TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Bitácora propia del módulo (append-only).
+CREATE TABLE IF NOT EXISTS rrhh_eventos (
+  id BIGSERIAL PRIMARY KEY,
+  entidad TEXT NOT NULL, entidad_id TEXT, accion TEXT NOT NULL,
+  detalle JSONB, actor TEXT NOT NULL, creado_en TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Ventas sin IVA por tienda y día, reflejo de analytics.ventas_diarias (DW).
+-- Lo llena scripts/sync_rrhh_ventas.py; el portal nunca consulta BigQuery.
+CREATE TABLE IF NOT EXISTS rrhh_ventas_dia (
+  tienda_id     TEXT NOT NULL REFERENCES rrhh_tiendas(id),
+  fecha         DATE NOT NULL,
+  venta_sin_iva BIGINT NOT NULL,
+  ordenes       INTEGER,
+  actualizado_en TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (tienda_id, fecha)
+);

@@ -35,6 +35,8 @@ import psycopg2
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from sembrar_demo import url_del_env_local, host_de, vaciar, sembrar, MARCA  # noqa: E402
+# RRHH: en pruebas solo viven personas INVENTADAS; se resiembra con su propio script
+# (scripts/sembrar_rrhh_pruebas.py --aplicar) DESPUÉS de este, porque usa su propia conexión.
 
 # Tablas con identidad de terceros o calculadas sobre datos reales. Orden: hijos antes que padres.
 IDENTIDAD = [
@@ -127,3 +129,6 @@ def main() -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
+
+# Recordatorio al final de la corrida: el módulo RRHH se resiembra aparte.
+print("RRHH: corre también  DATABASE_URL=... python3 scripts/sembrar_rrhh_pruebas.py --aplicar")

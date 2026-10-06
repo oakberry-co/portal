@@ -1,66 +1,80 @@
-import { HOY, marcacionesDe, empleado, tienda, fechaLarga, turnosEntre, cargarEmpleados } from "../_lib/datos";
-import { hora } from "../_lib/motor";
-import { Head, Kpi, Pill, Btn, Nota } from "../_lib/ui";
+import { redirect } from "next/navigation";
+import { perspectiva, puedeRevisar } from "@/lib/rrhh/perspectiva";
+import { empleados, tiendas, turnos, marcaciones } from "@/lib/rrhh/db";
+import { revisarMarcacion, aprobarMarcacion, rechazarMarcacion, aprobarMarcacionesDia } from "@/lib/rrhh/actions";
+import { hoyBogota, mas, fechaLarga, hm } from "@/lib/rrhh/fechas";
+import { Head, Kpi, Aviso, A, Pill, Nota } from "../_lib/ui";
+import { ruta } from "@/lib/ruta";
 
-// MARCACIÓN: lo que la fase 2 produce. Desde CUALQUIER celular: el colaborador
-// entra con su usuario, selfie + GPS; dentro de la geocerca vale, fuera no.
-export default async function Marcacion() {
-  const EMPLEADOS = await cargarEmpleados();
-  const ms = marcacionesDe(EMPLEADOS, HOY);
-  const prog = turnosEntre(EMPLEADOS, HOY, HOY).filter((t) => t.tipo === "programado");
-  const entradas = ms.filter((m) => m.tipo === "entrada");
-  const fuera = entradas.filter((m) => !m.valida);
-  const tarde = entradas.filter((m) => { const t = prog.find((x) => x.empleadoId === m.empleadoId); return t && m.ts.slice(11) > hm(t.inicio + 10 / 60); });
+// MARCACIONES: lo que marcó el equipo, día por día, para que el administrador
+// de punto revise. Lo que está dentro del radio se aprueba en bloque; lo que
+// quedó fuera se decide una por una, viendo la selfie.
+export default async function Marcaciones({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
+  const sp = await searchParams;
+  const p = await perspectiva();
+  if (p.tipo === "colaborador") redirect("/nomina/marcar");
+  const hoy = hoyBogota();
+  const fecha = sp.f && /^\d{4}-\d{2}-\d{2}$/.test(sp.f) ? sp.f : hoy;
+  const TS = await tiendas();
+  const tId = p.tipo === "admin_punto" ? p.tiendaId : sp.t || undefined;
+  const [E, T, M] = await Promise.all([empleados(tId ? { tiendaId: tId } : {}), turnos(fecha, fecha, tId ? { tiendaId: tId } : {}), marcaciones(fecha, fecha, tId ? { tiendaId: tId } : {})]);
+  const prog = T.filter((t) => t.tipo === "programado");
+  const entradas = M.filter((m) => m.tipo === "entrada");
+  const fuera = M.filter((m) => !m.dentro && m.estado === "registrada");
+  const sinMarcar = prog.filter((t) => !entradas.some((m) => m.empleado_id === t.empleadoId));
+  const tarde = entradas.filter((m) => { const t = prog.find((x) => x.empleadoId === m.empleado_id); return t && m.hora > t.inicio + 10 / 60; });
+  const base = (f: string) => `/nomina/marcacion?f=${f}${tId ? "&t=" + encodeURIComponent(tId) : ""}`;
+  const porTienda = [...new Set(M.map((m) => m.tienda_id))];
   return (
     <>
-      <Head titulo="Marcación" sub={<>{fechaLarga(HOY)} · entradas y salidas con selfie y GPS · piloto <b>Zona G</b></>} acts={<Btn ghost>Exportar día</Btn>} />
+      <Head titulo="Marcaciones" sub={<>{fechaLarga(fecha)} · entradas y salidas con selfie y GPS</>}
+        acts={<><A className="btn ghost" href={base(mas(fecha, -1))}>‹ Día anterior</A><A className="btn ghost" href={base(hoy)}>Hoy</A>{fecha < hoy && <A className="btn ghost" href={base(mas(fecha, 1))}>Siguiente ›</A>}</>} />
+      <Aviso sp={sp} />
       <div className="nm-kpis">
-        <Kpi label="Turnos programados hoy" valor={prog.length} />
-        <Kpi label="Entradas marcadas" valor={entradas.length} sub={`${prog.length - entradas.length} sin marcar`} tono={prog.length - entradas.length > 0 ? "warn" : "ok"} />
-        <Kpi label="Fuera de geocerca" valor={fuera.length} sub="no valen; el supervisor decide" tono={fuera.length ? "bad" : "ok"} />
+        <Kpi label="Turnos programados" valor={prog.length} />
+        <Kpi label="Entradas marcadas" valor={entradas.length} sub={`${sinMarcar.length} sin marcar`} tono={sinMarcar.length ? "warn" : "ok"} />
+        <Kpi label="Fuera de radio por revisar" valor={fuera.length} tono={fuera.length ? "bad" : "ok"} />
         <Kpi label="Llegadas tarde (>10 min)" valor={tarde.length} tono={tarde.length ? "warn" : "ok"} />
+        <Kpi label="Aprobadas" valor={M.filter((m) => m.estado === "aprobada").length} sub={`${M.filter((m) => m.estado === "rechazada").length} rechazadas`} />
       </div>
-      <div className="nm-grid2">
-        <div>
-          <div className="nm-card" style={{ background: "var(--lav-soft)" }}>
-            <h3>Cómo se ve en el celular</h3>
-            <div className="nm-phone"><div className="scr">
-              <div style={{ fontSize: 12, color: "var(--lav)" }}>Hola, <b>Néstor</b> · Zona G</div>
-              <div className="cam">🤳</div>
-              <div className="gps">📍 A 23 m de Zona G · dentro del radio (120 m)<br />Turno de hoy: 1:00 PM – 9:00 PM</div>
-              <button className="big" type="button">Marcar ENTRADA</button>
-              <button className="big out" type="button">Marcar salida</button>
-              <div style={{ fontSize: 10.5, color: "var(--lav)" }}>La foto y la ubicación se guardan como evidencia (60 días). Hora del servidor.</div>
-            </div></div>
-          </div>
-          <div className="nm-card">
-            <h3>Geocerca · Zona G</h3>
-            <div className="nm-geo">
-              <div className="r" /><div className="p t" style={{ left: "50%", top: "50%" }} title="Tienda" />
-              <div className="p ok" style={{ left: "46%", top: "42%" }} /><div className="p ok" style={{ left: "56%", top: "58%" }} /><div className="p ok" style={{ left: "52%", top: "38%" }} />
-              <div className="p bad" style={{ left: "14%", top: "28%" }} title="Fuera del radio" /><div className="p bad" style={{ left: "82%", top: "70%" }} />
-            </div>
-            <div className="nm-sub" style={{ marginTop: 6 }}>Radio 120 m. Verde = válida · Rojo = fuera del radio (no vale, queda registrada para revisión).</div>
-          </div>
-        </div>
-        <div className="nm-card">
-          <h3>Marcaciones de hoy <small>{ms.length} registros</small></h3>
-          <div className="nm-scroll">
+      {p.tipo === "rrhh" && (
+        <form method="get" className="nm-filtros"><input type="hidden" name="f" value={fecha} />
+          <select name="t" defaultValue={tId ?? ""}><option value="">Todas las ubicaciones</option>{TS.filter((t) => t.activa).map((t) => <option key={t.id} value={t.id}>{t.nombre}</option>)}</select><button type="submit" className="ghost">Aplicar</button></form>
+      )}
+      {porTienda.map((tiendaId) => {
+        const t = TS.find((x) => x.id === tiendaId)!; const ms = M.filter((m) => m.tienda_id === tiendaId);
+        const pendDentro = ms.filter((m) => m.estado === "registrada" && m.dentro).length;
+        return (
+          <div className="nm-card nm-scroll" key={tiendaId}>
+            <h3>{t.nombre}<small>{ms.length} marcaciones</small>
+              {puedeRevisar(p, tiendaId) && pendDentro > 0 && <form action={aprobarMarcacionesDia} style={{ display: "inline", marginLeft: 10 }}><input type="hidden" name="tienda_id" value={tiendaId} /><input type="hidden" name="fecha" value={fecha} /><button type="submit" className="ghost" style={{ fontSize: 11.5, padding: "4px 9px" }}>Aprobar las {pendDentro} dentro del radio</button></form>}
+            </h3>
             <table className="nm-tabla">
-              <thead><tr><th>Hora</th><th>Empleado</th><th>Tienda</th><th>Tipo</th><th>GPS</th><th>Estado</th></tr></thead>
-              <tbody>{ms.map((m) => { const e = empleado(EMPLEADOS, m.empleadoId), t = tienda(m.tiendaId); return (
-                <tr key={m.id}>
-                  <td className="mono">{m.ts.slice(11)}</td><td className="nm-nombre">{e?.nombre_completo}</td><td>{t?.nombre}</td>
-                  <td>{m.tipo === "entrada" ? <Pill tono="info">entrada</Pill> : <Pill tono="gris">salida</Pill>}</td>
-                  <td className="nm-sub">{m.distanciaM} m · {m.metodo}</td>
-                  <td>{m.valida ? <Pill tono="ok">válida</Pill> : <Pill tono="bad">fuera de radio</Pill>}</td>
-                </tr>); })}</tbody>
+              <thead><tr><th>Hora</th><th>Empleado</th><th>Tipo</th><th>Turno</th><th>GPS</th><th>Selfie</th><th>Estado</th><th>Revisión</th></tr></thead>
+              <tbody>{ms.map((m) => {
+                const e = E.find((x) => x.activo_id === m.empleado_id); const tu = prog.find((x) => x.empleadoId === m.empleado_id);
+                const diff = tu ? Math.round((m.hora - (m.tipo === "entrada" ? tu.inicio : tu.fin)) * 60) : null;
+                return (
+                  <tr key={m.id}>
+                    <td className="mono">{m.hhmm}</td><td className="nm-nombre">{e?.nombre_completo ?? m.empleado_id}</td>
+                    <td>{m.tipo === "entrada" ? <Pill tono="info">entrada</Pill> : <Pill tono="gris">salida</Pill>}</td>
+                    <td className="nm-sub">{tu ? `${hm(tu.inicio)}–${hm(tu.fin)}` : "sin turno"} {diff != null && Math.abs(diff) > 10 && <Pill tono="warn">{diff > 0 ? "+" : ""}{diff} min</Pill>}</td>
+                    <td className="nm-sub">{m.distancia_m ?? "—"} m · ±{m.precision_m ?? "?"} · {m.metodo}</td>
+                    <td>{m.tiene_selfie ? <a href={ruta(`/nomina/marcacion/selfie/${m.id}`)} target="_blank"><img className="nm-selfie" src={ruta(`/nomina/marcacion/selfie/${m.id}`)} alt="" /></a> : "—"}</td>
+                    <td>{m.dentro ? <Pill tono="ok">en radio</Pill> : <Pill tono="bad">fuera</Pill>} {m.estado !== "registrada" && <Pill tono={m.estado === "aprobada" ? "ok" : "bad"}>{m.estado}</Pill>}{m.nota && <div className="nm-sub">{m.nota}</div>}</td>
+                    <td>{m.estado === "registrada" && puedeRevisar(p, tiendaId) ? (
+                      <form action={revisarMarcacion} className="acts"><input type="hidden" name="id" value={m.id} /><input name="nota" placeholder="nota" style={{ width: 90, fontSize: 11, padding: "3px 6px", border: "1px solid var(--border)", borderRadius: 6 }} />
+                        <button type="submit" formAction={aprobarMarcacion}>Aprobar</button><button type="submit" formAction={rechazarMarcacion} className="danger">Rechazar</button></form>
+                    ) : <span className="nm-sub">{m.revisado_por ? `por ${m.revisado_por.split(" como ")[0]}` : "—"}</span>}</td>
+                  </tr>);
+              })}</tbody>
             </table>
           </div>
-        </div>
-      </div>
-      <Nota><b>Plan vs real:</b> cuando lo marcado difiere del turno planeado (llegó tarde, salió antes, se quedó más), el supervisor aprueba la diferencia. Solo lo <b>aprobado</b> pasa a nómina. Requisito previo: consentimiento de datos e imagen firmado en la ficha.</Nota>
+        );
+      })}
+      {sinMarcar.length > 0 && <div className="nm-card"><h3>Sin marcar <small>{sinMarcar.length} con turno programado</small></h3><div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>{sinMarcar.map((t) => <Pill key={t.id} tono="warn">{E.find((e) => e.activo_id === t.empleadoId)?.nombre_completo} · {hm(t.inicio)}</Pill>)}</div></div>}
+      {!M.length && <div className="nm-card"><p className="nm-sub">Nadie marcó este día.</p></div>}
+      <Nota>Solo lo <b>aprobado</b> (o lo registrado dentro del radio) entra a nómina. Un turno programado sin marcación vale 0 h y sale como alerta en Reportes y Nómina: si la persona sí trabajó, el administrador registra la marcación manual con nota.</Nota>
     </>
   );
 }
-const hm = (x: number) => `${String(Math.floor(x)).padStart(2, "0")}:${String(Math.round((x % 1) * 60)).padStart(2, "0")}`;
