@@ -46,21 +46,35 @@ SELFIE = SELFIE + b"\x00" * 2500   # relleno para pasar el mínimo de tamaño de
 def festivo(f): return f in {dt.date(2026,m,d) for m,d in [(1,1),(1,12),(3,23),(4,2),(4,3),(5,1),(5,18),(6,8),(6,15),(6,29),(7,20),(8,7),(8,17),(10,12),(11,2),(11,16),(12,8),(12,25)]}
 
 def main():
-    ap = argparse.ArgumentParser(); ap.add_argument("--aplicar", action="store_true"); a = ap.parse_args()
+    ap = argparse.ArgumentParser(); ap.add_argument("--aplicar", action="store_true")
+    ap.add_argument("--minimo", action="store_true", help="solo Titan Plaza con Daniel (auxiliar, mínimo) y Sebastián Vanegas (administrador)")
+    a = ap.parse_args()
     url = os.environ.get("DATABASE_URL") or sys.exit("DATABASE_URL")
     pru = open(os.path.expanduser("~/.neon_pruebas_url")).read().strip()
     if url.split("@")[-1] != pru.split("@")[-1]: sys.exit("CANDADO: esa no es la base de pruebas")
     conn = psycopg2.connect(url); cur = conn.cursor()
-    for t in ["rrhh_eventos","rrhh_liquidaciones","rrhh_incentivo_mes","rrhh_quincenas","rrhh_novedades","rrhh_saldos_iniciales","rrhh_solicitudes","rrhh_marcaciones","rrhh_turnos","rrhh_empleados","rrhh_tiendas"]:
+    # Las ventas por tienda (rrhh_ventas_dia) no son datos personales: se conservan
+    # para las tiendas que quedan y se borran para las que salen.
+    for t in ["rrhh_eventos","rrhh_liquidaciones","rrhh_incentivo_mes","rrhh_quincenas","rrhh_novedades","rrhh_saldos_iniciales","rrhh_solicitudes","rrhh_marcaciones","rrhh_turnos","rrhh_empleados"]:
         cur.execute(f"DELETE FROM {t}")
-    execute_values(cur, "INSERT INTO rrhh_tiendas (id,nombre,direccion,ciudad,centro_costo,apertura,cierre,lat,lng,radio_m,almuerzo_min,activa) VALUES %s", TIENDAS)
+    quedan = ["TITAN PLAZA"] if a.minimo else [t[0] for t in TIENDAS]
+    cur.execute("DELETE FROM rrhh_ventas_dia WHERE NOT (tienda_id = ANY(%s))", (quedan,))
+    cur.execute("DELETE FROM rrhh_tiendas WHERE NOT (id = ANY(%s))", (quedan,))
+    tiendas = [t for t in TIENDAS if t[0] == "TITAN PLAZA"] if a.minimo else TIENDAS
+    execute_values(cur, """INSERT INTO rrhh_tiendas (id,nombre,direccion,ciudad,centro_costo,apertura,cierre,lat,lng,radio_m,almuerzo_min,activa) VALUES %s
+        ON CONFLICT (id) DO UPDATE SET nombre=EXCLUDED.nombre, direccion=EXCLUDED.direccion, ciudad=EXCLUDED.ciudad, centro_costo=EXCLUDED.centro_costo, apertura=EXCLUDED.apertura,
+          cierre=EXCLUDED.cierre, lat=EXCLUDED.lat, lng=EXCLUDED.lng, radio_m=EXCLUDED.radio_m, almuerzo_min=EXCLUDED.almuerzo_min, activa=EXCLUDED.activa""", tiendas)
     # empleados
     emps = []; aid = 1000; usados = set()
     def nombre():
         while True:
             n = f"{random.choice(APELLIDOS)} {random.choice(APELLIDOS)} {random.choice(NOMBRES)}"
             if n not in usados: usados.add(n); return n
-    for (tid, *_rest, activa) in TIENDAS:
+    if a.minimo:
+        # Decisión de Daniel (2026-10-07): solo él y Sebastián en Titan Plaza para probar.
+        emps.append(dict(activo_id=1001, nombre="ZULUAGA CARDENAS DANIEL FELIPE", punto="TITAN PLAZA", cargo="AUXILIAR PUNTO DE VENTA", salario=1_750_905, ingreso=HOY - dt.timedelta(days=120), rol="colaborador", email="dzuluaga@manelfoods.com", consent=HOY - dt.timedelta(days=120)))
+        emps.append(dict(activo_id=1002, nombre="VANEGAS SEBASTIAN", punto="TITAN PLAZA", cargo="ADMINISTRADOR DE PUNTO", salario=2_056_398, ingreso=HOY - dt.timedelta(days=400), rol="admin_punto", email="svanegas@manelfoods.com", consent=HOY - dt.timedelta(days=400)))
+    for (tid, *_rest, activa) in ([] if a.minimo else TIENDAS):
         if not activa: continue
         k = random.choice([3,3,4,4,5]) if tid not in ("ZONA T","CALLE 109") else 6
         for i in range(k):
@@ -70,14 +84,14 @@ def main():
             ingreso = HOY - dt.timedelta(days=random.randint(40, 900))
             emps.append(dict(activo_id=aid, nombre=nombre(), punto=tid, cargo="ADMINISTRADOR DE PUNTO" if admin else "AUXILIAR PUNTO DE VENTA", salario=sal, ingreso=ingreso,
                              rol="admin_punto" if admin else "colaborador", email=f"prueba{aid}@manelfoods.co", consent=None if random.random() < 0.1 else ingreso))
-    for i in range(2):
+    for i in ([] if a.minimo else range(2)):
         aid += 1; emps.append(dict(activo_id=aid, nombre=nombre(), punto="ZONA G", cargo="ANALISTA RRHH", salario=2_600_000, ingreso=HOY - dt.timedelta(days=500), rol="rrhh", email=f"rrhh{i}@manelfoods.co", consent=HOY - dt.timedelta(days=400)))
     execute_values(cur, """INSERT INTO rrhh_empleados (activo_id,nombre_completo,punto,cargo,salario,auxilio_transporte,fecha_ingreso,tipo_contrato,eps,afp,arl,ccf,ciudad_expedicion,snapshot_date,email,rol_app,consentimiento_firmado_en,consentimiento_archivo) VALUES %s""",
         [(e["activo_id"], e["nombre"], e["punto"], e["cargo"], e["salario"], e["salario"] <= 2*1_750_905, e["ingreso"], "INDEFINIDO", random.choice(EPS), random.choice(AFP), "SURA", random.choice(CCF), "BOGOTÁ, D.C.", HOY, e["email"], e["rol"], e["consent"], "consentimiento_firmado.pdf" if e["consent"] else None) for e in emps])
     # turnos: 8 semanas atrás, 2 adelante
     lun = HOY - dt.timedelta(days=HOY.weekday())
     desde = lun - dt.timedelta(weeks=8); hasta = lun + dt.timedelta(weeks=2, days=6)
-    tcfg = {t[0]: t for t in TIENDAS}
+    tcfg = {t[0]: t for t in tiendas}
     turnos = []; marcs = []
     for e in emps:
         if e["rol"] == "rrhh": continue
@@ -112,7 +126,7 @@ def main():
     # solicitudes
     sol = []
     col = [e for e in emps if e["rol"] != "rrhh"]
-    for e in random.sample(col, 12):
+    for e in random.sample(col, min(12, len(col))) if not a.minimo else [col[0], col[0], col[1], col[0]]:
         tipo = random.choice(["Vacaciones","Cita médica","Incapacidad","Calamidad doméstica","Licencia de luto","Permiso no remunerado"])
         d0 = HOY + dt.timedelta(days=random.randint(-30, 20)); d1 = d0 + dt.timedelta(days={"Vacaciones":7,"Licencia de luto":4,"Incapacidad":2}.get(tipo, 0))
         estado = "pendiente" if d0 > HOY and random.random() < 0.6 else random.choice(["aprobado","aprobado","rechazado"])
@@ -125,13 +139,13 @@ def main():
     q_ult = dt.date(HOY.year, HOY.month, 1) if HOY.day > 15 else (dt.date(HOY.year, HOY.month, 1) - dt.timedelta(days=1)).replace(day=16)
     q_prev = (q_ult - dt.timedelta(days=1)).replace(day=1) if q_ult.day == 16 else (q_ult - dt.timedelta(days=1)).replace(day=16)
     nov = []
-    for e in random.sample(col, 6):
+    for e in (random.sample(col, 6) if not a.minimo else [col[0], col[1]]):
         nov.append((e["activo_id"], q_ult, random.choice(["prestamo","descuento","bonificacion"]), "cuota 2/6", random.choice([-100000, -50000, 150000]), "rrhh0@manelfoods.co"))
     execute_values(cur, "INSERT INTO rrhh_novedades (empleado_id,quincena,tipo,descripcion,valor,creado_por) VALUES %s", nov)
     q_prev_fin = (q_prev.replace(day=15) if q_prev.day == 1 else (q_prev.replace(day=28) + dt.timedelta(days=4)).replace(day=1) - dt.timedelta(days=1))
     cur.execute("INSERT INTO rrhh_quincenas (desde,hasta,estado,aprobada_por,aprobada_en,total_neto,total_costo,snapshot) VALUES (%s,%s,'aprobada','dzuluaga@manelfoods.com',now(),%s,%s,%s)", (q_prev, q_prev_fin, 37_000_000, 55_000_000, Json([])))
     m_prev = (HOY.replace(day=1) - dt.timedelta(days=1))
-    for (tid, *_r, activa) in TIENDAS:
+    for (tid, *_r, activa) in tiendas:
         if not activa: continue
         cur.execute("INSERT INTO rrhh_incentivo_mes (tienda_id,anio,mes,indicadores,metas,estado) VALUES (%s,%s,%s,%s,%s,'abierto')", (tid, m_prev.year, m_prev.month, Json({"rappi_recompra": True, "rappi_espera": random.random()<.6, "rappi_reclamos": True, "rappi_online": random.random()<.5, "rappi_cancel": True, "op_inventario": True, "op_caja": random.random()<.7, "op_mermas": random.random()<.5, "servicio": {}}), Json({"n1":60000000,"n2":80000000,"n3":100000000,"b1":100000,"b2":175000,"b3":250000,"ventaMes": random.choice([45,62,78,91,105])*1_000_000})))
     cur.execute("INSERT INTO rrhh_eventos (entidad,accion,detalle,actor) VALUES ('siembra','sembrar',%s,'sistema')", (Json({"empleados": len(emps), "turnos": len(turnos), "marcaciones": len(marcs)}),))
