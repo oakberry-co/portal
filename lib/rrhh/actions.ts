@@ -12,6 +12,8 @@ import { perspectiva, actorDe, puedePlanificar, puedeRevisar, puedeVerEmpleado, 
 import { empleado, empleados, tienda, turnos, marcaciones, quincena as qQuincena } from "./db";
 import { horasDe, totalTrabajadas, reglasEn, FESTIVOS, esDominical } from "./motor";
 import { TIPOS_AUSENCIA } from "./catalogos";
+import { marcacionNormal } from "./viabilidad";
+import { alarmasDe } from "./alarmas";
 import { saldoVacacionesDe } from "./saldos";
 import { ahoraBogota, diasHabiles, deHm, lunesDe, mas, rango, esFecha, quincenaDe, hm } from "./fechas";
 
@@ -173,15 +175,24 @@ export async function marcar(fd: FormData): Promise<{ ok: boolean; mensaje: stri
   const ult = (await marcaciones(fecha, fecha, { empleadoId: e.activo_id })).at(-1);
   if (ult && ult.tipo === tipo) return { ok: false, mensaje: `Ya marcaste ${tipo} hoy a las ${ult.hhmm}.` };
   if (tipo === "salida" && !ult) return { ok: false, mensaje: "No hay entrada registrada hoy." };
+  // Lo NORMAL (dentro del radio y del horario del turno) se aprueba solo; lo
+  // inusual (fuera de radio, tarde, antes, sin turno, salida larga) queda "por
+  // revisar" para el administrador: ahí es donde nace una extra, un recargo o
+  // un memorando. La selfie queda como evidencia en los dos casos.
+  const { hora } = ahoraBogota();
+  const turnoHoy = (await turnos(fecha, fecha, { empleadoId: e.activo_id }))[0] ?? null;
+  const { normal, motivo } = marcacionNormal({ dentro, tipo, hora, turno: turnoHoy });
   await withTx(async (c) => {
-    const r = await c.query(`INSERT INTO rrhh_marcaciones (empleado_id, tienda_id, tipo, lat, lng, precision_m, distancia_m, dentro, metodo, selfie, estado)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'selfie',$9,$10) RETURNING id`, [e.activo_id, t.id, tipo, lat, lng, prec, dist, dentro, selfie, dentro ? "registrada" : "registrada"]);
-    await bitacora(c, "marcacion", r.rows[0].id, tipo, { dist, dentro, prec }, actorDe(p));
+    const r = await c.query(`INSERT INTO rrhh_marcaciones (empleado_id, tienda_id, tipo, lat, lng, precision_m, distancia_m, dentro, metodo, selfie, estado, nota, revisado_por, revisado_en)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'selfie',$9,$10,$11,$12,$13) RETURNING id`,
+      [e.activo_id, t.id, tipo, lat, lng, prec, dist, dentro, selfie, normal ? "aprobada" : "registrada", normal ? "automática: " + motivo : motivo, normal ? "sistema" : null, normal ? new Date() : null]);
+    await bitacora(c, "marcacion", r.rows[0].id, tipo, { dist, dentro, prec, normal, motivo }, actorDe(p));
   });
   refrescar();
-  return dentro
-    ? { ok: true, dentro, distancia: dist ?? undefined, mensaje: `${tipo === "entrada" ? "Entrada" : "Salida"} registrada a ${dist} m de ${t.nombre}.` }
-    : { ok: true, dentro, distancia: dist ?? undefined, mensaje: `Quedó registrada pero FUERA del radio (${dist} m de ${t.nombre}, radio ${t.radio_m} m). El administrador decide si vale.` };
+  const cuando = tipo === "entrada" ? "Entrada" : "Salida";
+  return normal
+    ? { ok: true, dentro, distancia: dist ?? undefined, mensaje: `${cuando} registrada y aprobada (${dist} m de ${t.nombre}).` }
+    : { ok: true, dentro, distancia: dist ?? undefined, mensaje: `${cuando} registrada, queda POR REVISAR: ${motivo}. El administrador decide.` };
 }
 
 async function _revisarMarcacion(fd: FormData) {
@@ -225,12 +236,14 @@ async function _crearSolicitud(fd: FormData) {
     const saldo = await saldoVacacionesDe(e.activo_id);
     if (saldo != null && dias > saldo) falla(`Pide ${dias} días y tiene ${saldo} disponibles.`);
   }
+  const alarmas = await alarmasDe(e, tipo, desde, hasta);
   await withTx(async (c) => {
-    const r = await c.query("INSERT INTO rrhh_solicitudes (empleado_id,tipo,desde,hasta,dias_habiles,motivo,soporte_nombre,creado_por) VALUES ($1,$2,$3,$4,$5,NULLIF($6,''),$7,$8) RETURNING id", [empleadoId, tipo, desde, hasta, dias, motivo, soporteNombre, actorDe(p)]);
-    await bitacora(c, "solicitud", r.rows[0].id, "crear", { empleadoId, tipo, desde, hasta, dias }, actorDe(p));
+    const r = await c.query("INSERT INTO rrhh_solicitudes (empleado_id,tipo,desde,hasta,dias_habiles,motivo,soporte_nombre,creado_por,alertas) VALUES ($1,$2,$3,$4,$5,NULLIF($6,''),$7,$8,$9) RETURNING id", [empleadoId, tipo, desde, hasta, dias, motivo, soporteNombre, actorDe(p), JSON.stringify(alarmas)]);
+    await bitacora(c, "solicitud", r.rows[0].id, "crear", { empleadoId, tipo, desde, hasta, dias, alarmas }, actorDe(p));
   });
   refrescar();
-  redirect(p.tipo === "colaborador" ? "/nomina/mi-horario?aviso=Solicitud+enviada" : "/nomina/solicitudes?aviso=Solicitud+creada");
+  const avisoAl = alarmas.length ? ` · ${alarmas.length} alarma(s): ${alarmas.map((a) => a.texto).join("; ")}` : "";
+  redirect(p.tipo === "colaborador" ? `/nomina/mi-horario?aviso=${encodeURIComponent("Solicitud enviada" + avisoAl)}` : `/nomina/solicitudes?aviso=${encodeURIComponent("Solicitud creada" + avisoAl)}`);
 }
 
 async function _decidirSolicitud(fd: FormData) {
@@ -241,6 +254,8 @@ async function _decidirSolicitud(fd: FormData) {
     const so = rows[0] ?? falla("No existe.");
     if (!puedeRevisar(p, so.punto)) falla("No puedes decidir solicitudes de esa tienda.");
     if (so.estado !== "pendiente") falla("Ya fue decidida.");
+    const alarmas = (so.alertas ?? []) as { nivel: string; texto: string }[];
+    if (decision === "aprobado" && alarmas.some((a) => a.nivel === "roja") && nota.length < 5) falla(`Tiene alarma roja (${alarmas.filter((a) => a.nivel === "roja").map((a) => a.texto).join("; ")}). Para aprobarla igual, escribe el motivo en la nota.`);
     await c.query("UPDATE rrhh_solicitudes SET estado=$2, decidido_por=$3, decidido_en=now(), decision_nota=NULLIF($4,'') WHERE id=$1", [id, decision, actorDe(p), nota]);
     if (decision === "aprobado") {
       // la ausencia reemplaza el turno planeado de esos días
@@ -353,8 +368,8 @@ async function _aprobarQuincena(fd: FormData) {
   if (q.hasta >= ahoraBogota().fecha) falla("La quincena todavía no termina.");
   const lineas = JSON.parse(s(fd, "snapshot") || "[]");
   const totalNeto = n(fd, "total_neto"), totalCosto = n(fd, "total_costo");
-  const pendientes = (await marcaciones(q.desde, q.hasta, { estado: "registrada" })).filter((m) => !m.dentro).length;
-  if (pendientes) falla(`Hay ${pendientes} marcaciones fuera de radio sin revisar. Apruébalas o recházalas primero.`);
+  const pendientes = (await marcaciones(q.desde, q.hasta, { estado: "registrada" })).length;
+  if (pendientes) falla(`Hay ${pendientes} marcaciones por revisar (fuera de radio, tarde o sin turno). Apruébalas o recházalas primero.`);
   await withTx(async (c) => {
     await c.query(`INSERT INTO rrhh_quincenas (desde, hasta, estado, aprobada_por, aprobada_en, total_neto, total_costo, snapshot) VALUES ($1,$2,'aprobada',$3,now(),$4,$5,$6)
       ON CONFLICT (desde) DO UPDATE SET estado='aprobada', aprobada_por=$3, aprobada_en=now(), total_neto=$4, total_costo=$5, snapshot=$6`, [q.desde, q.hasta, actorDe(p), totalNeto, totalCosto, JSON.stringify(lineas)]);

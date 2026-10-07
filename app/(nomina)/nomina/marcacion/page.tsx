@@ -44,14 +44,15 @@ export default async function Marcaciones({ searchParams }: { searchParams: Prom
       {porTienda.map((tiendaId) => {
         const t = TS.find((x) => x.id === tiendaId)!; const ms = M.filter((m) => m.tienda_id === tiendaId);
         const pendDentro = ms.filter((m) => m.estado === "registrada" && m.dentro).length;
+        const porRevisar = ms.filter((m) => m.estado === "registrada"), resto = ms.filter((m) => m.estado !== "registrada");
         return (
           <div className="nm-card nm-scroll" key={tiendaId}>
-            <h3>{t.nombre}<small>{ms.length} marcaciones</small>
+            <h3>{t.nombre}<small>{porRevisar.length ? <Pill tono="bad">{porRevisar.length} por revisar</Pill> : <Pill tono="ok">nada por revisar</Pill>} · {resto.length} aprobadas solas o revisadas</small>
               {puedeRevisar(p, tiendaId) && pendDentro > 0 && <form action={aprobarMarcacionesDia} style={{ display: "inline", marginLeft: 10 }}><input type="hidden" name="tienda_id" value={tiendaId} /><input type="hidden" name="fecha" value={fecha} /><button type="submit" className="ghost" style={{ fontSize: 11.5, padding: "4px 9px" }}>Aprobar las {pendDentro} dentro del radio</button></form>}
             </h3>
             <table className="nm-tabla">
               <thead><tr><th>Hora</th><th>Empleado</th><th>Tipo</th><th>Turno</th><th>GPS</th><th>Selfie</th><th>Estado</th><th>Revisión</th></tr></thead>
-              <tbody>{ms.map((m) => {
+              <tbody>{[...porRevisar, ...resto].map((m) => {
                 const e = E.find((x) => x.activo_id === m.empleado_id); const tu = prog.find((x) => x.empleadoId === m.empleado_id);
                 const diff = tu ? Math.round((m.hora - (m.tipo === "entrada" ? tu.inicio : tu.fin)) * 60) : null;
                 return (
@@ -61,7 +62,7 @@ export default async function Marcaciones({ searchParams }: { searchParams: Prom
                     <td className="nm-sub">{tu ? `${hm(tu.inicio)}–${hm(tu.fin)}` : "sin turno"} {diff != null && Math.abs(diff) > 10 && <Pill tono="warn">{diff > 0 ? "+" : ""}{diff} min</Pill>}</td>
                     <td className="nm-sub">{m.distancia_m ?? "—"} m · ±{m.precision_m ?? "?"} · {m.metodo}</td>
                     <td>{m.tiene_selfie ? <a href={ruta(`/nomina/marcacion/selfie/${m.id}`)} target="_blank"><img className="nm-selfie" src={ruta(`/nomina/marcacion/selfie/${m.id}`)} alt="" /></a> : "—"}</td>
-                    <td>{m.dentro ? <Pill tono="ok">en radio</Pill> : <Pill tono="bad">fuera</Pill>} {m.estado !== "registrada" && <Pill tono={m.estado === "aprobada" ? "ok" : "bad"}>{m.estado}</Pill>}{m.nota && <div className="nm-sub">{m.nota}</div>}</td>
+                    <td>{m.estado === "registrada" ? <Pill tono="bad">por revisar</Pill> : <Pill tono={m.estado === "aprobada" ? "ok" : "bad"}>{m.estado === "aprobada" && m.revisado_por === "sistema" ? "automática" : m.estado}</Pill>}{m.nota && <div className="nm-sub">{m.nota.replace(/^automática: /, "")}</div>}</td>
                     <td>{m.estado === "registrada" && puedeRevisar(p, tiendaId) ? (
                       <form action={revisarMarcacion} className="acts"><input type="hidden" name="id" value={m.id} /><input name="nota" placeholder="nota" style={{ width: 90, fontSize: 11, padding: "3px 6px", border: "1px solid var(--border)", borderRadius: 6 }} />
                         <button type="submit" formAction={aprobarMarcacion}>Aprobar</button><button type="submit" formAction={rechazarMarcacion} className="danger">Rechazar</button></form>
@@ -74,7 +75,7 @@ export default async function Marcaciones({ searchParams }: { searchParams: Prom
       })}
       {sinMarcar.length > 0 && <div className="nm-card"><h3>Sin marcar <small>{sinMarcar.length} con turno programado</small></h3><div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>{sinMarcar.map((t) => <Pill key={t.id} tono="warn">{E.find((e) => e.activo_id === t.empleadoId)?.nombre_completo} · {hm(t.inicio)}</Pill>)}</div></div>}
       {!M.length && <div className="nm-card"><p className="nm-sub">Nadie marcó este día.</p></div>}
-      <Nota>Solo lo <b>aprobado</b> (o lo registrado dentro del radio) entra a nómina. Un turno programado sin marcación vale 0 h y sale como alerta en Reportes y Nómina: si la persona sí trabajó, el administrador registra la marcación manual con nota.</Nota>
+      <Nota>Lo <b>normal</b> (dentro del radio y a la hora del turno, ±15 min) se aprueba solo. Solo lo <b>inusual</b> llega aquí: fuera de radio, tarde, antes, sin turno o salida larga — de ahí sale una extra, un recargo o un memorando, y la selfie es la prueba. Solo lo <b>aprobado</b> entra a nómina. Un turno programado sin marcación vale 0 h y sale como alerta en Reportes y Nómina: si la persona sí trabajó, el administrador registra la marcación manual con nota.</Nota>
     </>
   );
 }

@@ -1586,3 +1586,5 @@ CREATE TABLE IF NOT EXISTS rrhh_ventas_dia (
   actualizado_en TIMESTAMPTZ NOT NULL DEFAULT now(),
   PRIMARY KEY (tienda_id, fecha)
 );
+-- Alarmas de viabilidad calculadas al crear la solicitud (se recalculan al mostrarla).
+ALTER TABLE rrhh_solicitudes ADD COLUMN IF NOT EXISTS alertas JSONB NOT NULL DEFAULT '[]'::jsonb;

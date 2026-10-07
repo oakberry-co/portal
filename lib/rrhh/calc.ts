@@ -3,7 +3,8 @@
 //
 // Dos orígenes:
 //   plan  = los turnos (lo que el administrador de punto planeó)
-//   real  = las marcaciones APROBADAS, emparejadas entrada→salida por día;
+//   real  = SOLO las marcaciones APROBADAS (las normales se aprueban solas al
+//           marcar; las inusuales esperan al administrador), emparejadas por día;
 //           descansos y ausencias aprobadas se toman del plan; un turno
 //           programado sin marcación vale 0 h y deja una alerta.
 import { costoDe, deduccionesDe, horasDe, horasVacias, sumar, totalTrabajadas, type Costo, type Horas, type Turno } from "./motor";
@@ -17,7 +18,7 @@ export type LineaEmp = { e: EmpleadoDb; dias: DiaEmp[]; turnos: Turno[]; horas: 
 /** Empareja marcaciones de un día en un intervalo trabajado. Toma la primera
  *  entrada y la última salida (si alguien marcó dos veces, cuenta una). */
 export function intervaloReal(ms: Marcacion[], t: TurnoDb | null, e: EmpleadoDb, fecha: string, almuerzoMin: number): Turno | null {
-  const ok = ms.filter((m) => m.estado === "aprobada" || (m.estado === "registrada" && m.dentro));
+  const ok = ms.filter((m) => m.estado === "aprobada");
   const ent = ok.filter((m) => m.tipo === "entrada").sort((a, b) => a.hora - b.hora)[0];
   const sal = ok.filter((m) => m.tipo === "salida").sort((a, b) => b.hora - a.hora)[0];
   if (!ent || !sal) return null;

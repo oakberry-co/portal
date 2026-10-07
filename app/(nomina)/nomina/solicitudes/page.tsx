@@ -3,6 +3,7 @@ import { crearSolicitud, decidirSolicitud, aprobarSolicitud, rechazarSolicitud }
 import { perspectiva, puedeRevisar } from "@/lib/rrhh/perspectiva";
 import { TIPOS_AUSENCIA } from "@/lib/rrhh/catalogos";
 import { hoyBogota } from "@/lib/rrhh/fechas";
+import { alarmasDe } from "@/lib/rrhh/alarmas";
 import { Head, Pill, Nota, Aviso, Filtros, Vacio, A } from "../_lib/ui";
 
 // SOLICITUDES: el colaborador pide (o RRHH / el admin en su nombre) y quien
@@ -18,7 +19,12 @@ export default async function Page({ searchParams }: { searchParams: Promise<Rec
   const [S, TODOS, TIENDAS] = await Promise.all([solicitudes(filtro), empleados({ incluirInactivos: true }), tiendas()]);
   const empDe = (id: number) => TODOS.find((e) => e.activo_id === id);
   const tiendaDe = (id: string) => TIENDAS.find((t) => t.id === id);
-  const pend = S.filter((s) => s.estado === "pendiente");
+  // Pendientes sin alarmas calculadas (sembradas o anteriores a la regla): se calculan al mostrar.
+  const pend = await Promise.all(S.filter((s) => s.estado === "pendiente").map(async (s) => {
+    if ((s.alertas ?? []).length) return s;
+    const e = empDe(s.empleado_id); if (!e) return s;
+    try { return { ...s, alertas: await alarmasDe(e, s.tipo, s.desde, s.hasta) }; } catch { return s; }
+  }));
   const hist = S.filter((s) => s.estado !== "pendiente").sort((a, b) => b.id - a.id).slice(0, 50);
   // a quién se le puede pedir desde acá: RRHH a cualquiera activo, el admin a su tienda
   const pedibles = TODOS.filter((e) => e.activo && (p.tipo === "rrhh" || e.punto === tiendaId));
@@ -34,7 +40,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<Rec
         <td>{s.tipo}{cat && !cat.remunerada && <div className="nm-sub">no remunerada</div>}{cat && cat.remunerada && cat.pct < 100 && <div className="nm-sub">{cat.pct} %</div>}</td>
         <td className="mono">{s.desde} → {s.hasta}</td>
         <td className="num">{s.dias_habiles}</td>
-        <td className="nm-sub">{s.motivo || "—"}{s.soporte_nombre && <div>📎 {s.soporte_nombre}</div>}{cat?.soporte && !s.soporte_nombre && <Pill tono="bad">sin soporte</Pill>}</td>
+        <td className="nm-sub">{s.motivo || "—"}{s.soporte_nombre && <div>📎 {s.soporte_nombre}</div>}{cat?.soporte && !s.soporte_nombre && <Pill tono="bad">sin soporte</Pill>}{(s.alertas ?? []).length > 0 && <div className="nm-alarmas">{(s.alertas ?? []).map((a, i) => <Pill key={i} tono={a.nivel === "roja" ? "bad" : "warn"}>{a.nivel === "roja" ? "⛔ " : "⚠ "}{a.texto}</Pill>)}</div>}</td>
         <td>
           {revisa ? (
             <form action={decidirSolicitud} className="nm-inline" style={{ flexWrap: "wrap" }}>
@@ -102,7 +108,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<Rec
           <div className="nm-acts" style={{ marginTop: 12 }}><button type="submit">Enviar solicitud</button></div>
         </form>
       </div>
-      <Nota>Los días se cuentan <b>hábiles</b> (lun–sáb sin festivos). Al aprobar, la ausencia entra a la planificación (reemplaza el turno) y al cálculo con su % de pago. Vacaciones solo si hay saldo disponible.</Nota>
+      <Nota><b>Alarmas de viabilidad:</b> al pedir, la app revisa reemplazo en la tienda, anticipación (vacaciones 15 días, permisos 3), choques con otra ausencia, frecuencia de no remunerados y si toca domingo/festivo. ⛔ roja = aprobar exige escribir el motivo; ⚠ ámbar = aviso. </Nota><Nota>Los días se cuentan <b>hábiles</b> (lun–sáb sin festivos). Al aprobar, la ausencia entra a la planificación (reemplaza el turno) y al cálculo con su % de pago. Vacaciones solo si hay saldo disponible.</Nota>
     </>
   );
 }

@@ -15,7 +15,7 @@
 .oc-avatar { width: 34px; height: 34px; border-radius: 50%; background: var(--oc-purple); color: #fff; font-weight: 800; font-size: 12px; display: inline-flex; align-items: center; justify-content: center; flex: none; }
 .oc-user div { min-width: 0; flex: 1; line-height: 1.15; } .oc-user b { display: block; font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .oc-user i { font-style: normal; font-size: 11px; color: var(--oc-mute); }
 .oc-user button { background: none; border: none; color: var(--oc-mute); font-size: 16px; padding: 4px; cursor: pointer; } .oc-user button:hover { color: var(--oc-purple); filter: none; }
-.oc-body { min-width: 0; display: flex; flex-direction: column; }
+.oc-body { min-width: 0; max-width: 100%; display: flex; flex-direction: column; overflow-x: hidden; }
 .oc-top { position: sticky; top: 0; z-index: 10; background: #fff; border-bottom: 1px solid var(--oc-line); height: 54px; display: flex; align-items: center; justify-content: space-between; padding: 0 24px; gap: 12px; }
 .oc-top-l { font-size: 13px; color: var(--oc-mute); } .oc-top-l b { color: var(--oc-ink); }
 .oc-pruebas { margin-left: 12px; font-size: 11px; font-weight: 700; color: #b7791f; background: #fff4e5; border: 1px solid #f3dcb3; border-radius: 999px; padding: 2px 9px; }
@@ -25,7 +25,7 @@
 .oc-como { display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; color: #b7791f; font-weight: 700; background: #fff4e5; border: 1px solid #f3dcb3; border-radius: 8px; padding: 3px 6px 3px 9px; }
 .oc-como select { font: inherit; font-size: 12px; font-weight: 500; color: var(--oc-ink); padding: 3px 6px; border: 1px solid #f3dcb3; border-radius: 6px; background: #fff; max-width: 260px; }
 .oc-como button { font-size: 11px; padding: 4px 9px; border-radius: 6px; }
-.oc-main { padding: 24px 28px 60px; max-width: 1500px; width: 100%; }
+.oc-main { padding: 24px 28px 60px; max-width: 1500px; width: 100%; min-width: 0; }
 /* dentro: tono Oak-Crew para las piezas ya existentes */
 .oc .nm-head h1 { font-size: 24px; color: var(--oc-ink); } .oc .sub { color: var(--oc-mute); }
 .oc .nm-kpi, .oc .nm-card, .oc .nm-emp .c, .oc .nm-modal { border-color: var(--oc-line); box-shadow: 0 1px 2px rgba(31,26,43,.04); border-radius: 12px; }
@@ -71,10 +71,11 @@ button.danger, a.btn.danger { background: #fff; color: var(--danger); border-col
 .nm-filtros .sep { flex: 1; }
 .nm-pill { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 700; padding: 2px 9px; border-radius: 999px; background: var(--lav-soft); color: var(--purple); white-space: nowrap; }
 .nm-pill.ok { background: #e6f4ea; color: #1e7d47; } .nm-pill.warn { background: #fff4e5; color: var(--warn); } .nm-pill.bad { background: #fdecea; color: var(--danger); } .nm-pill.info { background: #e8eefc; color: #1b4fd6; } .nm-pill.gris { background: var(--cream-2); color: var(--lav); }
-.nm-card { background: var(--card); border: 1px solid var(--border); border-radius: 14px; box-shadow: var(--shadow); padding: 16px 18px; margin-bottom: 16px; }
+.nm-card { min-width: 0; max-width: 100%; background: var(--card); border: 1px solid var(--border); border-radius: 14px; box-shadow: var(--shadow); padding: 16px 18px; margin-bottom: 16px; }
 .nm-card h3 { margin: 0 0 10px; font-size: 14.5px; color: var(--purple-deep); }
 .nm-card h3 small { font-weight: 500; color: var(--lav); margin-left: 8px; font-size: 12px; }
-.nm-grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; } .nm-grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+.nm-grid2 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; } .nm-grid3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+.nm-grid2 > *, .nm-grid3 > * { min-width: 0; }
 .nm-tabla { width: 100%; border-collapse: collapse; font-size: 12.5px; }
 .nm-tabla th { position: static; text-align: left; font-size: 10.5px; text-transform: uppercase; letter-spacing: .05em; color: var(--lav); font-weight: 700; padding: 8px 10px; border-bottom: 1px solid var(--border); white-space: nowrap; }
 .nm-tabla td { padding: 8px 10px; border-bottom: 1px solid var(--cream-2); vertical-align: middle; }
@@ -82,7 +83,13 @@ button.danger, a.btn.danger { background: #fff; color: var(--danger); border-col
 .nm-tabla tr:hover td { background: #fcfaf6; }
 .nm-tabla .num { text-align: right; font-variant-numeric: tabular-nums; }
 .nm-tabla .tot td { font-weight: 800; background: var(--lav-soft); }
-.nm-scroll { overflow-x: auto; }
+.nm-scroll { overflow-x: auto; max-width: 100%; }
+/* una tabla que no cabe en su tarjeta se desplaza dentro de la tarjeta, nunca empuja la página */
+.nm-card { overflow-x: auto; } .nm-card > .nm-scroll > table.nm-tabla { min-width: max-content; }
+.nm-tabla td .nm-pill { white-space: normal; text-align: left; } .nm-alarmas { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; max-width: 360px; }
+.nm-kpis { min-width: 0; } .nm-kpi { min-width: 0; } .nm-kpi b { overflow-wrap: anywhere; }
+.nm-head { min-width: 0; } .nm-head > div:first-child { min-width: 0; } .nm-head h1, .nm-head .sub { overflow-wrap: anywhere; }
+.nm-filtros { min-width: 0; } .nm-filtros select { max-width: 100%; }
 .nm-nombre { font-weight: 700; color: var(--purple-deep); }
 .nm-sub { font-size: 11px; color: var(--lav); }
 .nm-bar { height: 6px; border-radius: 999px; background: var(--cream-2); overflow: hidden; min-width: 90px; }
@@ -153,3 +160,7 @@ button.danger, a.btn.danger { background: #fff; color: var(--danger); border-col
 .nm-selfie { width: 44px; height: 44px; border-radius: 8px; object-fit: cover; background: var(--cream-2); }
 details.nm-det summary { cursor: pointer; font-weight: 700; color: var(--purple); font-size: 12.5px; }
 .nm-tabla .acts { display: flex; gap: 6px; flex-wrap: wrap; } .nm-tabla .acts button { font-size: 11px; padding: 4px 9px; }
+
+/* botones que todavía no hacen nada (fase 5): se ven apagados, no morados */
+.oc button[title="Todavía no hace nada"], .oc button[title^="Todavía no hace nada"], .oc button:disabled { background: #f1f0f5 !important; border-color: var(--oc-line) !important; color: var(--oc-mute) !important; cursor: not-allowed; filter: none; }
+.oc input:disabled, .oc select:disabled { background: #f6f6f9; color: var(--oc-mute); }

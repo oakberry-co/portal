@@ -73,7 +73,7 @@ def main():
     if a.minimo:
         # Decisión de Daniel (2026-10-07): solo él y Sebastián en Titan Plaza para probar.
         emps.append(dict(activo_id=1001, nombre="ZULUAGA CARDENAS DANIEL FELIPE", punto="TITAN PLAZA", cargo="AUXILIAR PUNTO DE VENTA", salario=1_750_905, ingreso=HOY - dt.timedelta(days=120), rol="colaborador", email="dzuluaga@manelfoods.com", consent=HOY - dt.timedelta(days=120)))
-        emps.append(dict(activo_id=1002, nombre="VANEGAS SEBASTIAN", punto="TITAN PLAZA", cargo="ADMINISTRADOR DE PUNTO", salario=2_056_398, ingreso=HOY - dt.timedelta(days=400), rol="admin_punto", email="svanegas@manelfoods.com", consent=HOY - dt.timedelta(days=400)))
+        emps.append(dict(activo_id=1002, nombre="VANEGAS SEBASTIAN", punto="TITAN PLAZA", cargo="ADMINISTRADOR DE PUNTO", salario=2_056_398, ingreso=HOY - dt.timedelta(days=400), rol="admin_punto", email="sebastian@manelfoods.com", consent=HOY - dt.timedelta(days=400)))
     for (tid, *_rest, activa) in ([] if a.minimo else TIENDAS):
         if not activa: continue
         k = random.choice([3,3,4,4,5]) if tid not in ("ZONA T","CALLE 109") else 6
@@ -117,12 +117,17 @@ def main():
                             dmin = random.randint(-8, 12) if random.random() < 0.85 else random.randint(13, 40)
                             ts_e = dt.datetime.combine(f, dt.time(0)) + dt.timedelta(hours=ini, minutes=dmin)
                             ts_s = dt.datetime.combine(f, dt.time(0)) + dt.timedelta(hours=fin, minutes=random.randint(-10, 25))
-                            est = "aprobada" if dent and f < lun else "registrada"
-                            for tipo, ts, d_ in (("entrada", ts_e, dist), ("salida", ts_s, random.randint(5, t[9]))):
-                                marcs.append((e["activo_id"], e["punto"], ts.isoformat() + "-05:00", tipo, t[7] + random.uniform(-0.001, 0.001), t[8] + random.uniform(-0.001, 0.001), random.randint(8, 40), d_, d_ <= t[9], "selfie", psycopg2.Binary(SELFIE), est if tipo == "entrada" else ("aprobada" if f < lun else "registrada")))
+                            # regla de la app: lo normal (en radio y ±15 min del turno) se aprueba solo; lo inusual queda por revisar
+                            dsal = random.randint(-10, 25)
+                            ts_s = dt.datetime.combine(f, dt.time(0)) + dt.timedelta(hours=fin, minutes=dsal)
+                            for tipo, ts, d_, desv in (("entrada", ts_e, dist, dmin), ("salida", ts_s, random.randint(5, t[9]), dsal)):
+                                normal = d_ <= t[9] and ((tipo == "entrada" and -30 <= desv <= 15) or (tipo == "salida" and -15 <= desv <= 30))
+                                motivo = "dentro de horario y radio" if normal else ("fuera del radio de la tienda" if d_ > t[9] else (f"llegó {desv} min tarde" if tipo == "entrada" else f"salió {desv} min después del turno (posible extra)"))
+                                est = "aprobada" if normal or f < lun - dt.timedelta(days=7) else "registrada"
+                                marcs.append((e["activo_id"], e["punto"], ts.isoformat() + "-05:00", tipo, t[7] + random.uniform(-0.001, 0.001), t[8] + random.uniform(-0.001, 0.001), random.randint(8, 40), d_, d_ <= t[9], "selfie", psycopg2.Binary(SELFIE), est, ("automática: " + motivo) if normal else motivo, "sistema" if normal else ("rrhh" if est == "aprobada" else None)))
             f += dt.timedelta(days=1)
     execute_values(cur, "INSERT INTO rrhh_turnos (empleado_id,tienda_id,fecha,inicio,fin,tipo,estado) VALUES %s", turnos)
-    execute_values(cur, "INSERT INTO rrhh_marcaciones (empleado_id,tienda_id,ts,tipo,lat,lng,precision_m,distancia_m,dentro,metodo,selfie,estado) VALUES %s", marcs, page_size=500)
+    execute_values(cur, "INSERT INTO rrhh_marcaciones (empleado_id,tienda_id,ts,tipo,lat,lng,precision_m,distancia_m,dentro,metodo,selfie,estado,nota,revisado_por) VALUES %s", marcs, page_size=500)
     # solicitudes
     sol = []
     col = [e for e in emps if e["rol"] != "rrhh"]

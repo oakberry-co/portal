@@ -23,6 +23,7 @@ export type Marcacion = {
 export type Solicitud = {
   id: number; empleado_id: number; tipo: string; desde: string; hasta: string; dias_habiles: number; motivo: string | null;
   soporte_nombre: string | null; estado: "pendiente" | "aprobado" | "rechazado"; decidido_por: string | null; decision_nota: string | null; creado_por: string | null; creado_en: Date;
+  alertas: { nivel: "roja" | "ambar"; texto: string }[];
 };
 export type Novedad = { id: number; empleado_id: number; quincena: string; tipo: string; descripcion: string | null; valor: number; creado_por: string | null };
 export type Quincena = { desde: string; hasta: string; estado: "borrador" | "aprobada"; aprobada_por: string | null; aprobada_en: Date | null; total_neto: number | null; total_costo: number | null };
