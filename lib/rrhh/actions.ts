@@ -13,6 +13,7 @@ import { empleado, empleados, tienda, turnos, marcaciones, quincena as qQuincena
 import { horasDe, totalTrabajadas, reglasEn, FESTIVOS, esDominical } from "./motor";
 import { TIPOS_AUSENCIA } from "./catalogos";
 import { marcacionNormal } from "./viabilidad";
+import { esBancoConocido } from "@/lib/bancos";
 import { alarmasDe } from "./alarmas";
 import { saldoVacacionesDe } from "./saldos";
 import { ahoraBogota, diasHabiles, deHm, lunesDe, mas, rango, esFecha, quincenaDe, hm } from "./fechas";
@@ -32,8 +33,10 @@ async function envuelta(fn: (fd: FormData) => Promise<unknown>, fd: FormData) {
   catch (e) {
     if (e && typeof e === "object" && "digest" in e && String((e as { digest: string }).digest).startsWith("NEXT_REDIRECT")) throw e;
     const volver = s(fd, "volver") || (await headers()).get("referer") || "/nomina";
-    const base = volver.replace(/[?&](error|aviso)=[^&#]*/g, "").replace(/\?$/, "");
-    redirect(`${base}${base.includes("?") ? "&" : "?"}error=${encodeURIComponent((e as Error).message)}`);
+    // el #ancla va al final: un ?error= después del # no llega al servidor
+    const [sinHash, hash] = volver.split("#");
+    const base = sinHash.replace(/[?&](error|aviso)=[^&#]*/g, "").replace(/\?$/, "");
+    redirect(`${base}${base.includes("?") ? "&" : "?"}error=${encodeURIComponent((e as Error).message)}${hash ? "#" + hash : ""}`);
   }
 }
 
@@ -284,6 +287,18 @@ async function _guardarSaldoInicial(fd: FormData) {
 }
 
 // ---- empleados y tiendas ----------------------------------------------------------
+/** Lee un archivo del formulario: ≤ 3 MB, PDF o imagen, y si es PDF que NO tenga
+ *  clave (un PDF cifrado no se puede leer después, ni por RRHH ni por el banco). */
+async function leerArchivo(v: FormDataEntryValue | null, que: string): Promise<{ nombre: string; mime: string; bytes: Buffer } | null> {
+  if (!(v instanceof File) || v.size === 0) return null;
+  if (v.size > 3 * 1024 * 1024) falla(`El archivo de ${que} pesa más de 3 MB.`);
+  const bytes = Buffer.from(await v.arrayBuffer());
+  const esPdf = bytes.subarray(0, 5).toString() === "%PDF-";
+  const esImg = /^image\/(jpeg|png|webp|heic)$/i.test(v.type);
+  if (!esPdf && !esImg) falla(`La ${que} debe ser PDF o imagen (JPG/PNG).`);
+  if (esPdf && bytes.includes(Buffer.from("/Encrypt"))) falla(`El PDF de la ${que} tiene clave. Pídele a la persona que lo descargue del banco sin contraseña y lo vuelva a subir.`);
+  return { nombre: v.name.slice(0, 120), mime: esPdf ? "application/pdf" : v.type.toLowerCase(), bytes };
+}
 async function _guardarEmpleado(fd: FormData) {
   const p = await perspectiva(); if (p.tipo !== "rrhh") falla("Solo RRHH edita la ficha.");
   const id = n(fd, "activo_id");
@@ -292,15 +307,27 @@ async function _guardarEmpleado(fd: FormData) {
   if (!["colaborador", "admin_punto", "rrhh"].includes(campos.rol_app)) falla("Rol inválido.");
   if (!(campos.salario >= 1_000_000)) falla("Salario inválido.");
   if (!esFecha(campos.fecha_ingreso)) falla("Fecha de ingreso inválida.");
-  const consent = fd.get("consentimiento"); const archivo = consent instanceof File && consent.size > 0 ? consent.name : null;
-  if (!EN_PRUEBAS && (campos.salario || campos.fecha_ingreso)) { /* en producción el salario/ingreso vienen del maestro; se permite por ahora */ }
+  // Datos bancarios: banco de la lista, tipo de cuenta y número solo dígitos.
+  // Es lo que va al archivo del banco: un dígito mal y la persona no cobra.
+  const tipoCuenta = s(fd, "tipo_cuenta") || null;
+  if (campos.cuenta && !/^\d{6,20}$/.test(campos.cuenta)) falla("El número de cuenta va solo con dígitos (6 a 20), sin puntos, guiones ni espacios.");
+  if (campos.cuenta && !campos.banco) falla("Elige el banco de la cuenta.");
+  if (campos.cuenta && !tipoCuenta) falla("Indica si la cuenta es de ahorros o corriente.");
+  if (campos.banco && !esBancoConocido(campos.banco)) falla(`"${campos.banco}" no está en la lista de bancos.`);
+  if (tipoCuenta && !["ahorros", "corriente"].includes(tipoCuenta)) falla("Tipo de cuenta inválido.");
+  const consent = await leerArchivo(fd.get("consentimiento"), "consentimiento");
+  const certif = await leerArchivo(fd.get("certificacion"), "certificación bancaria");
   await withTx(async (c) => {
     const { rows } = await c.query("SELECT * FROM rrhh_empleados WHERE activo_id=$1", [id]); const antes = rows[0] ?? falla("No existe.");
     await c.query(`UPDATE rrhh_empleados SET email=$2, rol_app=$3, punto=$4, jornada_semanal=$5, banco=$6, cuenta=$7, consentimiento_firmado_en=$8, salario=$9, cargo=$10, tipo_contrato=$11,
-      auxilio_transporte=$12, fecha_ingreso=$13, fecha_retiro=$14, activo=$15, consentimiento_archivo=COALESCE($16, consentimiento_archivo), actualizado_en=now() WHERE activo_id=$1`,
-      [id, campos.email, campos.rol_app, campos.punto, campos.jornada_semanal, campos.banco, campos.cuenta, campos.consentimiento_firmado_en, campos.salario, campos.cargo, campos.tipo_contrato, campos.auxilio_transporte, campos.fecha_ingreso, campos.fecha_retiro, campos.activo, archivo]);
-    const cambios = Object.fromEntries(Object.entries(campos).filter(([k, v]) => String(antes[k] ?? "") !== String(v ?? "")));
-    await bitacora(c, "empleado", id, "editar", cambios, actorDe(p));
+      auxilio_transporte=$12, fecha_ingreso=$13, fecha_retiro=$14, activo=$15, consentimiento_archivo=COALESCE($16, consentimiento_archivo), tipo_cuenta=$17, actualizado_en=now() WHERE activo_id=$1`,
+      [id, campos.email, campos.rol_app, campos.punto, campos.jornada_semanal, campos.banco, campos.cuenta, campos.consentimiento_firmado_en, campos.salario, campos.cargo, campos.tipo_contrato, campos.auxilio_transporte, campos.fecha_ingreso, campos.fecha_retiro, campos.activo, consent?.nombre ?? null, tipoCuenta]);
+    for (const [tipo, f] of [["consentimiento", consent], ["certificacion_bancaria", certif]] as const) {
+      if (!f) continue;
+      await c.query("INSERT INTO rrhh_documentos (empleado_id, tipo, nombre, mime, bytes, subido_por) VALUES ($1,$2,$3,$4,$5,$6)", [id, tipo, f.nombre, f.mime, f.bytes, actorDe(p)]);
+    }
+    const cambios = Object.fromEntries(Object.entries({ ...campos, tipo_cuenta: tipoCuenta }).filter(([k, v]) => String(antes[k] ?? "") !== String(v ?? "")));
+    await bitacora(c, "empleado", id, "editar", { ...cambios, documentos: [consent && "consentimiento", certif && "certificación bancaria"].filter(Boolean) }, actorDe(p));
   });
   refrescar();
   redirect(`/nomina/empleados?aviso=${encodeURIComponent("Ficha guardada.")}#e${id}`);

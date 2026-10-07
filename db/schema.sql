@@ -1588,3 +1588,17 @@ CREATE TABLE IF NOT EXISTS rrhh_ventas_dia (
 );
 -- Alarmas de viabilidad calculadas al crear la solicitud (se recalculan al mostrarla).
 ALTER TABLE rrhh_solicitudes ADD COLUMN IF NOT EXISTS alertas JSONB NOT NULL DEFAULT '[]'::jsonb;
+
+-- Datos bancarios para el pago de nómina + documentos de la ficha (el archivo
+-- se guarda en la base: son PDFs/imágenes pequeños; GCS cuando haya volumen).
+ALTER TABLE rrhh_empleados ADD COLUMN IF NOT EXISTS tipo_cuenta TEXT;   -- ahorros | corriente
+CREATE TABLE IF NOT EXISTS rrhh_documentos (
+  id           BIGSERIAL PRIMARY KEY,
+  empleado_id  INTEGER NOT NULL REFERENCES rrhh_empleados(activo_id),
+  tipo         TEXT NOT NULL,            -- certificacion_bancaria | consentimiento | contrato | cedula | otro
+  nombre       TEXT NOT NULL,
+  mime         TEXT NOT NULL,
+  bytes        BYTEA NOT NULL,
+  subido_por   TEXT, subido_en TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS rrhh_documentos_emp ON rrhh_documentos (empleado_id, tipo, id DESC);

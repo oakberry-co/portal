@@ -10,7 +10,7 @@ export type Tienda = {
 };
 export type EmpleadoDb = Empleado & {
   email: string | null; rol_app: "colaborador" | "admin_punto" | "rrhh"; activo: boolean; fecha_retiro: string | null;
-  jornada_semanal: number; banco: string | null; cuenta: string | null;
+  jornada_semanal: number; banco: string | null; cuenta: string | null; tipo_cuenta: "ahorros" | "corriente" | null;
   consentimiento_firmado_en: string | null; consentimiento_archivo: string | null; ciudad_expedicion: string | null;
 };
 export type TurnoDb = Omit<Turno, "id"> & { id: number; estado: "borrador" | "publicado" };
@@ -126,4 +126,21 @@ export async function ventasPorTienda(desde: string, hasta: string): Promise<Rec
     const { rows } = await getPool().query("SELECT tienda_id, SUM(venta_sin_iva)::bigint AS v FROM rrhh_ventas_dia WHERE fecha BETWEEN $1 AND $2 GROUP BY 1", [desde, hasta]);
     return Object.fromEntries(rows.map((r) => [r.tienda_id, Number(r.v)]));
   } catch { return {}; }
+}
+
+export type Documento = { id: number; empleado_id: number; tipo: string; nombre: string; mime: string; subido_por: string | null; subido_en: Date; tamano: number };
+/** Documentos de la ficha (sin los bytes). */
+export async function documentos(empleadoId: number): Promise<Documento[]> {
+  const { rows } = await getPool().query("SELECT id, empleado_id, tipo, nombre, mime, subido_por, subido_en, length(bytes) AS tamano FROM rrhh_documentos WHERE empleado_id = $1 ORDER BY id DESC", [empleadoId]);
+  return rows.map((r) => ({ ...r, id: Number(r.id), tamano: Number(r.tamano) }));
+}
+export async function documentosDeTodos(): Promise<Record<number, Documento[]>> {
+  const { rows } = await getPool().query("SELECT id, empleado_id, tipo, nombre, mime, subido_por, subido_en, length(bytes) AS tamano FROM rrhh_documentos ORDER BY id DESC");
+  const out: Record<number, Documento[]> = {};
+  for (const r of rows) (out[r.empleado_id] ??= []).push({ ...r, id: Number(r.id), tamano: Number(r.tamano) });
+  return out;
+}
+export async function documento(id: number): Promise<(Documento & { bytes: Buffer }) | null> {
+  const { rows } = await getPool().query("SELECT id, empleado_id, tipo, nombre, mime, subido_por, subido_en, bytes, length(bytes) AS tamano FROM rrhh_documentos WHERE id = $1", [id]);
+  return rows[0] ? { ...rows[0], id: Number(rows[0].id), tamano: Number(rows[0].tamano) } : null;
 }

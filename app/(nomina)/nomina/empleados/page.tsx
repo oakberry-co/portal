@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
-import { empleados, tiendas, type EmpleadoDb } from "@/lib/rrhh/db";
+import { BANCOS } from "@/lib/bancos";
+import { documentosDeTodos, type Documento, empleados, tiendas, type EmpleadoDb } from "@/lib/rrhh/db";
 import { guardarEmpleado, crearEmpleado } from "@/lib/rrhh/actions";
 import { perspectiva } from "@/lib/rrhh/perspectiva";
 import { cop } from "@/lib/rrhh/motor";
@@ -17,7 +18,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<Rec
   // el admin de punto no elige tienda: siempre es la suya
   const tiendaId = p.tipo === "admin_punto" ? p.tiendaId : sp.t || "";
   const incluirInactivos = sp.inactivos === "1";
-  const [TODOS, TIENDAS] = await Promise.all([empleados({ incluirInactivos }), tiendas()]);
+  const [TODOS, TIENDAS, DOCS] = await Promise.all([empleados({ incluirInactivos }), tiendas(), documentosDeTodos()]);
   const tiendaDe = (id: string) => TIENDAS.find((t) => t.id === id);
   const cargos = [...new Set(TODOS.map((e) => e.cargo).filter(Boolean))].sort();
   const buscar = (sp.buscar ?? "").trim().toLowerCase();
@@ -80,6 +81,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<Rec
                 <div className="r"><span>Cargo</span><span>{cap(e.cargo)}</span></div>
                 <div className="r"><span>Tienda</span><span>{t?.nombre ?? e.punto}{t && !t.activa && <Pill tono="bad"> cerrada</Pill>}</span></div>
                 <div className="r"><span>Salario</span><span>{cop(e.salario)} {e.auxilio_transporte && <Pill tono="gris">+ aux</Pill>}</span></div>
+                <div className="r"><span>Cuenta de pago</span><span>{e.banco && e.cuenta ? <>{e.banco} · {e.tipo_cuenta ?? "?"} · …{e.cuenta.slice(-4)} {(DOCS[e.activo_id] ?? []).some((d) => d.tipo === "certificacion_bancaria") ? <Pill tono="ok">certificada</Pill> : <Pill tono="warn">sin certificación</Pill>}</> : <Pill tono="bad">sin cuenta: no se le puede pagar</Pill>}</span></div>
                 <div className="r"><span>Contrato</span><span>{cap(e.tipo_contrato)} · desde {e.fecha_ingreso} · {e.jornada_semanal} h/sem</span></div>
                 <div className="r"><span>EPS / AFP / ARL</span><span>{[e.eps, e.afp, e.arl].filter(Boolean).map(cap).join(" · ") || "—"}</span></div>
                 <div className="r"><span>Acceso</span><span>{e.email ?? <Pill tono="warn">sin correo</Pill>} · {rolLabel(e.rol_app)}</span></div>
@@ -87,7 +89,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<Rec
                 {!soloVer && (
                   <details className="nm-det" style={{ marginTop: 9 }}>
                     <summary>Editar ficha</summary>
-                    <FormFicha e={e} tiendasOpts={TIENDAS} />
+                    <FormFicha e={e} tiendasOpts={TIENDAS} docs={DOCS[e.activo_id] ?? []} />
                   </details>
                 )}
               </div>
@@ -102,7 +104,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<Rec
 
 /** Ficha completa: todos los campos que recibe guardarEmpleado, con el archivo
  *  del consentimiento (por eso el formulario va en multipart). */
-function FormFicha({ e, tiendasOpts }: { e: EmpleadoDb; tiendasOpts: { id: string; nombre: string; activa: boolean }[] }) {
+function FormFicha({ e, tiendasOpts, docs }: { e: EmpleadoDb; tiendasOpts: { id: string; nombre: string; activa: boolean }[]; docs: Documento[] }) {
   return (
     <form action={guardarEmpleado} encType="multipart/form-data" style={{ marginTop: 10 }}>
       <input type="hidden" name="activo_id" value={e.activo_id} />
@@ -119,10 +121,14 @@ function FormFicha({ e, tiendasOpts }: { e: EmpleadoDb; tiendasOpts: { id: strin
         <label>Fecha de ingreso<input name="fecha_ingreso" type="date" defaultValue={e.fecha_ingreso} required /></label>
         <label>Fecha de retiro<input name="fecha_retiro" type="date" defaultValue={e.fecha_retiro ?? ""} /></label>
         <label>Activo<select name="activo" defaultValue={e.activo ? "si" : "no"}><option value="si">Sí</option><option value="no">No (retirado)</option></select></label>
-        <label>Banco<input name="banco" defaultValue={e.banco ?? ""} /></label>
-        <label>Cuenta<input name="cuenta" defaultValue={e.cuenta ?? ""} /></label>
+        <label className="full" style={{ marginTop: 6, color: "var(--oc-purple)" }}>Cuenta para el pago de nómina</label>
+        <label>Banco<select name="banco" defaultValue={e.banco ?? ""}><option value="">— elige —</option>{BANCOS.map((b) => <option key={b.codigo} value={b.nombre}>{b.nombre}</option>)}</select></label>
+        <label>Tipo de cuenta<select name="tipo_cuenta" defaultValue={e.tipo_cuenta ?? ""}><option value="">— elige —</option><option value="ahorros">Ahorros</option><option value="corriente">Corriente</option></select></label>
+        <label>Número de cuenta (solo dígitos)<input name="cuenta" inputMode="numeric" pattern="[0-9]{6,20}" title="Solo dígitos, 6 a 20" defaultValue={e.cuenta ?? ""} placeholder="sin puntos ni guiones" /></label>
+        <label>Certificación bancaria (PDF sin clave o imagen){docs.find((d) => d.tipo === "certificacion_bancaria") && <A href={`/nomina/empleados/doc/${docs.find((d) => d.tipo === "certificacion_bancaria")!.id}`} className="nm-sub" title="Abrir">📎 {docs.find((d) => d.tipo === "certificacion_bancaria")!.nombre}</A>}<input name="certificacion" type="file" accept=".pdf,image/*" /></label>
+        <label className="full" style={{ marginTop: 6, color: "var(--oc-purple)" }}>Consentimiento de datos e imagen (Ley 1581)</label>
         <label>Consentimiento firmado el<input name="consentimiento_firmado_en" type="date" defaultValue={e.consentimiento_firmado_en ?? ""} /></label>
-        <label className="full">Archivo del consentimiento (PDF/imagen){e.consentimiento_archivo && <span className="nm-sub" style={{ textTransform: "none" }}>actual: {e.consentimiento_archivo}</span>}<input name="consentimiento" type="file" accept=".pdf,image/*" /></label>
+        <label>Archivo del consentimiento (PDF/imagen){docs.find((d) => d.tipo === "consentimiento") ? <A href={`/nomina/empleados/doc/${docs.find((d) => d.tipo === "consentimiento")!.id}`} className="nm-sub" title="Abrir">📎 {docs.find((d) => d.tipo === "consentimiento")!.nombre}</A> : e.consentimiento_archivo && <span className="nm-sub" style={{ textTransform: "none" }}>registrado: {e.consentimiento_archivo}</span>}<input name="consentimiento" type="file" accept=".pdf,image/*" /></label>
       </div>
       <div className="nm-acts" style={{ marginTop: 10 }}><button type="submit">Guardar ficha</button></div>
     </form>
