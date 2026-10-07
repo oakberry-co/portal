@@ -40,6 +40,8 @@ const MENU: Grupo[] = [
   { label: "Causaciones", items: [{ label: "Causaciones", href: "/contabilidad/causaciones", cap: "causar" }] },
   // Borrador visual del módulo RRHH (solo el decisor mientras sea maqueta).
   { label: "Nómina", href: "/nomina", cap: "nomina" },
+  // P&L al día por tienda (reflejo de BigQuery; solo el decisor mientras se calibra).
+  { label: "Finanzas", href: "/finanzas", cap: "finanzas" },
   {
     label: "Configuraciones",
     items: [

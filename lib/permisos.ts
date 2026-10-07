@@ -23,12 +23,15 @@ export type Cap =
   | "cruzar_nota"
   // La ventana Nómina (borrador visual del módulo RRHH, spec 04_rrhh v3). Por
   // ahora solo la ve el decisor: muestra salarios reales del maestro.
-  | "nomina";
+  | "nomina"
+  // Finanzas: el P&L al día por tienda (reflejo de BigQuery). Arranca solo para
+  // el decisor; gerencia entra cuando el backtest lleve dos cierres cuadrando.
+  | "finanzas";
 
 const TODAS: Cap[] = [
   "ver_conciliacion", "clasificar", "retenciones", "tipo_pago",
   "ver_pagos", "pagos", "export_historial", "causar", "maestros", "maestro_retenciones",
-  "ver_intake", "intake", "dashboard", "asistente", "usuarios", "revertir_pago", "cruzar_nota", "nomina",
+  "ver_intake", "intake", "dashboard", "asistente", "usuarios", "revertir_pago", "cruzar_nota", "nomina", "finanzas",
 ];
 
 // VER ≠ OPERAR. La bandeja del intake se parte en dos capacidades porque quien
@@ -44,7 +47,7 @@ const IMPLICA: Partial<Record<Cap, Cap[]>> = {
 // LO QUE SOLO HACE EL DECISOR. Daniel es el decisor máximo y el único admin
 // (2026-09-10): dar y quitar accesos, y deshacer un pago —la única acción que
 // devuelve una factura a la cola de Pagos— no las hace quien opera a diario.
-const SOLO_DECISOR: Cap[] = ["usuarios", "revertir_pago", "nomina"];
+const SOLO_DECISOR: Cap[] = ["usuarios", "revertir_pago", "nomina", "finanzas"];
 
 // Rol → qué puede hacer.
 const MATRIZ: Record<Rol, Cap[]> = {

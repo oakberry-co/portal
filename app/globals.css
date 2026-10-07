@@ -354,6 +354,22 @@ button.ghost { background: #fff; color: var(--purple); }
 .per-sel.proveedor { color: var(--ink); }
 .per-sel.humano { color: var(--purple-deep); border-color: var(--purple); font-weight: 700; }
 .per-sel:disabled { cursor: default; opacity: .7; }
+/* Finanzas: P&L al día. Lo estimado/devengado se ve distinto de lo real, siempre. */
+.fin-tabla td.num, .fin-tabla th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.fin-tabla tr.sec td { background: var(--cream-2); font-weight: 700; color: var(--purple-deep); font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
+.fin-tabla tr.res td { font-weight: 700; border-top: 2px solid var(--border); }
+.fin-est { color: var(--lav); font-style: italic; }
+.fin-neg { color: var(--danger); }
+.fin-pos { color: #1e7d47; }
+.fin-chip { display: inline-block; font-size: 9.5px; font-family: var(--mono); padding: 1px 6px; border-radius: 999px; border: 1px solid var(--border); color: var(--lav); margin-left: 6px; }
+.fin-chip.ok { color: #1e7d47; border-color: rgba(39,174,96,.4); }
+.fin-chip.mid { color: var(--warn); border-color: rgba(183,121,31,.4); }
+.fin-chip.no { color: var(--danger); border-color: rgba(192,57,43,.4); }
+.fin-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; margin: 12px 0 16px; }
+.fin-kpi { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 10px 14px; }
+.fin-kpi b { display: block; font-size: 20px; color: var(--purple-deep); }
+.fin-kpi span { font-size: 11px; color: var(--lav); }
+.fin-fuentes { font-size: 11px; color: var(--lav); margin: 6px 0 14px; }
 /* ADELANTO YA PAGADO SIN DESCONTAR — vive en "Pagos pendientes", que es donde
    alguien decide qué sale al banco. En la grilla de conciliación estorbaba: son
    4.000 facturas y el anticipo es un caso raro. */

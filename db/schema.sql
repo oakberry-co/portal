@@ -1485,6 +1485,61 @@ SELECT f.cufe,
   LEFT JOIN maestro_proveedores mp ON mp.nit = f.nit_proveedor;
 -- (fin §27)
 
+-- -----------------------------------------------------------------------------
+-- 28) FINANZAS — LA FOTO DEL P&L AL DÍA PARA EL PORTAL (2026-10-07)
+--
+-- El P&L al día por tienda se calcula en BigQuery (datawarehouse/finanzas/pnl:
+-- POS + portal + Rappi + nómina, calibrado contra el cierre de Julio). El portal
+-- NO se monta sobre BigQuery (regla de oro): scripts/sync_finanzas.py copia la
+-- foto acá, tabla por tabla, en una transacción (reemplazo completo). Son
+-- reflejos de solo lectura: nadie edita estas tablas en el portal.
+-- Signos como en el P&L: ingresos +, costos y gastos −. `metodo` dice si la
+-- cifra es real, teórica, devengada o estimada — se muestra siempre.
+-- Idempotente.
+-- -----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS fin_pnl_mes (
+  short_code     TEXT NOT NULL,
+  ciudad         TEXT,
+  mes            DATE NOT NULL,
+  seccion        TEXT NOT NULL,
+  orden          INT  NOT NULL,
+  linea          TEXT NOT NULL,
+  valor          NUMERIC(18,2) NOT NULL,
+  metodo         TEXT,
+  fuente         TEXT,
+  desde          DATE,
+  hasta          DATE,
+  PRIMARY KEY (short_code, mes, linea)
+);
+CREATE TABLE IF NOT EXISTS fin_pnl_dia (
+  short_code     TEXT NOT NULL,
+  fecha          DATE NOT NULL,
+  mes            DATE NOT NULL,
+  seccion        TEXT NOT NULL,
+  orden          INT  NOT NULL,
+  linea          TEXT NOT NULL,
+  valor          NUMERIC(18,2) NOT NULL,
+  metodo         TEXT,
+  PRIMARY KEY (short_code, fecha, linea)
+);
+CREATE TABLE IF NOT EXISTS fin_reconciliacion (
+  short_code     TEXT NOT NULL,
+  mes            DATE NOT NULL,
+  linea          TEXT NOT NULL,
+  estimado       NUMERIC(18,2),
+  cierre         NUMERIC(18,2),
+  brecha         NUMERIC(18,2),
+  brecha_pct     NUMERIC(10,2),
+  PRIMARY KEY (short_code, mes, linea)
+);
+-- Cuándo se refrescó la foto y hasta qué día llega cada fuente (la "edad" del dato).
+CREATE TABLE IF NOT EXISTS fin_sync (
+  clave          TEXT PRIMARY KEY,
+  valor          TEXT,
+  actualizado_en TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+-- (fin §28)
+
 -- ---------------------------------------------------------------------------
 -- RRHH / Nómina (módulo en construcción, spec gs://oakberry-col-core/04_rrhh).
 -- El maestro de empleados es la ÚNICA biblia de personas: viene del Excel de
