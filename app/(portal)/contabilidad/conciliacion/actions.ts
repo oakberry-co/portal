@@ -14,6 +14,7 @@ import { revisarTitularDestino } from "@/lib/cuenta-destino";
 import { EN_PRUEBAS } from "@/lib/ambiente";
 import { asegurarConcepto, asegurarDestino } from "@/lib/maestros";
 import { pagoActivoDe, revertirPago, type Revertible, type ResultadoReversion } from "@/lib/revertir-pago";
+import { fijarPeriodoGasto as fijarPeriodoGastoDb } from "@/lib/periodo-gasto-db";
 import { candidatasPara, cruzarNota, quitarCruce, type Cruzable, type ResultadoCruce } from "@/lib/cruzar-nota";
 import type { PoolClient } from "pg";
 
@@ -320,6 +321,17 @@ export async function marcarTipoPago(formData: FormData) {
     });
     return { tipo_pago: tipo };
   });
+}
+
+/** Fija a qué MES pertenece el gasto de una factura (regla «mes del gasto»,
+ *  7-oct-2026). Escritura y aprendizaje del proveedor viven en
+ *  lib/periodo-gasto-db.ts, que es también lo que corre el centinela. */
+export async function fijarPeriodoGasto(formData: FormData) {
+  const user = await exigirCap("clasificar");
+  const cufe = String(formData.get("cufe") ?? "").trim();
+  const periodo = String(formData.get("periodo") ?? "").trim();
+  if (!cufe) throw new Error("Falta cufe.");
+  return withTx((c) => fijarPeriodoGastoDb(c, cufe, periodo, { email: user.email, rol: user.rol }));
 }
 
 /** Clasifica un documento SIN factura DIAN (cuenta de cobro o gasto interno).

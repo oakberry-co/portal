@@ -31,8 +31,10 @@ export async function GET(req: Request) {
             f.subtotal, f.iva, f.total, f.doc_tipo,
             e.estado, e.concepto, e.destino, e.plazo_dias, e.fecha_vencimiento,
             e.retefuente, e.reteiva, e.reteica, e.reten_total, e.valor_a_pagar,
-            e.otros_valor, e.otros_concepto, e.observaciones, f.cufe
+            e.otros_valor, e.otros_concepto, e.observaciones, f.cufe,
+            vp.periodo_gasto
        FROM facturas f JOIN factura_estado e USING (cufe)
+       LEFT JOIN v_factura_periodo vp USING (cufe)
        ${where}
       ORDER BY f.fecha_emision, f.nombre_proveedor`,
     params
@@ -44,6 +46,8 @@ export async function GET(req: Request) {
   const ws = wb.addWorksheet("Conciliación");
   ws.columns = [
     { header: "Fecha emisión", key: "fecha", width: 13 },
+    // El mes al que pertenece el gasto (§27), que no siempre es el de la factura.
+    { header: "Mes gasto", key: "mes_gasto", width: 10 },
     { header: "NIT", key: "nit", width: 14 },
     { header: "Proveedor", key: "prov", width: 28 },
     { header: "Factura", key: "num", width: 14 },
@@ -88,6 +92,7 @@ export async function GET(req: Request) {
     const otrosNum = n(r.otros_valor) ?? 0;
     ws.addRow({
       fecha: ymd(r.fecha_emision),
+      mes_gasto: ymd(r.periodo_gasto).slice(0, 7),
       nit: r.nit_proveedor,
       prov: r.nombre_proveedor ?? "",
       num: r.numero,
@@ -121,7 +126,7 @@ export async function GET(req: Request) {
             cc.numero, cc.valor, cc.iva_incluido, cc.estado, cc.pago_id,
             cc.concepto, cc.destino, cc.plazo_dias, cc.fecha_vencimiento,
             cc.retefuente, cc.reteiva, cc.reteica, cc.reten_total, cc.valor_a_pagar,
-            cc.otros_valor, cc.otros_concepto, cc.observaciones
+            cc.otros_valor, cc.otros_concepto, cc.observaciones, cc.periodo
        FROM cuentas_cobro cc
       WHERE cc.estado IN ('aprobada','pagada')
         ${cnd.length ? "AND " + cnd.join(" AND ") : ""}
@@ -130,6 +135,8 @@ export async function GET(req: Request) {
   for (const r of nd.rows) {
     ws.addRow({
       fecha: ymd(r.fecha_documento ?? r.creado_en),
+      // Los gastos periódicos ya saben su mes (`periodo`); el resto, el del documento.
+      mes_gasto: ymd(r.periodo ?? r.fecha_documento ?? r.creado_en).slice(0, 7),
       nit: r.num_doc,
       prov: r.razon_social ?? "",
       num: "SIN FACTURA",

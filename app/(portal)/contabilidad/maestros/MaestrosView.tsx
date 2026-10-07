@@ -12,7 +12,7 @@ import {
 export type MaestrosData = {
   conceptos: { nombre: string; cuenta_puc: string | null; activo: boolean; creado_por: string | null }[];
   destinos: { nombre: string; short_code: string | null; activo: boolean; creado_por: string | null }[];
-  proveedores: { nit: string; nombre: string | null; concepto_default: string | null; destino_default: string | null; cuenta_puc_default: string | null; retencion_hint: string | null; plazo_dias: number | null; tipo_pago_default: string | null; fuente: string; n_facturas: number | null; confianza: string | null }[];
+  proveedores: { nit: string; nombre: string | null; concepto_default: string | null; destino_default: string | null; cuenta_puc_default: string | null; retencion_hint: string | null; plazo_dias: number | null; tipo_pago_default: string | null; periodo_offset_meses: number | null; fuente: string; n_facturas: number | null; confianza: string | null }[];
   cuentas: { codigo: string; nombre: string; activo: boolean }[];
   retenciones: { nit: string; nombre: string | null; retefuente: string | null; reteica: string | null;
                  reteiva: string | null; humano: boolean;
@@ -158,7 +158,7 @@ export function MaestrosView({ data, soloRetenciones = false }: {
             <input name="plazo_dias" placeholder="Plazo (días)" inputMode="numeric" />
             <button type="submit">Agregar</button>
           </form>
-          <table className="mst-tabla"><thead><tr><th>NIT</th><th>Proveedor</th><th>Concepto</th><th>Destino</th><th>PUC</th><th>Plazo</th><th>Pago</th><th>Confianza</th><th>Fuente</th></tr></thead>
+          <table className="mst-tabla"><thead><tr><th>NIT</th><th>Proveedor</th><th>Concepto</th><th>Destino</th><th>PUC</th><th>Plazo</th><th>Pago</th><th title="Corrimiento del mes del gasto: 0 = mismo mes de la factura, -1 = el mes anterior (servicios que se facturan vencidos). Lo aprende el portal cuando dos facturas coinciden.">Mes gasto</th><th>Confianza</th><th>Fuente</th></tr></thead>
             <tbody>{data.proveedores.filter((r) => match(r.nit, r.nombre, r.concepto_default, r.destino_default)).map((r) => (
               <tr key={r.nit}>
                 <td className="mono">{r.nit}</td>
@@ -168,6 +168,7 @@ export function MaestrosView({ data, soloRetenciones = false }: {
                 <td className="mono"><Edit grupo="proveedores" id={r.nit} campo="cuenta_puc_default" value={r.cuenta_puc_default} /></td>
                 <td><Edit grupo="proveedores" id={r.nit} campo="plazo_dias" value={r.plazo_dias} num suffix=" d" /></td>
                 <td title="credito = a pagar · debito = no se paga (ej. Éxito)"><Edit grupo="proveedores" id={r.nit} campo="tipo_pago_default" value={r.tipo_pago_default} /></td>
+                <td title="0 = mismo mes de la factura · -1 = el mes anterior"><Edit grupo="proveedores" id={r.nit} campo="periodo_offset_meses" value={r.periodo_offset_meses} num suffix=" m" /></td>
                 <td>{r.confianza != null
                   ? <span className={"conf " + (Number(r.confianza) >= 0.8 ? "hi" : Number(r.confianza) >= 0.5 ? "mid" : "lo")} title={`${r.n_facturas ?? 0} factura(s) de historia`}>{Math.round(Number(r.confianza) * 100)}%<i>{r.n_facturas ?? 0}</i></span>
                   : <span className="muted">—</span>}</td>

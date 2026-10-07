@@ -35,6 +35,8 @@ async function cargar(): Promise<{ filas: FacturaRow[]; conceptos: string[]; des
             e.retencion_ok, e.reten_total, e.retefuente, e.reteiva, e.reteica, e.valor_a_pagar,
             e.otros_valor, e.otros_concepto, e.observaciones,
             e.pago_estado, e.fecha_pago_prog,
+            -- A qué MES pertenece el gasto (§27): lo resuelve la vista, una sola definición.
+            vp.periodo_gasto, vp.periodo_fuente,
             -- El último pago revertido de ESTA factura: quien la vea otra vez
             -- pendiente tiene que saber que alguien quitó el pago y por qué,
             -- no creer que el portal se equivocó (lib/revertir-pago.ts).
@@ -70,6 +72,7 @@ async function cargar(): Promise<{ filas: FacturaRow[]; conceptos: string[]; des
        FROM facturas f
        JOIN factura_estado e USING (cufe)
        LEFT JOIN factura_propuesta p USING (cufe)
+       LEFT JOIN v_factura_periodo vp USING (cufe)
        LEFT JOIN maestro_proveedores mp ON mp.nit = f.nit_proveedor
        LEFT JOIN (
          SELECT nit_proveedor,

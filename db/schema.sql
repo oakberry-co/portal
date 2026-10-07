@@ -1436,6 +1436,55 @@ ALTER TABLE facturas ADD CONSTRAINT ck_ref_fuente
 -- Lo que ya tenía referencia la trajo el documento.
 UPDATE facturas SET ref_fuente = 'xml' WHERE ref_cufe IS NOT NULL AND ref_fuente IS NULL;
 
+-- -----------------------------------------------------------------------------
+-- 27) EL MES DEL GASTO — A QUÉ MES PERTENECE LO QUE DICE LA FACTURA (2026-10-07)
+--
+-- Siigo registra cada compra con la fecha de la factura. El arriendo lo cobra el
+-- centro comercial anticipado los primeros días y cae en su mes; la energía, el
+-- agua y el aseo se facturan vencidos entre el 4 y el 10 del mes siguiente y
+-- entran al mes equivocado. Nadie lo notaba porque el cierre contable tarda
+-- semanas. El P&L al día de finanzas (02_finanzas/tesoreria_pnl) necesita que
+-- cada gasto sepa a qué mes pertenece, no cuándo lo facturaron.
+--
+-- `periodo_gasto` = primer día del mes al que pertenece el gasto. Se guarda
+-- SOLO cuando una persona lo fija (periodo_gasto_fuente='humano'); si no, se
+-- resuelve en la vista `v_factura_periodo`: mes de emisión + el corrimiento
+-- aprendido del proveedor (`maestro_proveedores.periodo_offset_meses`:
+-- 0 = mismo mes, -1 = el mes anterior). Así el sync nunca tiene que escribirlo
+-- ni puede pisarlo, y la siguiente factura del mismo proveedor ya entra al mes
+-- correcto. El proveedor aprende cuando DOS facturas suyas fijadas a mano
+-- coinciden (lib/periodo-gasto-db.ts; Regla 13).
+-- La vista es LA definición: la leen la grilla, el export y el reflejo a
+-- BigQuery (datawarehouse/finanzas/pnl/sync_portal_estado.py). Una sola copia.
+-- Idempotente.
+-- -----------------------------------------------------------------------------
+ALTER TABLE factura_estado
+  ADD COLUMN IF NOT EXISTS periodo_gasto        DATE,
+  ADD COLUMN IF NOT EXISTS periodo_gasto_fuente TEXT;
+ALTER TABLE factura_estado DROP CONSTRAINT IF EXISTS ck_periodo_gasto_mes;
+ALTER TABLE factura_estado ADD CONSTRAINT ck_periodo_gasto_mes
+  CHECK (periodo_gasto IS NULL OR periodo_gasto = date_trunc('month', periodo_gasto)::date);
+ALTER TABLE maestro_proveedores
+  ADD COLUMN IF NOT EXISTS periodo_offset_meses INT;
+ALTER TABLE maestro_proveedores DROP CONSTRAINT IF EXISTS ck_periodo_offset;
+ALTER TABLE maestro_proveedores ADD CONSTRAINT ck_periodo_offset
+  CHECK (periodo_offset_meses IS NULL OR periodo_offset_meses BETWEEN -6 AND 1);
+
+CREATE OR REPLACE VIEW v_factura_periodo AS
+SELECT f.cufe,
+       f.fecha_emision,
+       COALESCE(e.periodo_gasto,
+                (date_trunc('month', f.fecha_emision)
+                 + make_interval(months => COALESCE(mp.periodo_offset_meses, 0)))::date) AS periodo_gasto,
+       CASE WHEN e.periodo_gasto IS NOT NULL        THEN 'humano'
+            WHEN mp.periodo_offset_meses IS NOT NULL THEN 'proveedor'
+            ELSE 'emision' END                                                            AS periodo_fuente,
+       mp.periodo_offset_meses
+  FROM facturas f
+  JOIN factura_estado e USING (cufe)
+  LEFT JOIN maestro_proveedores mp ON mp.nit = f.nit_proveedor;
+-- (fin §27)
+
 -- ---------------------------------------------------------------------------
 -- RRHH / Nómina (módulo en construcción, spec gs://oakberry-col-core/04_rrhh).
 -- El maestro de empleados es la ÚNICA biblia de personas: viene del Excel de

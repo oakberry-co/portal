@@ -5,11 +5,12 @@ import { type Estado } from "@/lib/estados";
 import { Combobox } from "./Combobox";
 import { semanaISO } from "@/lib/orden-facturas";
 import { CuentaDestinoModal } from "./CuentaDestinoModal";
-import { guardarClasificacion, marcarTipoPago , devolverUnPaso } from "./actions";
+import { guardarClasificacion, marcarTipoPago , devolverUnPaso, fijarPeriodoGasto } from "./actions";
 import { RetencionesModal } from "./RetencionesModal";
 import { RevertirPagoModal } from "./RevertirPagoModal";
 import { CruzarNotaModal } from "./CruzarNotaModal";
 import { EN_PRUEBAS_CLIENTE } from "@/lib/ambiente";
+import { etiquetaMes, mesDe, opcionesPeriodo } from "@/lib/periodo-gasto";
 
 export type FacturaRow = {
   cufe: string;
@@ -66,6 +67,9 @@ export type FacturaRow = {
   pago_estado: string | null;
   fecha_pago_prog: string | Date | null;
   tipo_pago: string | null;
+  // A qué MES pertenece el gasto (§27): 'humano' lo fijó alguien, 'proveedor'
+  // lo aprendió el proveedor, 'emision' es el mes de la factura (el default).
+  periodo_gasto: string | Date | null; periodo_fuente: string | null;
   // El último pago REVERTIDO de esta factura (lib/revertir-pago.ts): quien la
   // vea otra vez pendiente tiene que saber que alguien quitó el pago y por qué,
   // no creer que el portal se equivocó.
@@ -192,6 +196,22 @@ export const FacturaCard = memo(function FacturaCard({
     });
   }
 
+  // MES DEL GASTO: por defecto el de la factura; se cambia cuando la factura
+  // cubre otro mes (la luz de septiembre llega facturada en octubre). Sin esto
+  // el P&L de finanzas pone el gasto en el mes equivocado. La vista
+  // v_factura_periodo ya trae el resuelto; la emisión es solo el respaldo.
+  const periodo = f.periodo_gasto ? mesDe(f.periodo_gasto) : mesDe(f.fecha_emision);
+  function onPeriodo(e: React.ChangeEvent<HTMLSelectElement>) {
+    const nuevo = e.target.value;
+    start(async () => {
+      try {
+        const fd = new FormData(); fd.set("cufe", f.cufe); fd.set("periodo", nuevo);
+        const patch = await fijarPeriodoGasto(fd);
+        onSaved(f.cufe, { periodo_gasto: patch.periodo_gasto, periodo_fuente: patch.periodo_fuente });
+      } catch (err) { alert("No se pudo cambiar el mes del gasto: " + (err as Error).message); }
+    });
+  }
+
   // Resumen de retenciones: lo confirmado si existe, si no la sugerencia (preview).
   /** Una línea del desglose. Se muestra el CONFIRMADO si existe; si no, la
    *  propuesta, marcada como tal. Una línea en cero no se pinta: "ReteIVA $0"
@@ -299,6 +319,14 @@ export const FacturaCard = memo(function FacturaCard({
             llegó {ddmm(f.sincronizado_en)}
           </span>
         )}
+        <select className={"per-sel " + (f.periodo_fuente ?? "emision")} value={periodo} onChange={onPeriodo}
+                disabled={pending || !puedeClasificar} aria-label="Mes del gasto"
+                title={(f.periodo_fuente === "humano" ? "Mes del gasto fijado a mano. "
+                        : f.periodo_fuente === "proveedor" ? "Mes del gasto según lo aprendido de este proveedor. "
+                        : "Mes del gasto = mes de la factura. ")
+                     + "Cámbialo si la factura cubre otro mes (ej. la luz de septiembre facturada en octubre). El proveedor aprende cuando dos facturas suyas coinciden."}>
+          {opcionesPeriodo(f.fecha_emision, periodo).map((m) => <option key={m} value={m}>{etiquetaMes(m)}</option>)}
+        </select>
       </div>
       <div className="c-sem">{semanaISO(f.fecha_emision)}</div>
       <div className="c-valor num">{copN(total)}</div>

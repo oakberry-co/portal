@@ -11,7 +11,7 @@ async function cargar(): Promise<MaestrosData> {
   const [conceptos, destinos, proveedores, cuentas, retenciones, bancos] = await Promise.all([
     pool.query("SELECT nombre, cuenta_puc, activo, creado_por FROM maestro_conceptos ORDER BY activo DESC, nombre"),
     pool.query("SELECT nombre, short_code, activo, creado_por FROM maestro_destinos ORDER BY activo DESC, nombre"),
-    pool.query("SELECT nit, nombre, concepto_default, destino_default, cuenta_puc_default, retencion_hint, plazo_dias, tipo_pago_default, fuente, n_facturas, confianza::text FROM maestro_proveedores ORDER BY nombre NULLS LAST"),
+    pool.query("SELECT nit, nombre, concepto_default, destino_default, cuenta_puc_default, retencion_hint, plazo_dias, tipo_pago_default, periodo_offset_meses, fuente, n_facturas, confianza::text FROM maestro_proveedores ORDER BY nombre NULLS LAST"),
     pool.query("SELECT codigo, nombre, activo FROM maestro_cuentas_puc ORDER BY codigo"),
     pool.query(`SELECT r.nit_proveedor AS nit, mp.nombre,
                   -- ::float antes de ::text: el NUMERIC se muestra '2.5000%' y
