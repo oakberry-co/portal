@@ -1839,3 +1839,10 @@ tr.desfasada td { background: #fff8e6; }
 .pg-comp-caja.malo { border-style: solid; border-color: var(--coral); background: #fff1ed; }
 .pg-comp-caja.malo b { background: var(--coral); color: #fff; border-color: var(--coral); }
 .pg-comp-caja.malo i { color: var(--coral); font-weight: 600; white-space: normal; }
+
+/* Gastos periódicos en Conciliación (20-oct-2026): «No aplica» con motivo en la
+   misma fila, y el recibo del mes se sube desde la celda del PDF. */
+.no-aplica { grid-column: 1 / -1; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; padding-top: 4px; }
+.no-aplica input { flex: 1 1 220px; min-width: 0; font-size: 13px; padding: 4px 6px; }
+.subir-recibo { cursor: pointer; }
+.subir-recibo:hover { opacity: 1; color: var(--purple); border-color: var(--purple); }

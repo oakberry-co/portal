@@ -26,10 +26,11 @@ import { useState, useTransition } from "react";
 import { semanaISO } from "@/lib/orden-facturas";
 import { Combobox } from "./Combobox";
 import { RetencionesCuentaCobro, type ReglaConcepto } from "../cuentas-de-cobro/RetencionesCuentaCobro";
-import { clasificarDocumento } from "./actions";
+import { clasificarDocumento, noAplicaDocumento, adjuntarRecibo } from "./actions";
 import { ajustarMonto } from "@/lib/valor-actions";
 import { faltaParaPagos } from "@/lib/falta-pagos";
 import { etiquetaPeriodo, etiquetaForma, vaAlBanco } from "@/lib/gastos-periodicos";
+import { usarArchivoLiviano } from "@/lib/archivo-liviano";
 
 export type DocNoDianUI = {
   id: number; ref: string; tipo: string; tipo_detalle: string | null; origen: string;
@@ -46,7 +47,7 @@ export type DocNoDianUI = {
   retefuente: number | null; reteiva: number | null; reteica: number | null;
   otros_valor: number | null; otros_concepto: string | null; observaciones: string | null;
   valor_a_pagar: number | null;
-  n_docs: number; soporte_url: string | null; tiene_banco: boolean;
+  n_docs: number; soporte_url: string | null; plantilla_doc_url: string | null; tiene_banco: boolean;
   iva_incluido: number | null;
   // Las tarifas que el proveedor ya tiene en el maestro (misma fuente que las
   // facturas): precargan el modal en vez de dejarlo en blanco.
@@ -213,14 +214,24 @@ function FilaDoc({ d, conceptos, destinos, puedeClasificar }: {
               title={esperaValor
                 ? "Primero escribe el valor del mes: la retención es un porcentaje de él."
                 : "Retenciones de este documento (no viaja en el Excel: no tiene CUFE)"}>Reten.</button>
-      {/* Sin equivalente al desvío de cuenta por factura: se deja el hueco para
-          que las columnas de las dos clases de fila sigan alineadas. */}
-      <span />
+      {/* NO APLICA ESTE MES. Un gasto que el equipo cargó (o que nació de una
+          plantilla) y que no se va a pagar por acá —ya se pagó por fuera, se
+          canceló, nació repetido— antes no tenía salida: se quedaba esperando
+          un valor para pagarse otra vez. Ocupa el hueco del desvío de cuenta. */}
+      {(d.origen === "periodico" || d.origen === "interno") && puedeClasificar
+        ? <NoAplica d={d} />
+        : <span />}
 
       <div className="c-docs">
         {d.soporte_url
-          ? <a href={d.soporte_url} target="_blank" rel="noreferrer" className="chip" title="Documento soporte">PDF</a>
-          : <span className="chip off" title="Sin documento soporte adjunto">PDF</span>}
+          ? <a href={d.soporte_url} target="_blank" rel="noreferrer" className="chip" title="Recibo / soporte de este documento">PDF</a>
+          : <SubirRecibo d={d} puede={puedeClasificar} />}
+        {/* El recibo de EJEMPLO de la plantilla: sirve para leer la referencia,
+            no es el soporte de este mes. Se dice, para que nadie lo tome por tal. */}
+        {!d.soporte_url && d.plantilla_doc_url && (
+          <a href={d.plantilla_doc_url} target="_blank" rel="noreferrer" className="chip off"
+             title="Recibo de ejemplo de la plantilla (de otro mes). No es el soporte de este mes.">ej.</a>
+        )}
       </div>
 
       {/* LOS MISMOS TRES SEMÁFOROS que una factura, y no un texto propio: es el
@@ -308,4 +319,76 @@ function Vence({ iso }: { iso: string }) {
   const clase = d < 0 ? "lo" : d <= 3 ? "mid" : "hi";
   const texto = d < 0 ? `⏰ ${-d}d tarde` : d === 0 ? "⏰ vence hoy" : `faltan ${d}d`;
   return <span className={"nodian-vence " + clase} title={`Hay que pagarlo el ${iso}`}>{texto}</span>;
+}
+
+/** SUBIR EL RECIBO DEL MES desde la fila. Antes el documento generado heredaba
+ *  el PDF de la plantilla y no había dónde poner el de este mes. */
+function SubirRecibo({ d, puede }: { d: DocNoDianUI; puede: boolean }) {
+  const [pending, start] = useTransition();
+  const [err, setErr] = useState<string | null>(null);
+  // La foto se aliviana y se pesa ANTES de enviar (lib/archivo-liviano.ts):
+  // Vercel corta en el borde a 4,5 MB y una foto de celular pasa de eso.
+  const liviano = usarArchivoLiviano("Recibo");
+  const inputId = `recibo-${d.id}`;
+  async function cambio(e: React.ChangeEvent<HTMLInputElement>) {
+    await liviano.onChange(e);
+    // Si no cupo, el hook vació el input y dejó el motivo en `liviano.error`.
+    const f = e.target.files?.[0];
+    if (!f) return;
+    const fd = new FormData();
+    fd.set("id", String(d.id));
+    fd.set("recibo", f);
+    setErr(null);
+    start(async () => {
+      const r = await adjuntarRecibo(fd);
+      if (!r.ok) setErr(r.error ?? "No se pudo subir.");
+    });
+  }
+  if (!puede) return <span className="chip off" title="Sin recibo de este mes">PDF</span>;
+  return (
+    <>
+      <label htmlFor={inputId} className="chip off subir-recibo"
+             title="Sin recibo de este mes: toca para subirlo (PDF o foto)">
+        {pending || liviano.preparando ? "…" : "＋ recibo"}
+      </label>
+      <input id={inputId} type="file" accept="application/pdf,image/*" ref={liviano.ref} onChange={cambio}
+             style={{ display: "none" }} disabled={pending || liviano.preparando} />
+      {(err || liviano.error) && <div className="nodian-err">⚠ {err ?? liviano.error}</div>}
+    </>
+  );
+}
+
+/** NO APLICA ESTE MES: botón que pide el motivo en la misma fila. */
+function NoAplica({ d }: { d: DocNoDianUI }) {
+  const [abierto, setAbierto] = useState(false);
+  const [motivo, setMotivo] = useState("");
+  const [pending, start] = useTransition();
+  const [err, setErr] = useState<string | null>(null);
+  function enviar(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const fd = new FormData(e.currentTarget);
+    fd.set("id", String(d.id));
+    setErr(null);
+    start(async () => {
+      const r = await noAplicaDocumento(fd);
+      if (!r.ok) setErr(r.error ?? "No se pudo.");
+    });
+  }
+  if (!abierto) {
+    return (
+      <button type="button" className="c-btn ghost" onClick={() => setAbierto(true)}
+              title="Sacar de Conciliación: ya se pagó por fuera, se canceló o está repetido (pide motivo)">
+        No aplica
+      </button>
+    );
+  }
+  return (
+    <form onSubmit={enviar} className="no-aplica">
+      <input name="motivo" value={motivo} onChange={(e) => setMotivo(e.target.value)} required autoFocus
+             placeholder="¿Por qué no aplica? (ya se pagó por fuera…)" />
+      <button className="c-btn" disabled={pending || motivo.trim().length < 5}>{pending ? "…" : "Sacar"}</button>
+      <button type="button" className="c-btn ghost" onClick={() => setAbierto(false)}>✕</button>
+      {err && <div className="nodian-err">⚠ {err}</div>}
+    </form>
+  );
 }

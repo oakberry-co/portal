@@ -1262,6 +1262,15 @@ CREATE TABLE IF NOT EXISTS gasto_periodico (
 );
 CREATE INDEX IF NOT EXISTS ix_gp_activo ON gasto_periodico (activo) WHERE activo;
 CREATE INDEX IF NOT EXISTS ix_gp_nit    ON gasto_periodico (num_doc);
+-- UNA PLANTILLA POR CONTRATO (20-oct-2026). El mismo proveedor con la misma
+-- referencia de pago es el mismo contrato: dos plantillas activas generan dos
+-- obligaciones del mismo mes y la segunda se paga sin ningún error (pasó con
+-- AIR-E). La llave vive en la base y no solo en `plantillaChoca` porque son dos
+-- los caminos que crean plantillas (la pantalla y los scripts). El caso sin
+-- referencia lo cubre el código: acá no hay con qué distinguir dos tiendas.
+CREATE UNIQUE INDEX IF NOT EXISTS ux_gp_nit_ref
+  ON gasto_periodico (num_doc, referencia_pago)
+  WHERE activo AND referencia_pago IS NOT NULL AND referencia_pago <> '';
 
 -- El documento del mes: una fila más de `cuentas_cobro` (mismo carril, mismas
 -- retenciones, mismo camino a Pagos), pero que sabe de qué plantilla salió.

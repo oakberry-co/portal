@@ -67,6 +67,7 @@ export type DocNoDian = {
   valor_a_pagar: number | null;
   n_docs: number;
   soporte_url: string | null;
+  plantilla_doc_url: string | null;
   tiene_banco: boolean;
   iva_incluido: number | null;
   // Tarifas del maestro del proveedor: precargan el modal de retenciones, igual
@@ -98,6 +99,10 @@ const CAMPOS = `
   jsonb_array_length(coalesce(cc.documentos,'[]'::jsonb))::int AS n_docs,
   (SELECT d->>'path' FROM jsonb_array_elements(coalesce(cc.documentos,'[]'::jsonb)) d
     WHERE d->>'clase' = 'soporte' AND coalesce(d->>'path','') <> '' LIMIT 1) AS soporte_url,
+  -- El recibo de EJEMPLO que heredó de su plantilla: sirve para leer la
+  -- referencia, no es el soporte de este mes. Se muestra aparte y se dice.
+  (SELECT d->>'path' FROM jsonb_array_elements(coalesce(cc.documentos,'[]'::jsonb)) d
+    WHERE d->>'clase' = 'plantilla' AND coalesce(d->>'path','') <> '' LIMIT 1) AS plantilla_doc_url,
   cc.iva_incluido::float AS iva_incluido,
   mr.ret_rf::float::text AS tar_rf, mr.ret_iva::float::text AS tar_iva, mr.ret_ica::float::text AS tar_ica,
   rc.retefuente::text AS rc_rf, rc.reteica::text AS rc_ica, rc.aplica AS rc_aplica,
@@ -207,6 +212,60 @@ export async function clasificar(
     cufe: null, tipo: "clasifica_doc_no_dian", campo: Object.keys(campos).join(","),
     valorAnterior: { id, concepto: antes.concepto, destino: antes.destino, plazo_dias: antes.plazo_dias },
     valorNuevo: { id, ...campos },
+    actor: actor.email, actorRol: actor.rol, origen: "web",
+  });
+}
+
+/** NO APLICA ESTE MES. Saca de Conciliación (y de Pagos) un documento sin
+ *  factura que no se va a pagar por acá: el mes ya se pagó por fuera, el
+ *  servicio se canceló, o nació duplicado. Pasa a 'rechazada' con el motivo
+ *  escrito — 'rechazada' es lo que `LISTO_PARA_PAGOS` y `POR_CLASIFICAR` no
+ *  miran, así que desaparece de las dos listas sin un filtro nuevo.
+ *
+ *  Solo para lo que carga el equipo (periódico o interno): una cuenta de cobro
+ *  del portal público se rechaza desde su bandeja, porque ahí se le avisa al
+ *  proveedor. Y nunca con pago: lo pagado se corrige en el pago.
+ *
+ *  Nace del hallazgo del 20-oct-2026: tres obligaciones generadas de un mes que
+ *  ya se había pagado a mano, sin forma de sacarlas más que un script. */
+export async function noAplica(
+  c: PoolClient, id: number, motivo: string, actor: { email: string; rol: string },
+): Promise<void> {
+  const cur = await c.query<{ estado: string; origen: string; pago_id: number | null; periodo: string | null; razon_social: string; tipo: string }>(
+    "SELECT estado, origen, pago_id, periodo::text AS periodo, razon_social, tipo FROM cuentas_cobro WHERE id = $1 FOR UPDATE", [id]);
+  if (!cur.rowCount) throw new Error("Ese documento ya no existe.");
+  const d = cur.rows[0];
+  if (d.pago_id) throw new Error("Este gasto ya tiene un pago registrado: lo que se corrige es el pago, no el documento.");
+  if (d.estado !== "aprobada") throw new Error(`Este documento está «${d.estado}»: no hay nada que sacar.`);
+  if (!["periodico", "interno"].includes(d.origen)) {
+    throw new Error("Esto lo envió un proveedor por el portal: se devuelve desde la bandeja de Cuentas de cobro, para que le llegue el motivo.");
+  }
+  await c.query(
+    `UPDATE cuentas_cobro
+        SET estado = 'rechazada', nota_revision = $2, revisado_por = $3, revisado_en = now(), cuenta_pago = NULL
+      WHERE id = $1`, [id, motivo, actor.email]);
+  await registrarEvento(c, {
+    cufe: null, tipo: "no_aplica_gasto_periodico", campo: "cuentas_cobro",
+    valorNuevo: { id, ref: refDe(d.tipo, id), motivo, periodo: d.periodo, razon_social: d.razon_social, origen: d.origen },
+    actor: actor.email, actorRol: actor.rol, origen: "web",
+  });
+}
+
+/** EL RECIBO DE ESTE MES. Va al frente de `documentos` con clase 'soporte', que
+ *  es lo que la fila muestra como PDF y lo que vigila `pagada_sin_soporte`. El
+ *  recibo de ejemplo de la plantilla (clase 'plantilla') se queda detrás. */
+export async function guardarRecibo(
+  c: PoolClient, id: number, doc: Record<string, unknown>, actor: { email: string; rol: string },
+): Promise<void> {
+  const cur = await c.query<{ estado: string; tipo: string; razon_social: string }>(
+    "SELECT estado, tipo, razon_social FROM cuentas_cobro WHERE id = $1 FOR UPDATE", [id]);
+  if (!cur.rowCount) throw new Error("Ese documento ya no existe.");
+  await c.query(
+    "UPDATE cuentas_cobro SET documentos = jsonb_build_array($2::jsonb) || coalesce(documentos, '[]'::jsonb) WHERE id = $1",
+    [id, JSON.stringify(doc)]);
+  await registrarEvento(c, {
+    cufe: null, tipo: "adjunta_recibo", campo: "cuentas_cobro",
+    valorNuevo: { id, ref: refDe(cur.rows[0].tipo, id), nombre: doc.nombre, path: doc.path, razon_social: cur.rows[0].razon_social },
     actor: actor.email, actorRol: actor.rol, origen: "web",
   });
 }

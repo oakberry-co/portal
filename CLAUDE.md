@@ -141,7 +141,7 @@ asumiéndolo.
 ```bash
 for t in nit bancos candado_aprobacion permisos documentos retenciones_excel espina_dian \
          desvio_titular nombre_pago modal_portal enlaces_basepath \
-         aislamiento_pruebas causacion semana_pagos revertir_pago bitacora retenciones_adelanto retenciones_signo retenciones_precarga avisos cruzar_nota peso_documentos; do
+         aislamiento_pruebas causacion semana_pagos revertir_pago bitacora retenciones_adelanto retenciones_signo retenciones_precarga avisos cruzar_nota peso_documentos plantilla_duplicada; do
   node scripts/test_$t.js; done
 python3 scripts/test_enriquecimiento_xml.py   # base REAL, con ROLLBACK
 python3 scripts/test_intake_a_pagos.py     # contra la base REAL, con ROLLBACK
@@ -164,6 +164,20 @@ Los centinelas de datos (no de código) viven en el otro repo:
   banco**, sin ningún error ($37M detenidos). Canónico = **sin DV** (`lib/nit.ts`
   + espejo `scripts/nit.py`). **Nunca** "quítale el último dígito si son 10":
   una cédula de 10 dígitos tiene ~9% de dar DV válido por casualidad.
+- **El gasto periódico se paga DOS veces si el equipo carga el recibo a mano.**
+  La plantilla genera el mes sola (fila sin valor en Conciliación), pero el
+  20-oct-2026 el equipo había cargado el recibo de octubre por «Gasto sin
+  factura», lo había pagado por ahí, y al cargarlo volvió a marcar «se repite»:
+  dos plantillas de AAA Barranquilla, dos de AIR-E, y tres obligaciones fantasma
+  de un mes ya pagado esperando un valor. Tres candados desde entonces:
+  `plantillaChoca` en `crearPlantilla` (misma ref = mismo contrato; sin ref no
+  se puede probar que sean tiendas distintas) + índice `ux_gp_nit_ref`;
+  «No aplica» con motivo en la fila (`noAplica`, pasa a `rechazada`, que es lo
+  que `LISTO_PARA_PAGOS` no mira); y el recibo del mes se sube en la fila
+  (`adjuntarRecibo`) — el de la plantilla se hereda con clase `plantilla`, no
+  `soporte`, para que un PDF de agosto no pase por soporte de octubre.
+  Limpieza de lo acumulado: `scripts/limpiar_periodicos_duplicados.py`.
+  Centinela `test_plantilla_duplicada.js`.
 - **«Pagada» no siempre quiere decir que la plata salió.** La migración del Sheet
   (11-ago) convirtió 265 marcas «Pagado» tecleadas a mano en pagos del portal,
   con `pagado_por = 'migracion:historico_sheet'`, cuenta `histórico` y SIN

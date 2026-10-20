@@ -133,3 +133,41 @@ export const etiquetaTipo = (tipo: string): string =>
 
 export const etiquetaForma = (forma: string | null | undefined): string =>
   FORMAS_PAGO.find((f) => f.valor === forma)?.label ?? "—";
+
+/** ¿ESTA PLANTILLA YA EXISTE? El candado contra la doble carga humana.
+ *
+ *  Lo que pasó (oct-2026): al cargar el recibo del mes a mano, el equipo volvió
+ *  a marcar «este gasto se repite». Nacieron dos plantillas de AAA Barranquilla
+ *  y dos de AIR-E para la misma tienda, y cada una generó su obligación del mes:
+ *  dos filas sin valor esperando que alguien las pagara OTRA VEZ.
+ *
+ *  Una plantilla nueva CHOCA con una activa del mismo NIT cuando:
+ *   · tienen la misma referencia de pago (es el mismo contrato: AIR-E), o
+ *   · alguna de las dos no tiene referencia y no se puede probar que sean
+ *     tiendas distintas (destino igual, o todavía sin destino — al crearla
+ *     el destino siempre está vacío, lo pone quien clasifica después).
+ *  NO choca cuando las dos tienen referencia y son distintas: Enel le factura
+ *  a Plaza Claro y a Zona G con contratos diferentes, y eso es legítimo.
+ *
+ *  Es un módulo puro: lo usa `crearPlantilla` y lo prueba el centinela
+ *  `scripts/test_plantilla_duplicada.js`. */
+export type PlantillaIdentidad = {
+  id?: number; num_doc: string; destino: string | null; referencia_pago: string | null;
+};
+
+const ref = (r: string | null | undefined) => (r ?? "").trim();
+
+export function plantillaChoca<T extends PlantillaIdentidad>(activas: T[], nueva: PlantillaIdentidad): T | null {
+  for (const a of activas) {
+    if (a.num_doc !== nueva.num_doc) continue;
+    const ra = ref(a.referencia_pago), rn = ref(nueva.referencia_pago);
+    if (ra && rn) {
+      if (ra === rn) return a;
+      continue;                       // dos contratos distintos del mismo proveedor
+    }
+    // Sin referencia de uno de los lados solo salva un destino distinto y conocido.
+    if (a.destino && nueva.destino && a.destino !== nueva.destino) continue;
+    return a;
+  }
+  return null;
+}

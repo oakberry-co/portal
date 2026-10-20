@@ -17,7 +17,7 @@
 import type { PoolClient } from "pg";
 import { registrarEvento } from "./eventos";
 import { refDe } from "./ref-documento";
-import { periodosDebidos, vencimientoDe, etiquetaPeriodo, type Plantilla } from "./gastos-periodicos";
+import { periodosDebidos, vencimientoDe, etiquetaPeriodo, plantillaChoca, type Plantilla } from "./gastos-periodicos";
 import { hoyBogota, type Dia } from "./habiles";
 
 export type DatosPlantilla = {
@@ -35,6 +35,22 @@ export type DatosPlantilla = {
 export async function crearPlantilla(
   c: PoolClient, d: DatosPlantilla, actor: { email: string; rol: string },
 ): Promise<number> {
+  // EL CANDADO: una plantilla activa del mismo proveedor y el mismo contrato ya
+  // genera el mes sola. Crear otra es la receta del doble pago (ver
+  // `plantillaChoca`). Se mira ACÁ, en el único punto de creación, y se grita
+  // con nombre propio: quien marcó «se repite» sobre el recibo de este mes
+  // necesita saber que ese mes ya aparece solo (Regla 18).
+  const vivas = await c.query<{ id: number; num_doc: string; destino: string | null; referencia_pago: string | null; razon_social: string }>(
+    `SELECT id, num_doc, destino, referencia_pago, razon_social
+       FROM gasto_periodico WHERE activo AND num_doc = $1 ORDER BY id`, [d.num_doc]);
+  const choca = plantillaChoca(vivas.rows, d);
+  if (choca) {
+    throw new Error(`Este gasto ya se repite: existe la plantilla #${choca.id} de ${choca.razon_social}`
+      + (choca.referencia_pago ? ` (ref ${choca.referencia_pago})` : "")
+      + (choca.destino ? ` para ${choca.destino}` : "")
+      + ". El mes ya aparece solo en Conciliación: escribe ahí el valor y págalo desde esa fila, "
+      + "sin marcar «se repite» otra vez. Si el contrato cambió, da de baja la plantilla vieja primero.");
+  }
   const { rows } = await c.query<{ id: number }>(
     `INSERT INTO gasto_periodico
        (razon_social, num_doc, tipo_doc, correo, tipo, tipo_detalle, descripcion,
@@ -121,7 +137,13 @@ export async function crearDocumentoDelMes(
      // La descripción dice de qué MES es. Sin eso, tres recibos de luz de la
      // misma tienda en la misma lista son indistinguibles.
      [g.descripcion, etiquetaPeriodo(periodo)].filter(Boolean).join(" · "),
-     JSON.stringify(g.documentos ?? []), g.tipo, g.tipo_detalle,
+     // EL RECIBO DE LA PLANTILLA NO ES EL RECIBO DE ESTE MES. Se copia para que
+     // quien pague tenga dónde leer la referencia, pero con clase 'plantilla':
+     // la fila muestra "sin recibo" hasta que alguien suba el del mes
+     // (`adjuntarRecibo`). Antes se copiaba como 'soporte' y el PDF de agosto
+     // pasaba por soporte contable de octubre (hallazgo de Daniel, 20-oct-2026).
+     JSON.stringify(((g.documentos as Record<string, unknown>[] | null) ?? []).map((x) => ({ ...x, clase: "plantilla" }))),
+     g.tipo, g.tipo_detalle,
      g.concepto, g.destino, venc, plantillaId, periodo, g.forma_pago, g.referencia_pago,
      g.sitio_pago, actor.email]);
   if (!r.rowCount) return null;              // ya existía: no es un error, es el candado

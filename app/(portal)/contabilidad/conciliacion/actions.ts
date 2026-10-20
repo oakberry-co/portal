@@ -2,11 +2,12 @@
 
 import { revalidatePath } from "next/cache";
 import { invalidarAvisos } from "@/lib/avisos-cache";
-import { withTx } from "@/lib/db";
+import { withTx, getPool } from "@/lib/db";
 import { registrarEvento } from "@/lib/eventos";
 import { exigirCap } from "@/lib/auth";
 import { guardarRetenciones } from "@/lib/retenciones";
-import { clasificar } from "@/lib/documentos-no-dian";
+import { clasificar, noAplica, guardarRecibo } from "@/lib/documentos-no-dian";
+import { subirDocumentos, etiquetaEnvio } from "@/lib/intake";
 import { intentar, type Resultado } from "@/lib/resultado";
 import { limpiarTextoHumano } from "@/lib/texto";
 import { esBancoConocido } from "@/lib/bancos";
@@ -639,4 +640,48 @@ export async function quitarCruceNota(fd: FormData): Promise<Resultado & { patch
     console.error("[quitar cruce nota]", error, e);
     return { ok: false, error };
   }
+}
+
+/** NO APLICA ESTE MES: saca de Conciliación un gasto del equipo (periódico o
+ *  interno) que no se va a pagar por acá, con motivo. Ver `noAplica`. */
+export async function noAplicaDocumento(fd: FormData): Promise<Resultado> {
+  return intentar(async () => {
+    const user = await exigirCap("clasificar");
+    const id = Number(fd.get("id"));
+    const motivo = limpiarTextoHumano(String(fd.get("motivo") ?? "")) ?? "";
+    if (!id) throw new Error("Falta el documento.");
+    if (motivo.length < 5) {
+      throw new Error("Escribe por qué no aplica (ya se pagó por fuera, se canceló el servicio, está repetido…): "
+        + "quien lo busque el mes entrante necesita saberlo.");
+    }
+    await withTx(async (c) => { await noAplica(c, id, motivo, user); });
+    invalidarAvisos();
+    revalidatePath("/contabilidad/conciliacion");
+    revalidatePath("/contabilidad/pagos");
+  });
+}
+
+/** EL RECIBO DEL MES de un gasto periódico (o el soporte que le faltaba a un
+ *  gasto interno). La subida va ANTES de la transacción, igual que en el
+ *  formulario de gasto: si Drive falla no se bloquea nada y se avisa. */
+export async function adjuntarRecibo(fd: FormData): Promise<Resultado> {
+  return intentar(async () => {
+    const user = await exigirCap("clasificar");
+    const id = Number(fd.get("id"));
+    const archivo = fd.get("recibo");
+    if (!id) throw new Error("Falta el documento.");
+    if (!(archivo instanceof File) || archivo.size === 0) throw new Error("Elige el recibo (PDF o imagen).");
+    // Vercel corta en el borde cualquier petición de más de 4,5 MB y la acción
+    // nunca corre: mejor decirlo acá que dejar un botón que no hace nada.
+    if (archivo.size > 4 * 1024 * 1024) throw new Error("El recibo pesa más de 4 MB: compártelo más liviano (foto o PDF comprimido).");
+    const { rows } = await getPool().query<{ num_doc: string; razon_social: string }>(
+      "SELECT num_doc, razon_social FROM cuentas_cobro WHERE id = $1", [id]);
+    if (!rows.length) throw new Error("Ese documento ya no existe.");
+    const { docs, fallidos } = await subirDocumentos(
+      [{ file: archivo, clase: "soporte" }], "cuentas-de-cobro",
+      { nit: rows[0].num_doc, razon: rows[0].razon_social, envio: etiquetaEnvio() });
+    if (fallidos || !docs.length) throw new Error("No se pudo subir el recibo a Drive. Inténtalo de nuevo en un momento.");
+    await withTx(async (c) => { await guardarRecibo(c, id, docs[0] as unknown as Record<string, unknown>, user); });
+    revalidatePath("/contabilidad/conciliacion");
+  });
 }
