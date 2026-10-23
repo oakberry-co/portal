@@ -12,7 +12,11 @@ import type { AreaMenu } from "./CascaraPortal";
 // "equipo" = admin u operador (el equipo interno de Manel Foods).
 // Los ítems SIN href son los que todavía no existen: se muestran como "pronto"
 // a propósito, para que el equipo sepa qué viene y no los pida dos veces.
-type Item = { label: string; href?: string; cap: Cap | "equipo"; ico: string; sub?: string };
+// externo = programa que vive fuera del portal (oakberry-cupones.com, dashboards): se
+// abre en pestaña nueva y no lleva el prefijo del ambiente de pruebas.
+type Item = { label: string; href?: string; cap: Cap | "equipo"; ico: string; sub?: string; externo?: boolean };
+const CUP = "https://www.oakberry-cupones.com";
+const ext = (label: string, href: string, ico: string, sub?: string): Item => ({ label, href, ico, sub, cap: "equipo", externo: true });
 type Area = { id: string; label: string; ico: string; items: Item[] };
 
 const AREAS: Area[] = [
@@ -35,15 +39,19 @@ const AREAS: Area[] = [
   // P&L al día por tienda (reflejo de BigQuery; solo el decisor mientras se calibra).
   { id: "finanzas", label: "Finanzas", ico: "finanzas", items: [
     { label: "P&L al día", href: "/finanzas", cap: "finanzas", ico: "pnl" },
+    ext("Conciliación de programas", `${CUP}/conciliacion`, "conciliacion", "Programas"),
   ] },
-  // Nómina es su propia app de pantalla completa (perspectivas RRHH / punto /
-  // colaborador); desde aquí se entra. Solo el decisor mientras sea maqueta.
-  { id: "rrhh", label: "Recursos humanos", ico: "rrhh", items: [
-    { label: "Nómina", href: "/nomina", cap: "nomina", ico: "nomina" },
-  ] },
+  // Recursos humanos = la app de Nómina, ahora dentro de la misma barra (23-oct-2026).
+  // Sus ítems dependen de la PERSPECTIVA (RRHH / administrador de punto / colaborador),
+  // no solo del rol: los pone areasPara() desde NOMINA (abajo).
+  { id: "rrhh", label: "Recursos humanos", ico: "rrhh", items: [] },
   { id: "operaciones", label: "Operaciones", ico: "operaciones", items: [
-    { label: "Tiendas", cap: "equipo", ico: "operaciones" },
-    { label: "Compras e inventario", cap: "equipo", ico: "ordenes" },
+    ext("Lectura de ventas vs meta", `${CUP}/lectura`, "finanzas", "Programas"),
+    ext("Validador de cupones (caja)", `${CUP}/validar`, "conciliacion", "Programas"),
+    ext("Concursos entre tiendas", "https://www.oakberry-eventos.com/concursos", "palanca", "Programas"),
+    ext("Domicilios", "https://dashboard.oakberry-eventos.com/dashboard/", "operaciones", "Programas"),
+    { label: "Tiendas", cap: "equipo", ico: "operaciones", sub: "Próximamente" },
+    { label: "Compras e inventario", cap: "equipo", ico: "ordenes", sub: "Próximamente" },
   ] },
   // Mercadeo: CRM + análisis Loopy + campañas (reflejo diario de BigQuery).
   { id: "mercadeo", label: "Mercadeo", ico: "mercadeo", items: [
@@ -60,6 +68,21 @@ const AREAS: Area[] = [
     { label: "Por palanca", href: "/mercadeo/palancas", cap: "mercadeo", ico: "palanca", sub: "Resultados del CRM" },
     { label: "Mensajes", href: "/mercadeo/mensajes", cap: "mercadeo", ico: "mensajes", sub: "Resultados del CRM" },
     { label: "Canjes y costos", href: "/mercadeo/canjes", cap: "mercadeo", ico: "canjes", sub: "Resultados del CRM" },
+    ext("Dashboard CRM Growth", "https://dashboard.oakberry-eventos.com/dashboard/", "tablero", "Programas"),
+    ext("Consola de reactivación", `${CUP}/consola`, "react", "Programas"),
+    ext("Influencers", `${CUP}/influencers`, "personas", "Programas"),
+    ext("Premios", `${CUP}/premios`, "canjes", "Programas"),
+    ext("Amigos · campañas", `${CUP}/amigos-config`, "audiencia", "Programas"),
+    ext("Amigos · panel", `${CUP}/amigos-panel`, "audiencia", "Programas"),
+    ext("Cupón sorpresa", `${CUP}/sorpresa-config`, "canjes", "Programas"),
+    ext("Centro de control (sorteos)", `${CUP}/centrodecontrol`, "envios", "Programas"),
+    ext("Juegos · centro de mando", `${CUP}/centro`, "palanca", "Programas"),
+    ext("Generador de links", `${CUP}/links`, "soportes", "Programas"),
+    ext("Mensajería Instagram", `${CUP}/mensajeria`, "mensajes", "Programas"),
+    ext("Creador de flyers", `${CUP}/flyer`, "plantillas", "Programas"),
+    ext("Mapa de calor adquisición", `${CUP}/mapadecalor`, "cohortes", "Programas"),
+    ext("Centro de cupones RD", `${CUP}/rd/centro`, "internacional", "República Dominicana"),
+    ext("Creadores RD · seguimiento", `${CUP}/rd/seguimiento`, "personas", "República Dominicana"),
   ] },
   { id: "config", label: "Configuración", ico: "config", items: [
     { label: "Usuarios y permisos", href: "/contabilidad/configuracion", cap: "usuarios", ico: "config" },
@@ -68,12 +91,45 @@ const AREAS: Area[] = [
 
 const esEquipo = (rol: Rol) => rol === "admin" || rol === "operador";
 
-/** Deja solo lo que el rol puede ver, y descarta las áreas que quedan vacías. */
-export function areasPara(rol: Rol): AreaMenu[] {
+// NÓMINA: mismos grupos, nombres y orden que tenía su barra propia (NavNomina, estilo
+// Oak-Crew). `solo` = perspectivas que lo ven; sin `solo`, lo ven las tres.
+export type TipoNomina = "rrhh" | "admin_punto" | "colaborador";
+const NOMINA: (Omit<Item, "cap"> & { solo?: TipoNomina[] })[] = [
+  { label: "Dashboard", href: "/nomina", ico: "tablero", sub: "General", solo: ["rrhh", "admin_punto"] },
+  { label: "Mi horario", href: "/nomina/mi-horario", ico: "nomina", sub: "General" },
+  { label: "Marcar asistencia", href: "/nomina/marcar", ico: "conciliacion", sub: "General" },
+  { label: "Empleados", href: "/nomina/empleados", ico: "rrhh", sub: "Operación", solo: ["rrhh", "admin_punto"] },
+  { label: "Centros / Tiendas", href: "/nomina/tiendas", ico: "operaciones", sub: "Operación", solo: ["rrhh", "admin_punto"] },
+  { label: "Integración ventas", href: "/nomina/integracion", ico: "soportes", sub: "Operación", solo: ["rrhh"] },
+  { label: "Planificación", href: "/nomina/planificacion", ico: "nomina", sub: "Operación", solo: ["rrhh", "admin_punto"] },
+  { label: "Marcaciones", href: "/nomina/marcacion", ico: "cuentas", sub: "Operación", solo: ["rrhh", "admin_punto"] },
+  { label: "Turnos extra", href: "/nomina/turnos-extra", ico: "adq", sub: "Operación", solo: ["rrhh", "admin_punto"] },
+  { label: "Intercambio turnos", href: "/nomina/intercambio", ico: "ret", sub: "Operación", solo: ["rrhh", "admin_punto"] },
+  { label: "Gestión ausencias", href: "/nomina/ausencias", ico: "pronto", sub: "Operación", solo: ["rrhh", "admin_punto"] },
+  { label: "Solicitudes", href: "/nomina/solicitudes", ico: "mensajes", sub: "Operación" },
+  { label: "Reportes", href: "/nomina/reportes", ico: "cotizaciones", sub: "Finanzas y reportes", solo: ["rrhh", "admin_punto"] },
+  { label: "Costos laborales", href: "/nomina/costos", ico: "gasto", sub: "Finanzas y reportes", solo: ["rrhh"] },
+  { label: "Dashboard financiero", href: "/nomina/financiero", ico: "finanzas", sub: "Finanzas y reportes", solo: ["rrhh"] },
+  { label: "Incentivos", href: "/nomina/incentivos", ico: "palanca", sub: "Finanzas y reportes", solo: ["rrhh", "admin_punto"] },
+  { label: "Nómina (quincena)", href: "/nomina/quincena", ico: "pagos", sub: "Finanzas y reportes", solo: ["rrhh"] },
+  { label: "Liquidaciones", href: "/nomina/liquidaciones", ico: "cuentas", sub: "Finanzas y reportes", solo: ["rrhh"] },
+  { label: "Cumplimiento", href: "/nomina/cumplimiento", ico: "maestros", sub: "Finanzas y reportes", solo: ["rrhh", "admin_punto"] },
+  { label: "Reglas y vigencias", href: "/nomina/reglas", ico: "config", sub: "Configuración", solo: ["rrhh"] },
+  { label: "Bitácora", href: "/nomina/bitacora", ico: "causaciones", sub: "Configuración", solo: ["rrhh"] },
+  { label: "Mi perfil", href: "/nomina/perfil", ico: "personas", sub: "Cuenta" },
+];
+
+/** Deja solo lo que el rol puede ver, y descarta las áreas que quedan vacías.
+ *  `tipoNomina` llega desde la app de Nómina (su perspectiva real); fuera de ella, quien
+ *  tiene la capacidad `nomina` ve la perspectiva RRHH y nadie más ve el área. */
+export function areasPara(rol: Rol, tipoNomina?: TipoNomina): AreaMenu[] {
+  const tipo: TipoNomina | null = tipoNomina ?? (puede(rol, "nomina") ? "rrhh" : null);
   return AREAS
     .map((a) => ({ id: a.id, label: a.label, ico: a.ico,
-      items: a.items.filter((i) => (i.cap === "equipo" ? esEquipo(rol) : puede(rol, i.cap)))
-        .map(({ label, href, ico, sub }) => ({ label, href, ico, sub })) }))
+      items: a.id === "rrhh"
+        ? (tipo ? NOMINA.filter((i) => !i.solo || i.solo.includes(tipo)).map(({ label, href, ico, sub }) => ({ label, href, ico, sub })) : [])
+        : a.items.filter((i) => (i.cap === "equipo" ? esEquipo(rol) : puede(rol, i.cap)))
+            .map(({ label, href, ico, sub, externo }) => ({ label, href, ico, sub, externo })) }))
     .filter((a) => a.items.length > 0);
 }
 
@@ -83,8 +139,8 @@ export function areasPortada(rol: Rol) {
   const vis = areasPara(rol);
   return AREAS.filter((a) => a.id !== "config").map((a) => {
     const v = vis.find((x) => x.id === a.id);
-    const abre = v?.items.find((i) => i.href);
+    const abre = v?.items.find((i) => i.href && !i.externo) ?? v?.items.find((i) => i.href);
     return { id: a.id, label: a.label, ico: a.ico, href: abre?.href ?? null, conAcceso: !!v,
-             secciones: (v?.items ?? []).filter((i) => i.href).length };
+             externo: !!abre?.externo, secciones: (v?.items ?? []).filter((i) => i.href).length };
   });
 }

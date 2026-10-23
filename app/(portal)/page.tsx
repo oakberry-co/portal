@@ -50,7 +50,7 @@ export default async function Home() {
             );
           }
           return (
-            <a key={a.id} className="card" href={ruta(a.href)}>
+            <a key={a.id} className="card" href={a.externo ? a.href! : ruta(a.href)} {...(a.externo ? { target: "_blank", rel: "noopener noreferrer" } : {})}>
               <div className="card-ico">{t.ico}</div>
               <h3>{a.label}</h3>
               <p>{t.txt}</p>

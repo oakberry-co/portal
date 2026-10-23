@@ -31,6 +31,8 @@
 .pc-items a > span, .pc-items .pronto > span { flex: 1; min-width: 0; }   /* nombres largos parten la línea; la etiqueta no se sale */
 .pc-items .pronto em { margin-left: auto; font-style: normal; font-size: 10px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase;
   color: var(--lav); background: var(--cream-2); border-radius: 999px; padding: 1px 7px; }
+.pc-items a.ext b { font-weight: 400; font-size: 12px; color: var(--lav); }
+.pc-items a.ext:hover b { color: var(--purple); }
 .pc-items h5 { margin: 10px 10px 3px; font-size: 10px; letter-spacing: .14em; text-transform: uppercase; color: var(--lav); font-weight: 800; }
 .pc-solo { margin: 0 0 6px; }
 .pc-solo a { font-weight: 700; font-size: 14px; color: var(--ink); padding: 10px 11px; }
@@ -63,3 +65,7 @@
   .pc-top { padding: 0 12px; gap: 8px; } .pc-hamb { display: block; }
   .pc-der .nav-who { display: none; }
 }
+
+/* Nómina adentro: su contenido sigue bajo .oc (los estilos de nomina.css dependen de
+   esa clase), pero sin la grilla de pantalla completa que traía su barra propia. */
+.pc-main > .oc.oc-dentro { display: block; min-height: 0; background: transparent; grid-template-columns: none; }

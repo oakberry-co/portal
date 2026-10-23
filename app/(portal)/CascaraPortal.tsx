@@ -17,7 +17,7 @@ import { ICONOS } from "./iconos";
 // Las áreas llegan YA filtradas por permiso desde el servidor (layout.tsx): esto
 // solo pinta. Un ítem sin href es "pronto": se ve, no se abre.
 
-export type ItemMenu = { label: string; href?: string; ico: string; sub?: string };
+export type ItemMenu = { label: string; href?: string; ico: string; sub?: string; externo?: boolean };
 export type AreaMenu = { id: string; label: string; ico: string; items: ItemMenu[] };
 
 const activo = (p: string, href?: string) =>
@@ -32,7 +32,7 @@ export function CascaraPortal({ areas, email, rol, iniciales, derecha, salir, ch
   const actual = useMemo(() => {
     let mejor: { area: AreaMenu; item: ItemMenu } | null = null;
     for (const a of areas) for (const i of a.items)
-      if (activo(p, i.href) && (!mejor || (i.href!.length > (mejor.item.href ?? "").length))) mejor = { area: a, item: i };
+      if (!i.externo && activo(p, i.href) && (!mejor || (i.href!.length > (mejor.item.href ?? "").length))) mejor = { area: a, item: i };
     return mejor;
   }, [areas, p]);
 
@@ -76,7 +76,10 @@ export function CascaraPortal({ areas, email, rol, iniciales, derecha, salir, ch
                   {a.items.map((i) => {
                     const titulo = i.sub && i.sub !== ultimoSub ? <h5 key={"h" + i.sub}>{i.sub}</h5> : null;
                     ultimoSub = i.sub;
-                    const cuerpo = i.href
+                    // Programa fuera del portal: pestaña nueva, para no perder el portal.
+                    const cuerpo = i.href && i.externo
+                      ? <a key={i.label} href={i.href} target="_blank" rel="noopener noreferrer" className="ext">{svg(i.ico)}<span>{i.label}</span><b aria-hidden="true">↗</b></a>
+                      : i.href
                       ? <a key={i.label} href={ruta(i.href)} className={actual?.item === i ? "on" : ""}>{svg(i.ico)}<span>{i.label}</span></a>
                       : <span key={i.label} className="pronto">{svg(i.ico)}<span>{i.label}</span><em>pronto</em></span>;
                     return titulo ? [titulo, cuerpo] : cuerpo;
