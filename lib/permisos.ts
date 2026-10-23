@@ -26,12 +26,16 @@ export type Cap =
   | "nomina"
   // Finanzas: el P&L al día por tienda (reflejo de BigQuery). Arranca solo para
   // el decisor; gerencia entra cuando el backtest lleve dos cierres cuadrando.
-  | "finanzas";
+  | "finanzas"
+  // Mercadeo: CRM, cohortes/LTV/retención de Loopy y resultados de campañas
+  // (reflejo de BigQuery, solo lectura). Todo el equipo @manelfoods.com (pedido de
+  // Daniel, 23-oct-2026); lanzar campañas será una capacidad aparte.
+  | "mercadeo";
 
 const TODAS: Cap[] = [
   "ver_conciliacion", "clasificar", "retenciones", "tipo_pago",
   "ver_pagos", "pagos", "export_historial", "causar", "maestros", "maestro_retenciones",
-  "ver_intake", "intake", "dashboard", "asistente", "usuarios", "revertir_pago", "cruzar_nota", "nomina", "finanzas",
+  "ver_intake", "intake", "dashboard", "asistente", "usuarios", "revertir_pago", "cruzar_nota", "nomina", "finanzas", "mercadeo",
 ];
 
 // VER ≠ OPERAR. La bandeja del intake se parte en dos capacidades porque quien

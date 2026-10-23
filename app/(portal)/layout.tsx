@@ -42,6 +42,8 @@ const MENU: Grupo[] = [
   { label: "Nómina", href: "/nomina", cap: "nomina" },
   // P&L al día por tienda (reflejo de BigQuery; solo el decisor mientras se calibra).
   { label: "Finanzas", href: "/finanzas", cap: "finanzas" },
+  // Mercadeo: CRM + análisis Loopy + campañas (pantalla completa con su barra lateral).
+  { label: "Mercadeo", href: "/mercadeo", cap: "mercadeo" },
   {
     label: "Configuraciones",
     items: [

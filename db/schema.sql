@@ -1715,3 +1715,19 @@ CREATE TABLE IF NOT EXISTS rrhh_documentos (
   subido_por   TEXT, subido_en TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS rrhh_documentos_emp ON rrhh_documentos (empleado_id, tipo, id DESC);
+
+-- ═══ MERCADEO (23-oct-2026) ═══════════════════════════════════════════════
+-- Módulo /mercadeo: CRM, análisis Loopy (cohortes, LTV, adquisición, retención,
+-- reactivación) y resultados de campañas. Es un REFLEJO de BigQuery, de solo
+-- lectura: datawarehouse/dashboards/mercadeo/export_mercadeo.py --pg arma el
+-- snapshot (un JSON, ~250 KB) y lo guarda aquí (cron de la VM: orchestration/
+-- daily_mercadeo.sh del repo datawarehouse). La página
+-- lee la fila más nueva. Se conservan las últimas 14 para poder comparar o volver.
+CREATE TABLE IF NOT EXISTS mk_snapshot (
+  id          bigserial PRIMARY KEY,
+  generado    timestamptz NOT NULL,
+  loopy_hasta date        NOT NULL,
+  datos       jsonb       NOT NULL,
+  creado_en   timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS ix_mk_snapshot_generado ON mk_snapshot (generado DESC);
