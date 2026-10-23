@@ -1731,3 +1731,69 @@ CREATE TABLE IF NOT EXISTS mk_snapshot (
   creado_en   timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS ix_mk_snapshot_generado ON mk_snapshot (generado DESC);
+
+-- ═══ CAMPAÑAS DEL CRM (24-oct-2026) ════════════════════════════════════════
+-- La pestaña Mercadeo › Campañas: se escoge ciudad, tienda, grupo (tier), canal,
+-- palancas, vigencia y tope, y el generador de la VM (datawarehouse/crm/decision/
+-- generar_campanas.py) dispara SOLO lo que esté aquí al aire, con las reglas de
+-- siempre (elegibilidad y descansos de crm.v_elegibles_*, una persona en una sola
+-- campaña, cupón atado a su tienda, topes diarios por canal, plantillas aprobadas).
+
+-- El catálogo: una fila por palanca. Solo las 'disponible' se pueden escoger en
+-- una campaña; las demás se ven (con lo que les falta) y no se pueden escoger.
+CREATE TABLE IF NOT EXISTS crm_palancas (
+  id              TEXT PRIMARY KEY,               -- doble_sello, topping_premium, …
+  nombre          TEXT NOT NULL,
+  estado          TEXT NOT NULL DEFAULT 'borrador'
+                  CHECK (estado IN ('borrador','disponible','pausada','retirada')),
+  descripcion     TEXT,                            -- qué recibe el cliente, en una línea
+  tipo_cupon      TEXT,                            -- crm.cupones.tipo_cupon
+  producto        TEXT,                            -- crm.cupones.producto (lo lee el validador)
+  costo_canje     NUMERIC(12,2) NOT NULL DEFAULT 0, -- costo esperado por canje, sin IVA
+  tasa_canje      NUMERIC(6,4) NOT NULL DEFAULT 0,  -- canjes / enviados, para el pronóstico
+  vigencia_dias   INT NOT NULL DEFAULT 7,          -- vida del cupón
+  dia_envio       INT,                             -- 0=lunes…6=domingo; NULL = cualquier día
+  wa_plantilla    TEXT,                            -- template_id de la cola (wa_sender)
+  email_plantilla TEXT,                            -- template_id de la cola (email_sender)
+  toteat          TEXT,                            -- descuento que aplica el cajero (o NULL)
+  efecto          JSONB NOT NULL DEFAULT '{}',     -- por tier: {"T1": {"pp": 7.5, "n": 783, "fuente": "…"}}
+  falta           TEXT,                            -- qué le falta para estar disponible
+  orden           INT NOT NULL DEFAULT 100,
+  actualizado_en  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS crm_campanas (
+  id              BIGSERIAL PRIMARY KEY,
+  codigo          TEXT UNIQUE NOT NULL,            -- CAM-0001 (va en cada cupón)
+  nombre          TEXT NOT NULL,
+  estado          TEXT NOT NULL DEFAULT 'borrador'
+                  CHECK (estado IN ('borrador','al_aire','pausada','terminada')),
+  creada_por      TEXT NOT NULL,
+  creada_en       TIMESTAMPTZ NOT NULL DEFAULT now(),
+  ciudades        TEXT[] NOT NULL DEFAULT '{}',    -- vacío = todas
+  tiendas         TEXT[] NOT NULL DEFAULT '{}',    -- short_code; vacío = todas las de esas ciudades
+  tiers           TEXT[] NOT NULL DEFAULT '{}',    -- T1..T5; vacío = todos
+  canales         TEXT[] NOT NULL DEFAULT '{wa,email}',
+  palancas        TEXT[] NOT NULL,                 -- ids de crm_palancas, se reparten al azar
+  control_pct     INT NOT NULL DEFAULT 20 CHECK (control_pct BETWEEN 0 AND 50),
+  desde           DATE NOT NULL,                   -- vigencia de la CAMPAÑA (al aire)
+  hasta           DATE NOT NULL,
+  tope_tipo       TEXT NOT NULL DEFAULT 'canjes' CHECK (tope_tipo IN ('canjes','pesos')),
+  tope_valor      NUMERIC(14,2) NOT NULL CHECK (tope_valor > 0),
+  paga            TEXT NOT NULL DEFAULT 'marca' CHECK (paga IN ('marca','franquiciado')),
+  semilla         TEXT,                            -- reparto estable; por defecto el código
+  notas           TEXT,
+  actualizado_en  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CHECK (hasta >= desde)
+);
+CREATE INDEX IF NOT EXISTS ix_crm_campanas_estado ON crm_campanas (estado, desde, hasta);
+
+-- Quién hizo qué con cada campaña (crear, lanzar, pausar, terminar), append-only.
+CREATE TABLE IF NOT EXISTS crm_campanas_log (
+  id        BIGSERIAL PRIMARY KEY,
+  codigo    TEXT NOT NULL,
+  accion    TEXT NOT NULL,
+  por       TEXT NOT NULL,
+  detalle   JSONB,
+  en        TIMESTAMPTZ NOT NULL DEFAULT now()
+);
