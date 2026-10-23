@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { perspectiva } from "@/lib/rrhh/perspectiva";
 import { quincena as qQuincena, quincenas as qQuincenas } from "@/lib/rrhh/db";
 import { guardarNovedad, borrarNovedad, aprobarQuincena, reabrirQuincena } from "@/lib/rrhh/actions";
-import { cop, mm, hh, totalTrabajadas } from "@/lib/rrhh/motor";
+import { cop, mm, hh, totalTrabajadas, totalExtras } from "@/lib/rrhh/motor";
 import { TIPOS_NOVEDAD } from "@/lib/rrhh/catalogos";
 import { fechaCorta, fechaLarga, hoyBogota, quincenaAnterior, quincenaDe, quincenaSiguiente, esFecha } from "@/lib/rrhh/fechas";
 import { Head, Kpi, Pill, Nota, Aviso, Filtros, A } from "../_lib/ui";
@@ -44,6 +44,7 @@ export default async function Quincena({ searchParams }: { searchParams: Promise
           <A className="btn ghost" href={conParams("/nomina/quincena", { t: tiendaId })}>Última cerrada</A>
           <A className="btn ghost" href={nav(qs.desde)}>Siguiente ›</A>
           <A className="btn ghost" href={conParams("/nomina/quincena/export", { q: q.desde, t: tiendaId })}>Excel novedades (Siigo Nómina)</A>
+          <A className="btn ghost" href={conParams("/nomina/quincena/pila", { m: q.desde.slice(0, 7), t: tiendaId })}>Aportes PILA del mes (revisión)</A>
           {aprobada ? null : (
             <form action={aprobarQuincena} style={{ display: "inline" }}>
               <input type="hidden" name="desde" value={q.desde} />
@@ -66,24 +67,25 @@ export default async function Quincena({ searchParams }: { searchParams: Promise
         <span className="sep" /><Pill tono="info">Origen: marcación aprobada</Pill>
       </Filtros>
       <div className="nm-kpis">
-        <Kpi label="Total devengado" valor={mm(tot.devengado)} sub="básico + recargos − descuentos + transporte" />
-        <Kpi label="Deducciones" valor={mm(tot.deducciones)} sub="salud 4 % + pensión 4 % + FSP" />
-        <Kpi label="Novedades" valor={(tot.novedades >= 0 ? "+" : "−") + mm(Math.abs(tot.novedades))} sub={`${novs.length} registradas`} />
+        <Kpi label="Total devengado" valor={mm(tot.devengado)} sub="básico + recargos + extras − descuentos + transporte + prestaciones" />
+        <Kpi label="Deducciones" valor={mm(tot.deducciones)} sub="salud 4 % + pensión 4 % + FSP + retención" />
+        <Kpi label="Novedades" valor={(tot.novedades >= 0 ? "+" : "−") + mm(Math.abs(tot.novedades))} sub={`${novs.length} registradas (ya dentro de devengado/deducciones)`} />
         <Kpi label="Neto a pagar" valor={mm(tot.neto)} tono="hl" />
         <Kpi label="Costo empleador" valor={mm(tot.costoEmpleador)} sub={`+ carga ${mm(P.tot.carga)}`} />
         <Kpi label="Sin marcación" valor={sinMarcar} tono={sinMarcar ? "warn" : "ok"} sub="personas con turnos sin marcar" />
       </div>
       <div className="nm-card nm-scroll">
         {lineas.length === 0 ? <div className="nm-vacio">Sin empleados en la quincena.</div> : (
-        <table className="nm-tabla"><thead><tr><th>Empleado</th><th>Tienda</th><th className="num">Horas</th><th className="num">Básico</th><th className="num">Recargos</th><th className="num">Desc./aus.</th><th className="num">IBC</th><th className="num">Salud 4%</th><th className="num">Pensión 4%</th><th className="num">FSP</th><th className="num">Aux. transp.</th><th className="num">Novedades</th><th className="num">Neto</th><th>Alertas</th></tr></thead>
+        <table className="nm-tabla"><thead><tr><th>Empleado</th><th>Tienda</th><th className="num">Horas</th><th className="num">Básico</th><th className="num">Recargos</th><th className="num">Extras (base)</th><th className="num">Desc./aus.</th><th className="num">IBC</th><th className="num">Salud 4%</th><th className="num">Pensión 4%</th><th className="num">FSP</th><th className="num">Retención</th><th className="num">Aux. transp.</th><th className="num">Prima / int. ces.</th><th className="num">Novedades</th><th className="num">Neto</th><th>Alertas</th></tr></thead>
           <tbody>{lineas.map((x) => (<tr key={x.e.activo_id}>
             <td className="nm-nombre">{x.e.nombre_completo}{x.activos < P.fechas.length && <div className="nm-sub">{x.activos} de {P.fechas.length} días (prorrateado)</div>}</td>
-            <td className="nm-sub">{nombreTienda(x.e.punto)}</td><td className="num">{hh(totalTrabajadas(x.l.horas))}</td><td className="num">{cop(x.basico)}</td><td className="num">{cop(x.recargos)}</td>
-            <td className="num" title={[x.diasNoRem ? `${x.diasNoRem} día(s) no remunerados` : "", x.diasInc ? `${x.diasInc} día(s) de incapacidad (33,33 %)` : ""].filter(Boolean).join(" · ")}>{x.descuentos ? "−" + cop(x.descuentos) : "—"}</td>
-            <td className="num">{cop(x.ibc)}</td><td className="num">{cop(x.salud)}</td><td className="num">{cop(x.pension)}</td><td className="num">{x.fsp ? cop(x.fsp) : "—"}</td><td className="num">{cop(x.auxilio)}</td>
+            <td className="nm-sub">{nombreTienda(x.e.punto)}</td><td className="num">{hh(totalTrabajadas(x.l.horas))}{totalExtras(x.l.horas) > 0 && <div className="nm-sub">{hh(totalExtras(x.l.horas))} extra</div>}</td><td className="num">{cop(x.basico)}</td><td className="num">{cop(x.recargos)}</td><td className="num">{x.extrasBase ? cop(x.extrasBase) : "—"}</td>
+            <td className="num" title={x.ausencias.map((a) => `${a.tipo}${a.origen ? ` (${a.origen})` : ""}: ${a.dias} día(s), paga ${cop(a.pago)}${a.descuento ? `, descuenta ${cop(a.descuento)}` : ""}`).join(" · ")}>{x.descuentos ? "−" + cop(x.descuentos) : x.ausencias.length ? "0" : "—"}</td>
+            <td className="num">{cop(x.ibc)}</td><td className="num">{cop(x.salud)}</td><td className="num">{cop(x.pension)}</td><td className="num">{x.fsp ? cop(x.fsp) : "—"}</td><td className="num">{x.retencion ? cop(x.retencion) : "—"}</td><td className="num" title={`${x.diasAux} día(s) con derecho`}>{cop(x.auxilio)}</td>
+            <td className="num">{x.prima || x.intereses ? cop(x.prima + x.intereses) : "—"}{x.cesantiasConsignadas ? <div className="nm-sub">ces. al fondo {cop(x.cesantiasConsignadas)}</div> : null}</td>
             <td className="num">{x.novedades ? (x.novedades > 0 ? "+" : "−") + cop(Math.abs(x.novedades)) : "—"}</td><td className="num"><b>{cop(x.neto)}</b></td>
-            <td>{x.l.alertas.length ? <Pill tono="warn">{x.l.alertas.length} sin marcar</Pill> : <Pill tono="ok">ok</Pill>}</td></tr>))}
-            <tr className="tot"><td colSpan={3}>Total</td><td className="num">{cop(tot.basico)}</td><td className="num">{cop(tot.recargos)}</td><td className="num">{tot.descuentos ? "−" + cop(tot.descuentos) : "—"}</td><td className="num">{cop(tot.ibc)}</td><td className="num">{cop(tot.salud)}</td><td className="num">{cop(tot.pension)}</td><td className="num">{cop(tot.fsp)}</td><td className="num">{cop(tot.auxilio)}</td><td className="num">{cop(tot.novedades)}</td><td className="num">{cop(tot.neto)}</td><td /></tr></tbody></table>)}
+            <td>{x.l.alertas.length ? <Pill tono="warn">{x.l.alertas.length} sin marcar</Pill> : null}{x.l.alertasLegales.length ? <span title={x.l.alertasLegales.join("\n")}><Pill tono="bad">{x.l.alertasLegales.length} extras sobre tope</Pill></span> : null}{x.alertas.length ? <span title={x.alertas.join("\n")}><Pill tono="info">{x.alertas.length} aviso(s)</Pill></span> : null}{!x.l.alertas.length && !x.l.alertasLegales.length && !x.alertas.length ? <Pill tono="ok">ok</Pill> : null}</td></tr>))}
+            <tr className="tot"><td colSpan={3}>Total</td><td className="num">{cop(tot.basico)}</td><td className="num">{cop(tot.recargos)}</td><td className="num">{cop(tot.extrasBase)}</td><td className="num">{tot.descuentos ? "−" + cop(tot.descuentos) : "—"}</td><td className="num">{cop(tot.ibc)}</td><td className="num">{cop(tot.salud)}</td><td className="num">{cop(tot.pension)}</td><td className="num">{cop(tot.fsp)}</td><td className="num">{cop(tot.retencion)}</td><td className="num">{cop(tot.auxilio)}</td><td className="num">{cop(tot.prima + tot.intereses)}</td><td className="num">{cop(tot.novedades)}</td><td className="num">{cop(tot.neto)}</td><td /></tr></tbody></table>)}
       </div>
       <div className="nm-grid2">
         <div className="nm-card">
@@ -134,7 +136,7 @@ export default async function Quincena({ searchParams }: { searchParams: Promise
         <table className="nm-tabla"><thead><tr><th>Quincena</th><th>Estado</th><th>Aprobó</th><th className="num">Neto</th><th className="num">Costo empleador</th></tr></thead>
           <tbody>{historial.map((h) => (<tr key={h.desde}><td className="nm-nombre"><A href={nav(h.desde)}>{fechaCorta(h.desde)} – {fechaCorta(h.hasta)} {h.desde.slice(0, 4)}</A></td><td>{h.estado === "aprobada" ? <Pill tono="ok">aprobada</Pill> : <Pill tono="warn">borrador</Pill>}</td><td className="nm-sub">{h.aprobada_por ?? "—"}{h.aprobada_en ? " · " + diaDe(h.aprobada_en) : ""}</td><td className="num">{h.total_neto != null ? cop(h.total_neto) : "—"}</td><td className="num">{h.total_costo != null ? cop(h.total_costo) : "—"}</td></tr>))}</tbody></table>)}
       </div>
-      <Nota><b>Diferencia clave con Oak-Crew:</b> el básico es el salario del contrato ÷ 2, no horas planeadas × tarifa. Las horas solo suman recargos y extras. IBC sin auxilio; FSP sobre 4 SMLMV; incapacidad al 66,67 %; descansos y ausencias remuneradas dentro del básico; las no remuneradas descuentan salario/30 por día hábil. La salida es el <b>Excel de novedades</b> que Siigo Nómina importa (no tiene API).</Nota>
+      <Nota><b>Diferencia clave con Oak-Crew:</b> el básico es el salario del contrato ÷ 2, no horas planeadas × tarifa. Las horas solo suman recargos y extras. Mes de 30 días (la quincena vale 15). Horas extra por semana (lun–dom) contra la jornada de la ficha: las últimas horas de la semana son las extra y se pagan completas (base + recargo). IBC sin auxilio; FSP desde 4 SMLMV; incapacidad común: días 1-2 al 100 %, desde el 3 al 66,67 % sin bajar del SMLMV diario; laboral al 100 %; auxilio de transporte solo por días con derecho (no en incapacidad, licencia ni vacaciones); las no remuneradas descuentan salario/30 por día hábil. Retención en la fuente (proc. 1) sobre el mes, en la 2ª quincena. Prima en la 2ª de junio y la 1ª de diciembre; intereses de cesantías en la 2ª de enero; cesantías al fondo en febrero (informativo, fuera del neto). La salida es el <b>Excel de novedades</b> que Siigo Nómina importa (no tiene API).</Nota>
     </>
   );
 }

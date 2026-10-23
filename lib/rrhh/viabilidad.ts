@@ -8,7 +8,7 @@
 import type { EmpleadoDb, Solicitud, TurnoDb } from "./db";
 import { diasEntre, rango, hoyBogota } from "./fechas";
 import { esDominical, FESTIVOS } from "./motor";
-import { TIPOS_AUSENCIA } from "./catalogos";
+import { TIPOS_AUSENCIA, esIncapacidad } from "./catalogos";
 
 export type Alarma = { nivel: "roja" | "ambar"; texto: string };
 
@@ -34,7 +34,7 @@ export function evaluarSolicitud(args: {
     if (!delDia.some((t) => t.tipo === "programado")) sinReemplazo.push(f);
   }
   if (sinReemplazo.length) out.push({ nivel: "roja", texto: `Sin reemplazo: nadie más tiene turno el ${sinReemplazo.map(corto).join(", ")}` });
-  if (sinPlan.length && cat?.tipo !== "Incapacidad") out.push({ nivel: "ambar", texto: `Semana sin planear todavía (${sinPlan.map(corto).join(", ")}): no se puede verificar el reemplazo` });
+  if (sinPlan.length && !(cat && esIncapacidad(cat.tipo))) out.push({ nivel: "ambar", texto: `Semana sin planear todavía (${sinPlan.map(corto).join(", ")}): no se puede verificar el reemplazo` });
 
   // 2. Anticipación: lo que se puede programar, se pide con tiempo.
   const ant = diasEntre(hoy, desde);
@@ -54,10 +54,10 @@ export function evaluarSolicitud(args: {
 
   // 5. Toca un dominical/festivo: se pierde el recargo del 90 % y hay que cubrirlo.
   const domf = rango(desde, hasta).filter((f) => esDominical(f) || FESTIVOS.has(f));
-  if (domf.length && tipo !== "Incapacidad") out.push({ nivel: "ambar", texto: `Incluye ${domf.length} domingo/festivo (${domf.map(corto).join(", ")}): el día más fuerte de venta` });
+  if (domf.length && !esIncapacidad(tipo)) out.push({ nivel: "ambar", texto: `Incluye ${domf.length} domingo/festivo (${domf.map(corto).join(", ")}): el día más fuerte de venta` });
 
   // 6. Rango largo sin ser vacaciones ni licencia.
-  if (dias.length > 3 && !["Vacaciones", "Maternidad / Paternidad", "Incapacidad", "Licencia de luto", "Suspensión"].includes(tipo)) out.push({ nivel: "ambar", texto: `${dias.length} días hábiles para un "${tipo}": ¿no debería ser vacaciones?` });
+  if (dias.length > 3 && !["Vacaciones", "Maternidad / Paternidad", "Incapacidad", "Incapacidad laboral", "Licencia de luto", "Suspensión"].includes(tipo)) out.push({ nivel: "ambar", texto: `${dias.length} días hábiles para un "${tipo}": ¿no debería ser vacaciones?` });
 
   return out;
 }

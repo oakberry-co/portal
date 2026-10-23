@@ -13,6 +13,7 @@ import { empleado, empleados, tienda, turnos, marcaciones, quincena as qQuincena
 import { horasDe, totalTrabajadas, reglasEn, FESTIVOS, esDominical } from "./motor";
 import { TIPOS_AUSENCIA } from "./catalogos";
 import { marcacionNormal } from "./viabilidad";
+import { validarSnapshotV2 } from "./quincena";
 import { esBancoConocido } from "@/lib/bancos";
 import { alarmasDe } from "./alarmas";
 import { saldoVacacionesDe } from "./saldos";
@@ -394,7 +395,14 @@ async function _aprobarQuincena(fd: FormData) {
   const q = quincenaDe(desde); if (q.desde !== desde) falla("La fecha no es inicio de quincena.");
   if (q.hasta >= ahoraBogota().fecha) falla("La quincena todavía no termina.");
   const lineas = JSON.parse(s(fd, "snapshot") || "[]");
+  if (!Array.isArray(lineas)) falla("Snapshot inválido.");
+  // R5: el snapshot v2 lo lee el generador de nómina electrónica; si no cuadra al peso no se congela.
+  for (const x of lineas) {
+    const err = validarSnapshotV2(x?.v2);
+    if (err) falla(`La línea de ${x?.nombre ?? "?"} no cuadra (${err}). Recarga la página y vuelve a aprobar.`);
+  }
   const totalNeto = n(fd, "total_neto"), totalCosto = n(fd, "total_costo");
+  if (lineas.reduce((a: number, x: { neto: number }) => a + x.neto, 0) !== totalNeto) falla("El neto total no cuadra con la suma de las líneas.");
   const pendientes = (await marcaciones(q.desde, q.hasta, { estado: "registrada" })).length;
   if (pendientes) falla(`Hay ${pendientes} marcaciones por revisar (fuera de radio, tarde o sin turno). Apruébalas o recházalas primero.`);
   await withTx(async (c) => {

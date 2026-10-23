@@ -12,6 +12,7 @@ export type EmpleadoDb = Empleado & {
   email: string | null; rol_app: "colaborador" | "admin_punto" | "rrhh"; activo: boolean; fecha_retiro: string | null;
   jornada_semanal: number; banco: string | null; cuenta: string | null; tipo_cuenta: "ahorros" | "corriente" | null;
   consentimiento_firmado_en: string | null; consentimiento_archivo: string | null; ciudad_expedicion: string | null;
+  arl_clase?: number | null;     // clase de riesgo ARL; NULL/ausente = clase I (lib/rrhh/pila.ts)
 };
 export type TurnoDb = Omit<Turno, "id"> & { id: number; estado: "borrador" | "publicado" };
 export type Marcacion = {
@@ -52,7 +53,7 @@ export async function empleadoPorEmail(email: string): Promise<EmpleadoDb | null
   return rows[0] ? mapEmp(rows[0]) : null;
 }
 function mapEmp(r: Record<string, unknown>): EmpleadoDb {
-  return { ...(r as unknown as EmpleadoDb), salario: Number(r.salario), fecha_ingreso: d(r.fecha_ingreso) ?? "2020-01-01", fecha_retiro: d(r.fecha_retiro), consentimiento_firmado_en: d(r.consentimiento_firmado_en) };
+  return { ...(r as unknown as EmpleadoDb), salario: Number(r.salario), arl_clase: r.arl_clase == null ? null : Number(r.arl_clase), fecha_ingreso: d(r.fecha_ingreso) ?? "2020-01-01", fecha_retiro: d(r.fecha_retiro), consentimiento_firmado_en: d(r.consentimiento_firmado_en) };
 }
 
 export async function turnos(desde: string, hasta: string, f: { tiendaId?: string; empleadoId?: number; soloPublicados?: boolean } = {}): Promise<TurnoDb[]> {
@@ -143,4 +144,13 @@ export async function documentosDeTodos(): Promise<Record<number, Documento[]>> 
 export async function documento(id: number): Promise<(Documento & { bytes: Buffer }) | null> {
   const { rows } = await getPool().query("SELECT id, empleado_id, tipo, nombre, mime, subido_por, subido_en, bytes, length(bytes) AS tamano FROM rrhh_documentos WHERE id = $1", [id]);
   return rows[0] ? { ...rows[0], id: Number(rows[0].id), tamano: Number(rows[0].tamano) } : null;
+}
+
+/** Snapshot de una quincena APROBADA (lo que se congeló al aprobar). null si no está aprobada. */
+export async function snapshotAprobado(desde: string): Promise<Record<string, unknown>[] | null> {
+  const { rows } = await getPool().query("SELECT snapshot FROM rrhh_quincenas WHERE desde = $1 AND estado = 'aprobada'", [desde]);
+  if (!rows[0]) return null;
+  const s = rows[0].snapshot;
+  if (!Array.isArray(s)) throw new Error(`La quincena ${desde} está aprobada pero su snapshot no es una lista.`);
+  return s;
 }
