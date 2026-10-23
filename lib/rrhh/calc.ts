@@ -7,13 +7,18 @@
 //           marcar; las inusuales esperan al administrador), emparejadas por día;
 //           descansos y ausencias aprobadas se toman del plan; un turno
 //           programado sin marcación vale 0 h y deja una alerta.
+//
+// HORAS EXTRA: se miden por semana lunes–domingo (motor.horasConExtras). Si el
+// período empieza a mitad de semana, `T` y `M` deben traer también los días
+// desde el LUNES de esa semana (cargarPeriodo ya los trae): cuentan para el
+// acumulado de la semana, no para las horas ni el costo del período.
 import { costoDe, deduccionesDe, horasDe, horasVacias, sumar, totalTrabajadas, type Costo, type Horas, type Turno } from "./motor";
 import type { EmpleadoDb, Marcacion, TurnoDb } from "./db";
-import { rango } from "./fechas";
+import { lunesDe, rango } from "./fechas";
 
 export type Origen = "plan" | "real";
 export type DiaEmp = { fecha: string; turno: TurnoDb | null; real: Turno | null; alerta: string | null };
-export type LineaEmp = { e: EmpleadoDb; dias: DiaEmp[]; turnos: Turno[]; horas: Horas; costo: Costo; ded: ReturnType<typeof deduccionesDe>; nTurnos: number; alertas: string[] };
+export type LineaEmp = { e: EmpleadoDb; dias: DiaEmp[]; turnos: Turno[]; horas: Horas; costo: Costo; ded: ReturnType<typeof deduccionesDe>; nTurnos: number; alertas: string[]; alertasLegales: string[] };
 
 /** Empareja marcaciones de un día en un intervalo trabajado. Toma la primera
  *  entrada y la última salida (si alguien marcó dos veces, cuenta una). */
@@ -29,9 +34,10 @@ export function intervaloReal(ms: Marcacion[], t: TurnoDb | null, e: EmpleadoDb,
 
 export function periodo(EMPLEADOS: EmpleadoDb[], turnosDb: TurnoDb[], marcs: Marcacion[], desde: string, hasta: string, origen: Origen, almuerzoPorTienda: Record<string, number> = {}) {
   const fechas = rango(desde, hasta);
+  const fechasSemana = rango(lunesDe(desde), hasta);      // incluye los días previos de la 1ª semana
   const lineas: LineaEmp[] = EMPLEADOS.map((e) => {
     const alertas: string[] = [];
-    const dias: DiaEmp[] = fechas.map((fecha) => {
+    const diasTodos: DiaEmp[] = fechasSemana.map((fecha) => {
       if (fecha < e.fecha_ingreso || (e.fecha_retiro && fecha > e.fecha_retiro)) return { fecha, turno: null, real: null, alerta: null };
       const turno = turnosDb.find((t) => t.empleadoId === e.activo_id && t.fecha === fecha) ?? null;
       const ms = marcs.filter((m) => m.empleado_id === e.activo_id && m.fecha === fecha);
@@ -41,15 +47,17 @@ export function periodo(EMPLEADOS: EmpleadoDb[], turnosDb: TurnoDb[], marcs: Mar
       if (!turno && real) alerta = "marcó sin turno";
       return { fecha, turno, real, alerta };
     });
-    const turnos: Turno[] = [];
-    for (const dd of dias) {
-      if (origen === "plan") { if (dd.turno) turnos.push(dd.turno); continue; }
-      if (dd.real) turnos.push(dd.real);
-      else if (dd.turno && dd.turno.tipo !== "programado") turnos.push(dd.turno);
-      if (dd.alerta) alertas.push(`${dd.fecha}: ${dd.alerta}`);
+    const dias = diasTodos.filter((dd) => dd.fecha >= desde);
+    const turnosSemana: Turno[] = [];
+    for (const dd of diasTodos) {
+      if (origen === "plan") { if (dd.turno) turnosSemana.push(dd.turno); continue; }
+      if (dd.real) turnosSemana.push(dd.real);
+      else if (dd.turno && dd.turno.tipo !== "programado") turnosSemana.push(dd.turno);
+      if (dd.alerta && dd.fecha >= desde) alertas.push(`${dd.fecha}: ${dd.alerta}`);
     }
-    const costo = costoDe(e, turnos, hasta);
-    return { e, dias, turnos, horas: costo.horas, costo, ded: deduccionesDe(e, costo, hasta), nTurnos: turnos.filter((t) => t.tipo === "programado").length, alertas };
+    const turnos = turnosSemana.filter((t) => t.fecha >= desde);
+    const costo = costoDe(e, turnosSemana, hasta, desde);
+    return { e, dias, turnos, horas: costo.horas, costo, ded: deduccionesDe(e, costo, hasta), nTurnos: turnos.filter((t) => t.tipo === "programado").length, alertas, alertasLegales: costo.alertasLegales };
   });
   const horas = lineas.reduce((a, l) => sumar(a, l.horas), horasVacias());
   const sum = (f: (l: LineaEmp) => number) => lineas.reduce((a, l) => a + f(l), 0);

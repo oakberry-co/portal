@@ -28,8 +28,8 @@ export default async function Page({ searchParams }: { searchParams: Promise<Rec
   const [TS, MS, TQ, MQ, TIENDAS, saldo, S] = await Promise.all([
     turnos(lun, dom, { empleadoId: e.activo_id, soloPublicados }),
     marcaciones(lun, dom, { empleadoId: e.activo_id }),
-    turnos(q.desde, q.hasta, { empleadoId: e.activo_id, soloPublicados }),
-    marcaciones(q.desde, q.hasta, { empleadoId: e.activo_id }),
+    turnos(lunesDe(q.desde), q.hasta, { empleadoId: e.activo_id, soloPublicados }),     // desde el lunes: horas extra por semana
+    marcaciones(lunesDe(q.desde), q.hasta, { empleadoId: e.activo_id }),
     tiendas(),
     saldoVacacionesDe(e.activo_id),
     solicitudes({ empleadoId: e.activo_id }),

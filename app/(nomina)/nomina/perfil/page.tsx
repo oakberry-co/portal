@@ -3,7 +3,7 @@ import { periodo } from "@/lib/rrhh/calc";
 import { perspectiva } from "@/lib/rrhh/perspectiva";
 import { saldoVacacionesDe } from "@/lib/rrhh/saldos";
 import { cop, hh } from "@/lib/rrhh/motor";
-import { hoyBogota, quincenaDe, fechaCorta } from "@/lib/rrhh/fechas";
+import { hoyBogota, quincenaDe, fechaCorta, lunesDe } from "@/lib/rrhh/fechas";
 import { Head, Aviso, Pill, Nota, A } from "../_lib/ui";
 
 // MI PERFIL: lo que ve cada colaborador al entrar desde su celular. Sus datos
@@ -22,7 +22,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<Rec
   let saldoVac: number | null = null;
   let nombreTienda = "—";
   if (e) {
-    const [T, M, TS, saldo] = await Promise.all([turnos(q.desde, q.hasta, { empleadoId: e.activo_id }), marcaciones(q.desde, q.hasta, { empleadoId: e.activo_id }), tiendas(), saldoVacacionesDe(e.activo_id)]);
+    const [T, M, TS, saldo] = await Promise.all([turnos(lunesDe(q.desde), q.hasta, { empleadoId: e.activo_id }), marcaciones(lunesDe(q.desde), q.hasta, { empleadoId: e.activo_id }), tiendas(), saldoVacacionesDe(e.activo_id)]);
     const P = periodo([e], T, M, q.desde, q.hasta, "real", Object.fromEntries(TS.map((t) => [t.id, t.almuerzo_min])));
     const l = P.lineas[0];
     quincena = { horas: P.trabajadas, recargos: l.costo.recargos, neto: l.ded.neto, alertas: l.alertas, nTurnos: l.nTurnos };

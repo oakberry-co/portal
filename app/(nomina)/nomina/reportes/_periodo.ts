@@ -14,10 +14,14 @@ export async function cargarPeriodo(desde: string, hasta: string, f: Filtro, ori
   // Se traen también los inactivos: quien se retiró DESPUÉS del período sigue
   // siendo parte de esa quincena. `periodo()` ya recorta por ingreso/retiro día
   // a día; acá solo se descartan los que no tocan el rango.
+  // Turnos y marcaciones desde el LUNES de la primera semana: las horas extra
+  // se miden por semana y lo trabajado antes de `desde` cuenta para el acumulado.
+  // OJO con el filtro de tienda: quien trabajó en dos tiendas la misma semana
+  // solo acumula lo de la tienda filtrada (TODO si llega a pasar).
   const [E0, T, M, TS] = await Promise.all([
     empleados({ incluirInactivos: true, ...(f.tiendaId ? { tiendaId: f.tiendaId } : {}) }),
-    turnos(desde, hasta, { tiendaId: f.tiendaId, empleadoId: f.empleadoId }),
-    marcaciones(desde, hasta, { tiendaId: f.tiendaId, empleadoId: f.empleadoId }),
+    turnos(lunesDe(desde), hasta, { tiendaId: f.tiendaId, empleadoId: f.empleadoId }),
+    marcaciones(lunesDe(desde), hasta, { tiendaId: f.tiendaId, empleadoId: f.empleadoId }),
     tiendas(),
   ]);
   const E = E0.filter((e) => e.fecha_ingreso <= hasta && (!e.fecha_retiro || e.fecha_retiro >= desde))

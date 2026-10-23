@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { perspectiva } from "@/lib/rrhh/perspectiva";
-import { reglasEn, hh, totalTrabajadas, horasDe } from "@/lib/rrhh/motor";
+import { reglasEn, hh, totalTrabajadas, totalExtras, horasDe } from "@/lib/rrhh/motor";
 import { fechaLarga, hoyBogota, mas, lunesDe } from "@/lib/rrhh/fechas";
 import { Head, Kpi, Pill, Bar, Nota, Aviso, Filtros, A } from "../_lib/ui";
 import { cargarPeriodo, conParams, origenDe, semanaDeUrl } from "../reportes/_periodo";
@@ -32,15 +32,19 @@ export default async function Cumplimiento({ searchParams }: { searchParams: Pro
     const noct = prog.filter((t) => (horasDe(t).nocturna + horasDe(t).nocturna_dominical) > 0).length;
     const domf = prog.filter((t) => (horasDe(t).dominical + horasDe(t).nocturna_dominical) > 0).length;
     const sinDescanso = !mios.some((t) => t.tipo === "descanso");
+    // límite de la PERSONA (su jornada pactada, nunca sobre la máxima legal): lo que pasa de ahí son horas extra
+    const lim = Math.min(l.e.jornada_semanal, r.jornadaSemanal);
+    const extras = totalExtras(l.horas);
     const alertas: string[] = [];
-    if (tot > r.jornadaSemanal) alertas.push(`Excede: ${hh(tot)} / ${r.jornadaSemanal}h`);
-    else if (tot > r.jornadaSemanal - 1) alertas.push(`Al límite: ${hh(tot)} / ${r.jornadaSemanal}h`);
+    if (tot > lim) alertas.push(`Excede: ${hh(tot)} / ${lim}h (${hh(extras)} extra)`);
+    else if (tot > lim - 1) alertas.push(`Al límite: ${hh(tot)} / ${lim}h`);
+    alertas.push(...l.alertasLegales);
     if (excesoDia) alertas.push(`${excesoDia} día(s) > 9 h`);
     if (sinDescanso && prog.length >= 6) alertas.push("Sin día de descanso");
     if (prog.length < 3) alertas.push("Semana incompleta");
     if (l.alertas.length) alertas.push(`${l.alertas.length} día(s) sin marcación`);
-    const estado: "bad" | "warn" | "ok" = tot > r.jornadaSemanal || excesoDia || (sinDescanso && prog.length >= 6) ? "bad" : alertas.length ? "warn" : "ok";
-    return { l, tot, excesoDia, noct, domf, alertas, estado };
+    const estado: "bad" | "warn" | "ok" = tot > lim || excesoDia || l.alertasLegales.length || (sinDescanso && prog.length >= 6) ? "bad" : alertas.length ? "warn" : "ok";
+    return { l, tot, lim, extras, excesoDia, noct, domf, alertas, estado };
   }).sort((a, b) => b.tot - a.tot);
   const n = (k: string) => filas.filter((f) => f.estado === k).length;
   const nav = (s: string) => conParams("/nomina/cumplimiento", { s, t: p.tipo === "admin_punto" ? undefined : tiendaId, o: sp.o });
@@ -65,20 +69,20 @@ export default async function Cumplimiento({ searchParams }: { searchParams: Pro
         <Kpi label="Con turnos" valor={filas.length} />
         <Kpi label="En cumplimiento" valor={n("ok")} tono="ok" />
         <Kpi label="Con aviso" valor={n("warn")} tono="warn" sub="al límite, semana incompleta o sin marcar" />
-        <Kpi label="Incumplen" valor={n("bad")} tono={n("bad") ? "bad" : "ok"} sub={`> ${r.jornadaSemanal} h, > 9 h/día o sin descanso`} />
+        <Kpi label="Incumplen" valor={n("bad")} tono={n("bad") ? "bad" : "ok"} sub={`> jornada, > 9 h/día, extras sobre tope o sin descanso`} />
       </div>
       <div className="nm-card nm-scroll">
         <h3>Detalle por empleado</h3>
         {filas.length === 0 ? <div className="nm-vacio">Nadie con turnos{origen === "real" ? " ni marcaciones" : ""} en esta semana.</div> : (
-        <table className="nm-tabla"><thead><tr><th>Empleado</th><th>Tienda</th><th className="num">Horas / límite</th><th>Progreso</th><th className="num">&gt; 9 h/día</th><th className="num">Noct.</th><th className="num">Dom/fest.</th><th>Alertas</th></tr></thead>
-          <tbody>{filas.map((f) => (<tr key={f.l.e.activo_id}><td className="nm-nombre">{f.l.e.nombre_completo}</td><td className="nm-sub">{nombreTienda(f.l.e.punto)}</td><td className="num">{hh(f.tot)} / {r.jornadaSemanal}h</td><td><Bar pct={f.tot / r.jornadaSemanal * 100} tono={f.estado} /></td><td className="num">{f.excesoDia || "—"}</td><td className="num">{f.noct || "—"}</td><td className="num">{f.domf || "—"}</td><td>{f.alertas.length ? f.alertas.map((a) => <Pill key={a} tono={f.estado === "bad" ? "bad" : "warn"}>{a}</Pill>) : <Pill tono="ok">ok</Pill>}</td></tr>))}</tbody></table>)}
+        <table className="nm-tabla"><thead><tr><th>Empleado</th><th>Tienda</th><th className="num">Horas / límite</th><th className="num">Extra</th><th>Progreso</th><th className="num">&gt; 9 h/día</th><th className="num">Noct.</th><th className="num">Dom/fest.</th><th>Alertas</th></tr></thead>
+          <tbody>{filas.map((f) => (<tr key={f.l.e.activo_id}><td className="nm-nombre">{f.l.e.nombre_completo}</td><td className="nm-sub">{nombreTienda(f.l.e.punto)}</td><td className="num">{hh(f.tot)} / {f.lim}h</td><td className="num">{f.extras ? hh(f.extras) : "—"}</td><td><Bar pct={f.tot / f.lim * 100} tono={f.estado} /></td><td className="num">{f.excesoDia || "—"}</td><td className="num">{f.noct || "—"}</td><td className="num">{f.domf || "—"}</td><td>{f.alertas.length ? f.alertas.map((a) => <Pill key={a} tono={f.estado === "bad" ? "bad" : "warn"}>{a}</Pill>) : <Pill tono="ok">ok</Pill>}</td></tr>))}</tbody></table>)}
       </div>
       <div className="nm-card">
         <h3>Por tienda</h3>
         <div className="nm-emp">{tiendasVisibles.map((t) => { const fs = filas.filter((f) => f.l.e.punto === t.id); const prom = fs.length ? fs.reduce((a, f) => a + f.tot, 0) / fs.length : 0; const bad = fs.filter((f) => f.estado === "bad").length; return (
           <div className="c" key={t.id}><b>{t.nombre} {bad ? <Pill tono="bad">{bad} incumple</Pill> : <Pill tono="ok">OK</Pill>}</b><div className="r"><span>Empleados</span><span>{fs.length}</span></div><div className="r"><span>Prom. horas/semana</span><span>{hh(+prom.toFixed(1))}</span></div><div className="r"><span>Cumplimiento</span><span>{fs.length ? Math.round((fs.length - bad) / fs.length * 100) : 100}%</span></div></div>); })}</div>
       </div>
-      <Nota>Ley 2466/2025 (art. 162 CST): registro diario por trabajador con horas diurnas/nocturnas, y la carga de la prueba es del empleador. Este registro sale de la <b>marcación</b>, no del Excel. Se revisan también: descanso entre turnos, domingos al mes y personas con turnos sin contrato.</Nota>
+      <Nota>Ley 2466/2025 (art. 162 CST): registro diario por trabajador con horas diurnas/nocturnas, y la carga de la prueba es del empleador. Este registro sale de la <b>marcación</b>, no del Excel. Horas extra: lo que pasa de la jornada de la ficha (máx. la legal) en la semana lun–dom; se pagan en Nómina con el mismo motor. Tope legal: 2 h extra/día y 12 h/semana. Se revisan también: descanso entre turnos, domingos al mes y personas con turnos sin contrato.</Nota>
     </>
   );
 }

@@ -37,3 +37,25 @@ export function horaBogota(ts: Date): { fecha: string; hora: number; hhmm: strin
   const h = Number(g("hour")) % 24, m = Number(g("minute"));
   return { fecha: `${g("year")}-${g("month")}-${g("day")}`, hora: h + m / 60, hhmm: `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}` };
 }
+
+// ---- CONVENCIÓN DE 30 DÍAS (Siigo / práctica de nómina colombiana) ----------
+// Todo mes vale 30 días: el día 31 pesa 0 y el último día de febrero pesa lo
+// que le falta para 30 (28-feb pesa 3, 29-feb pesa 2). Así una quincena SIEMPRE
+// vale 15, un semestre 180 y un año 360, y los días se pueden SUMAR por tramos
+// (aditivo: pesoDia es por día, no por rango).
+// VERIFICAR contra Siigo: un rango de un solo día que sea el último de febrero
+// vale 3 (p. ej. una incapacidad solo el 28-feb). Es la convención usual, no ley.
+export const ultimoDiaMes = (f: string) => { const [y, m] = f.split("-").map(Number); return new Date(Date.UTC(y, m, 0)).getUTCDate(); };
+export function pesoDia30(f: string): number {
+  const d = Number(f.slice(8, 10));
+  if (d === 31) return 0;
+  const ult = ultimoDiaMes(f);
+  return d === ult && ult < 30 ? 30 - ult + 1 : 1;
+}
+/** Días entre dos fechas (ambas incluidas) con la convención de 30 días. 0 si hasta < desde. */
+export function dias30(desde: string, hasta: string): number {
+  if (hasta < desde) return 0;
+  let n = 0;
+  for (let f = desde; f <= hasta; f = mas(f, 1)) n += pesoDia30(f);
+  return n;
+}
