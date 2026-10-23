@@ -30,12 +30,17 @@ export type Cap =
   // Mercadeo: CRM, cohortes/LTV/retención de Loopy y resultados de campañas
   // (reflejo de BigQuery, solo lectura). Todo el equipo @manelfoods.com (pedido de
   // Daniel, 23-oct-2026); lanzar campañas será una capacidad aparte.
-  | "mercadeo";
+  | "mercadeo"
+  // Crear, lanzar, pausar y terminar campañas del CRM (le escriben a clientes y
+  // gastan plata). Por ahora solo el decisor (Daniel, 24-oct-2026); cuando se abra
+  // a franquiciados será otra capacidad, acotada a sus tiendas y a "lo paga
+  // franquiciado".
+  | "lanzar_campanas";
 
 const TODAS: Cap[] = [
   "ver_conciliacion", "clasificar", "retenciones", "tipo_pago",
   "ver_pagos", "pagos", "export_historial", "causar", "maestros", "maestro_retenciones",
-  "ver_intake", "intake", "dashboard", "asistente", "usuarios", "revertir_pago", "cruzar_nota", "nomina", "finanzas", "mercadeo",
+  "ver_intake", "intake", "dashboard", "asistente", "usuarios", "revertir_pago", "cruzar_nota", "nomina", "finanzas", "mercadeo", "lanzar_campanas",
 ];
 
 // VER ≠ OPERAR. La bandeja del intake se parte en dos capacidades porque quien
@@ -51,7 +56,7 @@ const IMPLICA: Partial<Record<Cap, Cap[]>> = {
 // LO QUE SOLO HACE EL DECISOR. Daniel es el decisor máximo y el único admin
 // (2026-09-10): dar y quitar accesos, y deshacer un pago —la única acción que
 // devuelve una factura a la cola de Pagos— no las hace quien opera a diario.
-const SOLO_DECISOR: Cap[] = ["usuarios", "revertir_pago", "nomina", "finanzas"];
+const SOLO_DECISOR: Cap[] = ["usuarios", "revertir_pago", "nomina", "finanzas", "lanzar_campanas"];
 
 // Rol → qué puede hacer.
 const MATRIZ: Record<Rol, Cap[]> = {

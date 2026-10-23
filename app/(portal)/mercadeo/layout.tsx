@@ -8,8 +8,9 @@ export const dynamic = "force-dynamic";
 
 // EL ÁREA DE MERCADEO — vive dentro de la cáscara del portal (menú lateral por áreas);
 // sus 13 secciones son los ítems del área Mercadeo en areas.ts. La ve todo el equipo
-// @manelfoods.com (capacidad `mercadeo`). Es de solo lectura: los datos son el reflejo
-// diario de BigQuery en mk_snapshot.
+// @manelfoods.com (capacidad `mercadeo`). Los análisis son el reflejo diario de BigQuery
+// en mk_snapshot; lo único que escribe es Campañas (crear, lanzar, pausar), y eso exige
+// `lanzar_campanas`.
 export default async function MercadeoLayout({ children }: { children: React.ReactNode }) {
   const u = await getCurrentUser();
   if (!puede(u.rol, "mercadeo")) redirect("/");

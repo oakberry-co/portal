@@ -57,6 +57,7 @@ const AREAS: Area[] = [
   { id: "mercadeo", label: "Mercadeo", ico: "mercadeo", items: [
     { label: "Resumen", href: "/mercadeo", cap: "mercadeo", ico: "inicio" },
     { label: "Campañas", href: "/mercadeo/campanas", cap: "mercadeo", ico: "campanas", sub: "CRM" },
+    { label: "Catálogo de palancas", href: "/mercadeo/catalogo", cap: "mercadeo", ico: "palanca", sub: "CRM" },
     { label: "Audiencias", href: "/mercadeo/audiencias", cap: "mercadeo", ico: "audiencia", sub: "CRM" },
     { label: "Plantillas WhatsApp", href: "/mercadeo/plantillas", cap: "mercadeo", ico: "plantillas", sub: "CRM" },
     { label: "Estado de envíos", href: "/mercadeo/envios", cap: "mercadeo", ico: "envios", sub: "CRM" },

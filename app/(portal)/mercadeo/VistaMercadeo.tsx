@@ -169,10 +169,9 @@ function pintar(root, SEC, D, BASE, TIP) {
     const pausado = filas("envios").some((e) => e.estado === "pausado");
     const rows = lista.map((s) => { const lt = s.e ? 100 * s.vt / s.e : null, lc = s.ctrl ? 100 * s.vc / s.ctrl : null, d = (lt != null && lc != null) ? lt - lc : null;
       return `<tr><td>${esc(s.programa)}</td><td class="izq">${esc(s.semana)} · ${esc(s.desde)}</td><td class="izq" style="white-space:normal;min-width:180px">${[...s.pal].map(esc).join(", ")}</td><td>${fmt(s.e)}</td><td>${s.q ? fmt(s.q) : "—"}</td><td>${fmt(s.ctrl)}</td><td>${fmt(s.cj)}</td><td>${pesos(s.costo)}</td><td>${p1(lt)}</td><td>${p1(lc)}</td><td class="${d == null ? "" : d > 0 ? "pos" : "neg"}">${dpp(d)}</td></tr>`; });
+    // Va debajo de la lista de campañas (campanas/page.tsx): el histórico de tandas por semana.
     root.innerHTML = `
-      <div class="titulo"><h1>Campañas</h1><p>Cada tanda del CRM por semana, con su grupo de control. "Volvieron" = compraron (sello Loopy) en los 21 días siguientes.</p></div>
-      <div class="filtros"><span class="boton" aria-disabled="true" title="Próximamente: lanzar una campaña a un clic">+ Nueva campaña</span><span class="chip ${pausado ? "bad" : "ok"}">${pausado ? "Envíos en pausa" : "Envíos activos"}</span><span style="color:var(--mk-mute);font-size:13px">Lanzar a un clic llega en la próxima versión.</span></div>
-      <div class="tarjeta"><header><h2>Tandas por semana</h2><p>Más reciente arriba · la semana en curso todavía no completa sus 21 días</p></header><div class="cuerpo">${tabla(["Programa", "Semana", "Palancas", "Enviados", "En cola", "Control", "Canjes", "Costo canjes", "Volvieron", "Control volvió", "Diferencia"], rows, [1, 2])}</div></div>`;
+      <div class="tarjeta"><header><h2>Histórico: tandas por semana <span class="chip ${pausado ? "bad" : "ok"}" style="margin-left:8px;vertical-align:middle">${pausado ? "Envíos en pausa" : "Envíos activos"}</span></h2><p>Cada tanda del CRM con su control · "Volvieron" = compraron (sello Loopy) en los 21 días siguientes · la semana en curso todavía no completa sus 21 días</p></header><div class="cuerpo">${tabla(["Programa", "Semana", "Palancas", "Enviados", "En cola", "Control", "Canjes", "Costo canjes", "Volvieron", "Control volvió", "Diferencia"], rows, [1, 2])}</div></div>`;
   };
 
   V.audiencias = () => {

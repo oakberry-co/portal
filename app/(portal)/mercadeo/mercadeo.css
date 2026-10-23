@@ -64,3 +64,99 @@
 .mk-tip { position: fixed; pointer-events: none; background: #21152A; color: #fff; font-size: 12.5px; padding: 8px 10px; border-radius: 10px; box-shadow: 0 6px 18px rgba(0, 0, 0, .2); z-index: 60; max-width: 260px; line-height: 1.35; font-family: var(--sans); }
 .mk-tip b { display: block; margin-bottom: 2px; }
 .mk-tip[hidden] { display: none; }
+
+/* CAMPAÑAS (lista, formulario, ficha) y CATÁLOGO DE PALANCAS — prefijo cf- */
+.mk code { font-size: 12px; background: #F3F0F6; padding: 1px 6px; border-radius: 5px; }
+.mk a.boton { text-decoration: none; }
+.mk .boton:disabled { opacity: .5; cursor: not-allowed; }
+.mk .boton.cf-sec { background: #fff; color: var(--mk-morado); box-shadow: inset 0 0 0 1px var(--mk-line); }
+.mk .boton.cf-peligro { background: var(--mk-bad-soft); color: var(--mk-bad); }
+.mk .boton:focus-visible, .mk .cf-chip:focus-visible, .mk .cf-pal-sel:focus-visible, .mk .cf-ver:focus-visible { outline: 2px solid var(--mk-pill); outline-offset: 2px; }
+.mk .cf-cabeza { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap; margin-bottom: 16px; }
+.mk .cf-migas { font-size: 13px; color: var(--mk-mute); margin: 0 0 8px; }
+.mk .cf-migas a { color: var(--mk-pill); font-weight: 700; text-decoration: none; }
+.mk .cf-sub { font-size: 12.5px; color: var(--mk-mute); margin: 6px 0 0; line-height: 1.4; }
+.mk .cf-pie { font-size: 12.5px; color: var(--mk-mute); margin: -6px 0 18px; }
+.mk .cf-estado { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+
+/* lista */
+.mk td.cf-celda-nombre { white-space: normal; min-width: 250px; }
+.mk .cf-celda-nombre a { color: var(--mk-ink); text-decoration: none; font-weight: 600; }
+.mk .cf-celda-nombre a b { color: var(--mk-morado); }
+.mk .cf-celda-nombre span { display: block; font-size: 12px; color: var(--mk-mute); }
+.mk td.cf-envolver { white-space: normal; min-width: 150px; font-size: 13px; }
+.mk .cf-barra { height: 6px; border-radius: 3px; background: #EFEAF4; width: 110px; overflow: hidden; }
+.mk .cf-barra i { display: block; height: 100%; background: var(--mk-pill); border-radius: 3px; }
+.mk td .cf-sub { margin-top: 4px; display: block; }
+
+/* formulario: izquierda los pasos, derecha el resultado (pegado al bajar) */
+.mk .cf { display: grid; grid-template-columns: minmax(0, 1fr) 370px; gap: 20px; align-items: start; }
+@media (max-width: 1100px) { .mk .cf { grid-template-columns: 1fr; } }
+.mk .cf-der { position: sticky; top: 76px; }
+@media (max-width: 1100px) { .mk .cf-der { position: static; } }
+.mk .cf-input { width: 100%; border: 1px solid var(--mk-line); border-radius: 11px; padding: 10px 12px; font: inherit; background: #fff; color: var(--mk-ink); }
+.mk .cf-etq { display: block; font-size: 11.5px; font-weight: 800; text-transform: uppercase; letter-spacing: .05em; color: var(--mk-mute); margin: 16px 0 7px; }
+.mk .cf-etq em { text-transform: none; letter-spacing: 0; font-style: normal; font-weight: 600; }
+.mk .cf-campos > .cf-etq:first-child { margin-top: 0; }
+.mk .cf-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.mk .cf-chip { all: unset; box-sizing: border-box; cursor: pointer; border: 1px solid var(--mk-line); background: #fff; border-radius: 999px; padding: 6px 12px; font-size: 13px; font-weight: 600; color: var(--mk-ink2); }
+.mk .cf-chip:hover { border-color: var(--mk-pill); }
+.mk .cf-chip.on { background: var(--mk-lila); border-color: var(--mk-pill); color: var(--mk-morado); }
+.mk .cf-chip.cf-todas.on { background: var(--mk-pill); color: #fff; }
+.mk .cf-chip:disabled { opacity: .55; cursor: not-allowed; border-color: var(--mk-line); }
+.mk .cf-n { font-size: 11.5px; color: var(--mk-mute); font-weight: 700; margin-left: 3px; font-variant-numeric: tabular-nums; }
+.mk .cf-chip.on .cf-n { color: inherit; }
+.mk .cf-palancas { display: grid; grid-template-columns: repeat(auto-fill, minmax(270px, 1fr)); gap: 12px; align-items: start; }
+.mk .cf-pal { border: 1px solid var(--mk-line); border-radius: 14px; background: #fff; }
+.mk .cf-pal.on { border-color: var(--mk-pill); box-shadow: 0 0 0 1px var(--mk-pill); }
+.mk .cf-pal-sel { all: unset; box-sizing: border-box; cursor: pointer; display: flex; flex-direction: column; gap: 4px; padding: 14px 14px 8px; width: 100%; position: relative; border-radius: 14px; }
+.mk .cf-pal-sel b { font-size: 15px; padding-right: 30px; }
+.mk .cf-check { position: absolute; top: 13px; right: 13px; width: 20px; height: 20px; border-radius: 6px; border: 1.5px solid #CFC6DA; display: grid; place-items: center; font-size: 13px; color: #fff; font-weight: 800; }
+.mk .cf-pal.on .cf-check { background: var(--mk-pill); border-color: var(--mk-pill); }
+.mk .cf-pal-desc { font-size: 13px; color: var(--mk-ink2); }
+.mk .cf-pal-meta { font-size: 12px; color: var(--mk-mute); }
+.mk .cf-efectos { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+.mk .cf-ef { font-size: 11px; font-weight: 800; padding: 2px 7px; border-radius: 6px; background: #F3F0F6; color: var(--mk-mute); white-space: nowrap; }
+.mk .cf-ef.pos { background: var(--mk-ok-soft); color: var(--mk-ok); }
+.mk .cf-ef.neg { background: var(--mk-bad-soft); color: var(--mk-bad); }
+.mk .cf-ver { all: unset; cursor: pointer; display: inline-block; font-size: 12.5px; font-weight: 700; color: var(--mk-pill); margin: 0 14px 12px; }
+.mk .cf-pal .cf-previa { padding: 0 14px 14px; }
+.mk .cf-wa { background: #E9F7DF; border-radius: 4px 14px 14px 14px; padding: 12px 14px; white-space: pre-wrap; font-size: 13.5px; line-height: 1.45; margin-top: 10px; max-width: 440px; color: #1E2A1A; }
+.mk .cf-asunto { margin: 10px 0 0; font-size: 13.5px; }
+.mk .cf-asunto span { font-weight: 800; color: var(--mk-mute); font-size: 11px; text-transform: uppercase; letter-spacing: .05em; margin-right: 8px; }
+.mk .cf-correo { width: 100%; height: 540px; border: 1px solid var(--mk-line); border-radius: 10px; margin-top: 8px; background: #fff; display: block; }
+.mk .cf-otras { margin-top: 14px; font-size: 13.5px; color: var(--mk-ink2); }
+.mk .cf-otras summary { cursor: pointer; font-weight: 700; color: var(--mk-pill); }
+.mk .cf-otras ul { margin: 8px 0 0; padding-left: 18px; }
+.mk .cf-otras li { margin-bottom: 4px; }
+.mk .cf-control { margin-top: 18px; }
+.mk .cf-control input[type=range] { width: 100%; accent-color: var(--mk-pill); }
+.mk .cf-control .cf-etq b { color: var(--mk-ink); }
+.mk .cf-grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 18px; }
+.mk .cf-grid2 .cf-etq { margin-top: 6px; }
+.mk .cf-ancho { grid-column: 1 / -1; }
+@media (max-width: 640px) { .mk .cf-grid2 { grid-template-columns: 1fr; } }
+.mk .cf-cifra b { font-size: 34px; font-weight: 800; display: block; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.mk .cf-cifra span { color: var(--mk-ink2); font-size: 13px; }
+.mk table.cf-tabla { margin-top: 12px; }
+.mk .cf-tabla td { white-space: normal; padding: 7px 0; position: static; text-align: left; }
+.mk .cf-tabla td:last-child { text-align: right; font-weight: 800; padding-left: 10px; white-space: nowrap; }
+.mk .cf-avisos { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
+.mk .cf-aviso { margin: 0 0 8px; border-radius: 11px; padding: 10px 12px; font-size: 13px; background: var(--mk-crema); border: 1px solid #F0E6C8; color: var(--mk-ink2); }
+.mk .cf-avisos .cf-aviso { margin: 0; }
+.mk .cf-aviso.warn { background: var(--mk-warn-soft); border-color: #F1DDB5; color: #6B4508; }
+.mk .cf-aviso.bad { background: var(--mk-bad-soft); border-color: #F0CDBB; color: #6E2C10; }
+.mk .cf-botones { display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap; }
+
+/* ficha y catálogo */
+.mk table.cf-ficha { min-width: 0; }
+.mk .cf-ficha td { white-space: normal; text-align: left; padding: 7px 10px 7px 0; position: static; vertical-align: top; }
+.mk .cf-ficha td:first-child { color: var(--mk-mute); font-size: 12.5px; width: 130px; font-weight: 700; }
+.mk .cf-ficha tbody tr:hover { background: #fff; }
+.mk .cf-log td:first-child { width: 1%; white-space: nowrap; font-weight: 600; }
+.mk .cf-previas { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 20px; }
+.mk .cf-previas h3 { margin: 0 0 8px; font-size: 15px; font-weight: 800; }
+.mk .cf-catalogo { display: grid; grid-template-columns: repeat(auto-fill, minmax(420px, 1fr)); gap: 16px; }
+@media (max-width: 520px) { .mk .cf-catalogo { grid-template-columns: 1fr; } }
+.mk .cf-catalogo .tarjeta { margin: 0; }
+.mk .cf-catalogo h2 .chip { margin-left: 8px; vertical-align: middle; }
