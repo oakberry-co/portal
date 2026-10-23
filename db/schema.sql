@@ -1797,3 +1797,7 @@ CREATE TABLE IF NOT EXISTS crm_campanas_log (
   detalle   JSONB,
   en        TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- Clase de riesgo ARL por empleado (PILA, lib/rrhh/pila.ts). NULL = clase I
+-- (personal de tienda). Una clase sin tarifa cargada en pila.ts es error.
+ALTER TABLE rrhh_empleados ADD COLUMN IF NOT EXISTS arl_clase SMALLINT;

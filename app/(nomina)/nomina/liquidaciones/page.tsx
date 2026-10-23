@@ -5,7 +5,8 @@ import { perspectiva } from "@/lib/rrhh/perspectiva";
 import { saldoVacacionesDe } from "@/lib/rrhh/saldos";
 import { CAUSAS_RETIRO } from "@/lib/rrhh/catalogos";
 import { cop, reglasEn } from "@/lib/rrhh/motor";
-import { hoyBogota, esFecha, diasEntre, fechaLarga, horaBogota } from "@/lib/rrhh/fechas";
+import { hoyBogota, esFecha, diasEntre, dias30, fechaLarga, horaBogota } from "@/lib/rrhh/fechas";
+import { basePrestacional, cesantias, diasVinculado, interesesCesantias, prima as calcPrima, vacacionesProporcionales } from "@/lib/rrhh/prestaciones";
 import { Head, Aviso, Pill, Nota, Filtros } from "../_lib/ui";
 
 // LIQUIDACIONES: art. 64 CST. Se simula por GET (empleado, fecha, causa en la
@@ -34,27 +35,28 @@ export default async function Page({ searchParams }: { searchParams: Promise<Rec
   let total = 0, diasTrab = 0, indemAplica = false;
   if (e) {
     const r = reglasEn(f);
-    const [y, m, d] = f.split("-").map(Number);
-    const base = e.salario + (e.auxilio_transporte ? r.auxilio : 0);     // cesantías y prima SÍ llevan auxilio
-    diasTrab = Math.max(0, diasEntre(e.fecha_ingreso, f) + 1);
+    const [y, m] = f.split("-").map(Number);
+    // cesantías y prima SÍ llevan auxilio (solo si aplica: ≤ 2 SMLMV). Fórmulas en lib/rrhh/prestaciones.ts,
+    // las MISMAS de la nómina quincenal. Días con la convención de 30 (año = 360, semestre = 180).
+    const base = basePrestacional(e, r);
+    diasTrab = Math.max(0, diasEntre(e.fecha_ingreso, f) + 1);           // calendario: solo para la indemnización y el encabezado
+    const diasTrab30 = dias30(e.fecha_ingreso, f);
 
     // cesantías e intereses: del 1 de enero (o del ingreso, si fue este año) al retiro
-    const iniAnio = e.fecha_ingreso > `${y}-01-01` ? e.fecha_ingreso : `${y}-01-01`;
-    const diasAnio = Math.max(0, diasEntre(iniAnio, f) + 1);
-    const ces = Math.round(base * diasAnio / 360);
-    const intCes = Math.round(ces * 0.12 * diasAnio / 360);
+    const diasAnio = diasVinculado({ fecha_ingreso: e.fecha_ingreso, fecha_retiro: f }, `${y}-01-01`, f);
+    const ces = cesantias(base, diasAnio);
+    const intCes = interesesCesantias(ces, diasAnio);
 
     // prima: semestre en curso
-    const iniSem0 = m <= 6 ? `${y}-01-01` : `${y}-07-01`;
-    const iniSem = e.fecha_ingreso > iniSem0 ? e.fecha_ingreso : iniSem0;
-    const diasSem = Math.max(0, diasEntre(iniSem, f) + 1);
-    const prima = Math.round(base * diasSem / 360);
+    const diasSem = diasVinculado({ fecha_ingreso: e.fecha_ingreso, fecha_retiro: f }, m <= 6 ? `${y}-01-01` : `${y}-07-01`, f);
+    const prima = calcPrima(base, diasSem);
 
     // vacaciones: el saldo real (corte + acumulado − usadas) si existe; si no, la proporción legal
     const saldo = await saldoVacacionesDe(e.activo_id);
-    const vacValor = saldo != null ? Math.round(Math.max(0, saldo) * e.salario / 30) : Math.round(diasTrab / 720 * e.salario);
+    const vacValor = saldo != null ? Math.round(Math.max(0, saldo) * e.salario / 30) : vacacionesProporcionales(e.salario, diasTrab30);
 
-    // salario pendiente: los días del mes hasta el retiro
+    // salario pendiente: los días del mes hasta el retiro (mes de 30: el 31 no suma, febrero completa 30)
+    const d = dias30(`${f.slice(0, 7)}-01`, f);
     const salPend = Math.round(e.salario * d / 30);
 
     // indemnización: solo despido sin justa causa con contrato indefinido (art. 64 CST)
@@ -74,7 +76,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<Rec
       { clave: "cesantias", concepto: "Cesantías (año en curso)", base: `${diasAnio} días × ${cop(base)} / 360`, valor: ces },
       { clave: "int_cesantias", concepto: "Intereses de cesantías (12 % prorrateado)", base: `12 % × ${diasAnio} / 360`, valor: intCes },
       { clave: "prima", concepto: "Prima (semestre en curso)", base: `${diasSem} días × ${cop(base)} / 360`, valor: prima },
-      { clave: "vacaciones", concepto: "Vacaciones pendientes", base: saldo != null ? `${saldo} días de saldo × ${cop(e.salario)} / 30` : `sin saldo cargado: ${diasTrab} días / 720 × salario`, valor: vacValor },
+      { clave: "vacaciones", concepto: "Vacaciones pendientes", base: saldo != null ? `${saldo} días de saldo × ${cop(e.salario)} / 30` : `sin saldo cargado: ${diasTrab30} días / 720 × salario`, valor: vacValor },
       { clave: "salario", concepto: "Salario pendiente (días del mes)", base: `${d} días × ${cop(e.salario)} / 30`, valor: salPend },
     ];
     if (indemAplica) partidas.push({ clave: "indemnizacion", concepto: "Indemnización (despido sin justa causa, indefinido)", base: `${indemDias.toFixed(1)} días × ${cop(e.salario)} / 30`, valor: indem });
@@ -131,7 +133,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<Rec
           <table className="nm-tabla"><thead><tr><th>#</th><th>Empleado</th><th>Retiro</th><th>Causa</th><th className="num">Total</th><th>Guardó</th></tr></thead>
             <tbody>{hist.map((l) => <tr key={l.id}><td className="mono">{l.id}</td><td className="nm-nombre">{l.nombre_completo}</td><td className="mono">{l.fecha_retiro}</td><td>{l.causa}</td><td className="num"><b>{cop(l.total)}</b></td><td className="nm-sub">{l.creado_por ?? "—"}{l.creado_en ? ` · ${horaBogota(new Date(l.creado_en)).fecha}` : ""}</td></tr>)}</tbody></table>)}
       </div>
-      <Nota>Oak-Crew calculaba las cesantías sobre toda la relación laboral (incluyendo años ya consignados al fondo) y los intereses al 12 % plano. Acá: solo el año en curso e intereses por días. Vacaciones: si la persona tiene saldo cargado en <b>Ausencias y saldos</b>, se liquida ese saldo; si no, la proporción legal (días/720). Si el resultado no cuadra, <Pill tono="warn">revisar la ficha</Pill> antes de guardar.</Nota>
+      <Nota>Días con la convención de 30 (año = 360, semestre = 180), igual que Siigo y que la prima de la nómina quincenal. <b>OJO:</b> «salario pendiente» paga los días del mes hasta el retiro; si la quincena de esos días también se paga por Nómina (que prorratea hasta el retiro), se pagarían dos veces — confirmar cuál de las dos lo paga. Oak-Crew calculaba las cesantías sobre toda la relación laboral (incluyendo años ya consignados al fondo) y los intereses al 12 % plano. Acá: solo el año en curso e intereses por días. Vacaciones: si la persona tiene saldo cargado en <b>Ausencias y saldos</b>, se liquida ese saldo; si no, la proporción legal (días/720). Si el resultado no cuadra, <Pill tono="warn">revisar la ficha</Pill> antes de guardar.</Nota>
     </>
   );
 }
