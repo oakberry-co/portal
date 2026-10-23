@@ -46,8 +46,19 @@ export const REGLAS: Reglas[] = [
     recargo: { ordinaria: 0, nocturna: 35, dominical: 80, nocturna_dominical: 115,
                extra_diurna: 25, extra_nocturna: 75, extra_dominical: 105, extra_nocturna_dominical: 155 },
   },
+  // Dos leyes, dos fechas: el recargo dominical sube el 1-jul (Ley 2466/2025,
+  // 80 → 90 → 100 % cada 1 de julio) y la jornada baja el 15-jul (Ley 2101/2021,
+  // 44 → 42 h desde el 15-jul-2026). Antes iban juntas el 1-jul y el divisor 210
+  // se aplicaba 14 días antes de tiempo — VERIFICAR con el contador.
   {
-    desde: "2026-07-01", smlmv: 1_750_905, auxilio: 249_095, divisor: 210, jornadaSemanal: 42,
+    desde: "2026-07-01", smlmv: 1_750_905, auxilio: 249_095, divisor: 220, jornadaSemanal: 44,
+    uvt: 52_374,
+    nocturnoDesde: 19, nocturnoHasta: 6,
+    recargo: { ordinaria: 0, nocturna: 35, dominical: 90, nocturna_dominical: 125,
+               extra_diurna: 25, extra_nocturna: 75, extra_dominical: 115, extra_nocturna_dominical: 165 },
+  },
+  {
+    desde: "2026-07-15", smlmv: 1_750_905, auxilio: 249_095, divisor: 210, jornadaSemanal: 42,
     uvt: 52_374,
     nocturnoDesde: 19, nocturnoHasta: 6,
     recargo: { ordinaria: 0, nocturna: 35, dominical: 90, nocturna_dominical: 125,
