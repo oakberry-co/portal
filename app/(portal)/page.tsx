@@ -1,61 +1,68 @@
 import { ruta } from "@/lib/ruta";
-// Índice del portal — la cáscara. Cada tarjeta es un módulo.
-// Fase 0: solo Contabilidad > Conciliación de pagos está vivo.
+import { getCurrentUserOrNull } from "@/lib/auth";
+import { redirect } from "next/navigation";
+import { areasPortada } from "./areas";
 
-export default function Home() {
+// LA PUERTA DE ENTRADA (23-oct-2026): las 5 áreas de Manel Foods como tarjetas, y un
+// espacio reservado para las cifras clave de cada área (pedido de Daniel: "donde
+// mostremos en el futuro algunas métricas puntuales"). Cada tarjeta abre la primera
+// pantalla que ESTA persona puede ver; si no puede ver ninguna, sale como sin acceso.
+export const dynamic = "force-dynamic";
+
+const TEXTO: Record<string, { ico: string; txt: string }> = {
+  contabilidad: { ico: "🧾", txt: "Facturas, pagos, cuentas de cobro y causaciones, factura por factura y con bitácora incorruptible." },
+  finanzas: { ico: "📈", txt: "El P&L al día de cada tienda propia: venta, costo y EBITDA del mes en curso." },
+  rrhh: { ico: "👥", txt: "Nómina, turnos, marcaciones, ausencias y solicitudes del equipo de tiendas." },
+  operaciones: { ico: "🏪", txt: "Tiendas, compras e inventario." },
+  mercadeo: { ico: "📣", txt: "CRM, cohortes, LTV y retención de Loopy, y el resultado de cada campaña contra su control." },
+};
+
+export default async function Home() {
+  const user = await getCurrentUserOrNull();
+  if (!user) redirect("/login");
+  const areas = areasPortada(user.rol);
   return (
     <div className="container">
       <section className="hero">
         <span className="eyebrow">Oakberry · Core</span>
         <h1 className="hero-title">
-          Portal de<br />
-          <span className="accent">Contabilidad</span>
+          Portal<br />
+          <span className="accent">Manel Foods</span>
         </h1>
         <p className="hero-sub">
-          Una cáscara, muchos módulos. Empezamos por Contabilidad — factura por
-          factura, con bitácora incorruptible.
+          Contabilidad, finanzas, recursos humanos, operaciones y mercadeo en un solo lugar.
+          Escoge un área, o usa el menú de la izquierda.
         </p>
       </section>
 
       <div className="cards">
-        <a className="card" href={ruta("/contabilidad/conciliacion")}>
-          <div className="card-ico">🧾</div>
-          <h3>Conciliación de pagos</h3>
-          <p>Factura por factura: concepto, destino, plazo y retenciones. Con bitácora incorruptible.</p>
-          <span className="card-go">Entrar →</span>
-        </a>
-
-        <div className="card disabled">
-          <span className="card-fase">Fase 2</span>
-          <div className="card-ico">💸</div>
-          <h3>Pagos</h3>
-          <p>Aprobación y ejecución de pagos de la semana.</p>
-        </div>
-
-        <div className="card disabled">
-          <span className="card-fase">Fase 3</span>
-          <div className="card-ico">📚</div>
-          <h3>Causación</h3>
-          <p>Autorizar y causar en Siigo, factura por factura.</p>
-        </div>
-
-        <div className="card disabled">
-          <span className="card-fase">Fase 4</span>
-          <div className="card-ico">🏦</div>
-          <h3>Conciliación de bancos</h3>
-          <p>Cruce con el pago real por canal.</p>
-        </div>
-
-        <div className="card disabled">
-          <div className="card-ico">🗂️</div>
-          <h3>Maestros</h3>
-          <p>Cuentas, tiendas, conceptos, centros de costo, retenciones.</p>
-        </div>
-
-        <div className="card disabled">
-          <div className="card-ico">📊</div>
-          <h3>Dashboard</h3>
-          <p>Evolución semanal de todo el flujo. (reemplaza el del Sheet)</p>
+        {areas.map((a) => {
+          const t = TEXTO[a.id];
+          const estado = !a.conAcceso ? "Sin acceso" : !a.href ? "Pronto" : null;
+          if (estado) {
+            return (
+              <div key={a.id} className="card disabled">
+                <span className="card-fase">{estado}</span>
+                <div className="card-ico">{t.ico}</div>
+                <h3>{a.label}</h3>
+                <p>{t.txt}</p>
+              </div>
+            );
+          }
+          return (
+            <a key={a.id} className="card" href={ruta(a.href)}>
+              <div className="card-ico">{t.ico}</div>
+              <h3>{a.label}</h3>
+              <p>{t.txt}</p>
+              <span className="card-go">Entrar →</span>
+            </a>
+          );
+        })}
+        <div className="card disabled" style={{ borderStyle: "dashed" }}>
+          <span className="card-fase">Pronto</span>
+          <div className="card-ico">✨</div>
+          <h3>Cifras clave</h3>
+          <p>Aquí van a vivir las cifras que importan de cada área: venta de la semana, pagos por aprobar, clientes que volvieron.</p>
         </div>
       </div>
     </div>

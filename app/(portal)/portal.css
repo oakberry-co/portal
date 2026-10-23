@@ -1,0 +1,65 @@
+/* LA CÁSCARA DEL PORTAL — menú lateral por áreas (estilo Oak-Crew, el mismo de Nómina
+   y Mercadeo) + barra superior de 60 px. Solo clases .pc-*: no toca ninguna pieza de
+   las pantallas (globals.css sigue mandando adentro). Tema claro fijo. */
+.pc { display: grid; grid-template-columns: 264px minmax(0, 1fr); min-height: 100vh; }
+
+.pc-side { background: #fff; border-right: 1px solid var(--border-lav); display: flex; flex-direction: column;
+  position: sticky; top: 0; height: 100vh; z-index: 30; }
+.pc-brand { display: flex; align-items: center; gap: 10px; padding: 14px 18px; height: 60px; border-bottom: 1px solid var(--border-lav); color: var(--ink); }
+.pc-brand:hover { text-decoration: none; }
+.pc-logo { width: 34px; height: 34px; border-radius: 50%; background: var(--cream); border: 1px solid var(--border); display: grid; place-items: center; font-size: 17px; flex: none; }
+.pc-brand b { display: block; font-family: var(--display); font-size: 21px; letter-spacing: .5px; line-height: 1; font-weight: 400; }
+.pc-brand small { display: block; color: var(--lav); font-size: 11px; font-weight: 600; margin-top: 2px; }
+
+.pc-nav { flex: 1; overflow-y: auto; padding: 10px 12px 16px; }
+.pc-nav svg { width: 19px; height: 19px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.pc-area { margin-top: 4px; }
+.pc-area > button { all: unset; box-sizing: border-box; cursor: pointer; width: 100%; display: flex; align-items: center; gap: 11px;
+  padding: 10px 11px; border-radius: 11px; font-weight: 700; font-size: 14px; color: var(--ink); }
+.pc-area > button:hover { background: var(--lav-soft); }
+.pc-area > button i { margin-left: auto; font-style: normal; font-size: 12px; color: var(--lav); transition: transform .18s; }
+.pc-area.cerrada > button i { transform: rotate(-90deg); }
+.pc-area.aqui > button { color: var(--purple); }
+.pc-area.cerrada .pc-items { display: none; }
+.pc-area .pc-items { margin: 2px 0 8px 18px; padding-left: 10px; border-left: 1px solid var(--border-lav); }
+.pc-items a, .pc-items .pronto { display: flex; align-items: center; gap: 10px; padding: 7px 10px; margin: 1px 0; border-radius: 10px;
+  font-size: 13.5px; font-weight: 500; color: #5a4d66; text-decoration: none; }
+.pc-items a:hover { background: var(--lav-soft); color: var(--purple); text-decoration: none; }
+.pc-items a.on { background: var(--purple); color: #fff; font-weight: 600; box-shadow: 0 4px 12px rgba(95, 75, 139, .28); }
+.pc-items a svg, .pc-items .pronto svg { width: 17px; height: 17px; }
+.pc-items .pronto { color: #b3a9c2; cursor: default; }
+.pc-items a > span, .pc-items .pronto > span { flex: 1; min-width: 0; }   /* nombres largos parten la línea; la etiqueta no se sale */
+.pc-items .pronto em { margin-left: auto; font-style: normal; font-size: 10px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase;
+  color: var(--lav); background: var(--cream-2); border-radius: 999px; padding: 1px 7px; }
+.pc-items h5 { margin: 10px 10px 3px; font-size: 10px; letter-spacing: .14em; text-transform: uppercase; color: var(--lav); font-weight: 800; }
+.pc-solo { margin: 0 0 6px; }
+.pc-solo a { font-weight: 700; font-size: 14px; color: var(--ink); padding: 10px 11px; }
+
+.pc-user { margin: 8px 12px 14px; padding: 10px; border-radius: 14px; background: var(--lav-soft); display: flex; align-items: center; gap: 10px; }
+.pc-avatar { width: 34px; height: 34px; border-radius: 50%; background: var(--purple); color: #fff; font-weight: 800; font-size: 12px; display: grid; place-items: center; flex: none; }
+.pc-user div { min-width: 0; flex: 1; line-height: 1.2; }
+.pc-user b { display: block; font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pc-user i { font-style: normal; font-size: 11px; color: var(--lav); text-transform: capitalize; }
+.pc-user button { all: unset; cursor: pointer; padding: 6px; border-radius: 8px; color: var(--lav); font-size: 16px; }
+.pc-user button:hover { background: #fff; color: var(--purple); }
+
+.pc-body { min-width: 0; display: flex; flex-direction: column; }
+.pc-top { position: sticky; top: 0; z-index: 20; height: 60px; display: flex; align-items: center; gap: 14px; padding: 0 24px;
+  background: rgba(255, 255, 255, .86); backdrop-filter: saturate(1.4) blur(10px); border-bottom: 1px solid var(--border); }
+.pc-vista { font-size: 13.5px; color: var(--lav); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.pc-vista b { color: var(--ink); font-weight: 700; } .pc-vista .sep { margin: 0 8px; }
+.pc-der { margin-left: auto; display: flex; align-items: center; gap: 12px; flex: none; }
+.pc-salir { background: none; border: 1px solid var(--border-lav); color: var(--ink); font-size: 12.5px; font-weight: 600; padding: 6px 12px; border-radius: 9px; cursor: pointer; }
+.pc-salir:hover { border-color: var(--purple); background: var(--lav-soft); filter: none; }
+.pc-hamb { all: unset; cursor: pointer; display: none; font-size: 22px; padding: 4px 6px; }
+.pc-main { min-width: 0; }
+.pc-velo { display: none; }
+
+@media (max-width: 900px) {
+  .pc { grid-template-columns: minmax(0, 1fr); }
+  .pc-side { position: fixed; left: 0; top: 0; bottom: 0; width: min(86vw, 290px); transform: translateX(-102%); transition: transform .22s; box-shadow: 0 0 40px rgba(0, 0, 0, .18); }
+  .pc.abierto .pc-side { transform: none; }
+  .pc.abierto .pc-velo { display: block; position: fixed; inset: 0; background: rgba(44, 24, 56, .35); z-index: 25; }
+  .pc-top { padding: 0 12px; gap: 8px; } .pc-hamb { display: block; }
+  .pc-der .nav-who { display: none; }
+}

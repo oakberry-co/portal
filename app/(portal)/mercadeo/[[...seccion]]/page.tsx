@@ -14,16 +14,23 @@ export default async function MercadeoPage({ params }: { params: Promise<{ secci
   const sec = seccion?.[0] ?? "inicio";
   if (!SECCIONES.includes(sec) || (seccion?.length ?? 0) > 1) notFound();
 
-  let datos: unknown = null;
+  let datos: unknown = null, generado: Date | null = null;
   try {
-    const { rows } = await getPool().query<{ datos: unknown }>(
-      "SELECT datos FROM mk_snapshot ORDER BY generado DESC, id DESC LIMIT 1");
+    const { rows } = await getPool().query<{ datos: unknown; generado: Date }>(
+      "SELECT datos, generado FROM mk_snapshot ORDER BY generado DESC, id DESC LIMIT 1");
     datos = rows[0]?.datos ?? null;
+    generado = rows[0]?.generado ?? null;
   } catch (e) {
     console.error("[mercadeo] snapshot", e);
   }
   if (!datos) {
-    return <div className="vacio">Todavía no hay datos de mercadeo. El refresco diario los trae cada mañana.</div>;
+    return <div className="container"><div className="mk"><div className="vacio">Todavía no hay datos de mercadeo. El refresco diario los trae cada mañana.</div></div></div>;
   }
-  return <VistaMercadeo seccion={sec} datos={datos} base={ruta("/mercadeo")} />;
+  const sello = generado?.toLocaleString("es-CO", { timeZone: "America/Bogota", day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
+  return (
+    <div className="container container-wide mk-pagina">
+      <p className="mk-sello">Datos al {sello}</p>
+      <VistaMercadeo seccion={sec} datos={datos} base={ruta("/mercadeo")} />
+    </div>
+  );
 }

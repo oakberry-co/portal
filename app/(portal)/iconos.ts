@@ -1,0 +1,42 @@
+// Íconos de trazo (24×24) del portal: menú lateral, portada y Mercadeo. Solo el
+// contenido del <svg> (paths); el trazo lo pone el CSS (stroke: currentColor).
+export const ICONOS: Record<string, string> = {
+  // áreas
+  inicio: '<path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/><path d="M10 20v-6h4v6"/>',
+  contabilidad: '<path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6M9 16h3"/>',
+  finanzas: '<path d="M3 3v18h18"/><path d="M7 15l4-4 3 3 6-7"/>',
+  rrhh: '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.8-3.6 3.4-5.5 6.5-5.5s5.7 1.9 6.5 5.5"/><circle cx="17" cy="9" r="2.6"/><path d="M16 14.6c2.6.2 4.6 2 5.4 5.4"/>',
+  operaciones: '<path d="M3 9l1.5-5h15L21 9"/><path d="M3 9h18v2a3 3 0 01-6 0 3 3 0 01-6 0 3 3 0 01-6 0z"/><path d="M5 13v8h14v-8"/>',
+  mercadeo: '<path d="M3 11l15-6v14L3 13z"/><path d="M7 13v5a2 2 0 004 0v-3"/>',
+  config: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.6 1.6 0 00.3 1.8l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.6 1.6 0 00-1.8-.3 1.6 1.6 0 00-1 1.5V21a2 2 0 01-4 0v-.1a1.6 1.6 0 00-1-1.5 1.6 1.6 0 00-1.8.3l-.1.1a2 2 0 11-2.8-2.8l.1-.1a1.6 1.6 0 00.3-1.8 1.6 1.6 0 00-1.5-1H3a2 2 0 010-4h.1a1.6 1.6 0 001.5-1 1.6 1.6 0 00-.3-1.8l-.1-.1a2 2 0 112.8-2.8l.1.1a1.6 1.6 0 001.8.3H9a1.6 1.6 0 001-1.5V3a2 2 0 014 0v.1a1.6 1.6 0 001 1.5 1.6 1.6 0 001.8-.3l.1-.1a2 2 0 112.8 2.8l-.1.1a1.6 1.6 0 00-.3 1.8V9a1.6 1.6 0 001.5 1H21a2 2 0 010 4h-.1a1.6 1.6 0 00-1.5 1z"/>',
+  // contabilidad
+  tablero: '<rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/>',
+  conciliacion: '<path d="M9 11l3 3 8-8"/><path d="M20 12v7a2 2 0 01-2 2H6a2 2 0 01-2-2V5a2 2 0 012-2h9"/>',
+  pagos: '<rect x="2" y="6" width="20" height="13" rx="2"/><path d="M2 10h20M6 15h4"/>',
+  bancos: '<path d="M3 10l9-6 9 6"/><path d="M5 10v8M9.5 10v8M14.5 10v8M19 10v8M3 21h18"/>',
+  cuentas: '<path d="M14 3H6a2 2 0 00-2 2v14a2 2 0 002 2h12a2 2 0 002-2V9z"/><path d="M14 3v6h6M8 13h8M8 17h5"/>',
+  gasto: '<circle cx="12" cy="12" r="9"/><path d="M15 9.5c-.5-1-1.6-1.5-3-1.5-1.7 0-3 .9-3 2.2 0 3 6 1.6 6 4.6 0 1.3-1.3 2.2-3 2.2-1.4 0-2.6-.6-3.1-1.6M12 6v2M12 16v2"/>',
+  cotizaciones: '<path d="M4 4h16v16H4z"/><path d="M8 9h8M8 13h8M8 17h4"/>',
+  ordenes: '<path d="M6 2l1.5 4M18 2l-1.5 4"/><rect x="3" y="6" width="18" height="15" rx="2"/><path d="M8 11h8M8 15h5"/>',
+  internacional: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 010 18M12 3a14 14 0 000 18"/>',
+  causaciones: '<path d="M4 19.5V5a2 2 0 012-2h13v16H6.5a2.5 2.5 0 000 5H19"/><path d="M9 8h6"/>',
+  maestros: '<ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/>',
+  soportes: '<path d="M21.4 11.1l-9.2 9.2a6 6 0 01-8.5-8.5l9.2-9.2a4 4 0 015.7 5.7l-9.2 9.2a2 2 0 01-2.8-2.8l8.5-8.5"/>',
+  pnl: '<path d="M3 3v18h18"/><rect x="7" y="12" width="3" height="6"/><rect x="12" y="8" width="3" height="10"/><rect x="17" y="5" width="3" height="13"/>',
+  nomina: '<rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4M8 14h3M8 17h6"/>',
+  pronto: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+  // mercadeo
+  campanas: '<path d="M3 11l15-6v14L3 13z"/><path d="M7 13v5a2 2 0 004 0v-3"/>',
+  audiencia: '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.8-3.6 3.4-5.5 6.5-5.5s5.7 1.9 6.5 5.5"/><circle cx="17" cy="9" r="2.6"/><path d="M16 14.6c2.6.2 4.6 2 5.4 5.4"/>',
+  plantillas: '<path d="M4 5a2 2 0 012-2h12a2 2 0 012 2v10a2 2 0 01-2 2H9l-5 4z"/><path d="M8 8h8M8 12h5"/>',
+  envios: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/>',
+  cohortes: '<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h12M9 3v18M15 3v12"/>',
+  ltv: '<path d="M12 2v20M17 6H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/>',
+  adq: '<circle cx="10" cy="8" r="4"/><path d="M2 21c1-4 4-6 8-6"/><path d="M18 14v7M14.5 17.5h7"/>',
+  ret: '<path d="M3 12a9 9 0 0115.5-6.3L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 01-15.5 6.3L3 16"/><path d="M3 21v-5h5"/>',
+  react: '<path d="M12 21s-7-4.4-7-10a4 4 0 017-2.6A4 4 0 0119 11c0 5.6-7 10-7 10z"/>',
+  palanca: '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
+  mensajes: '<path d="M4 4h16v12H8l-4 4z"/><path d="M8 9h8M8 12h5"/>',
+  canjes: '<path d="M3 7h18v4a2 2 0 000 4v4H3v-4a2 2 0 000-4z"/><path d="M14 7v12" stroke-dasharray="2 2.5"/>',
+  personas: '<circle cx="12" cy="8" r="4"/><path d="M4 21c1.2-4.4 4.2-6.5 8-6.5s6.8 2.1 8 6.5"/>',
+};

@@ -3,7 +3,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { ICONOS } from "./CascaraMercadeo";
+import { ICONOS } from "../iconos";
 
 // LAS VISTAS DE MERCADEO. Una función por sección (misma clave que la URL y que
 // secciones.ts). Gráficos: una sola escala por gráfico (nunca doble eje), colores
@@ -24,7 +24,7 @@ export function VistaMercadeo({ seccion, datos, base }) {
     catch (e) { root.innerHTML = `<div class="vacio">No se pudo pintar esta sección: ${String(e?.message || e)}</div>`; console.error(e); }
     return () => tip.remove();
   }, [seccion, datos, base]);
-  return <div ref={ref} />;
+  return <div className="mk" ref={ref} />;
 }
 
 function pintar(root, SEC, D, BASE, TIP) {

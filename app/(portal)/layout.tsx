@@ -1,103 +1,34 @@
-import { getCurrentUserOrNull, type Rol } from "@/lib/auth";
-import { puede, type Cap } from "@/lib/permisos";
-import { MenuPortal, type GrupoMenu } from "./MenuPortal";
+import { getCurrentUserOrNull } from "@/lib/auth";
+import { puede } from "@/lib/permisos";
+import { CascaraPortal } from "./CascaraPortal";
+import { areasPara } from "./areas";
+import "./portal.css";
 import { signOut } from "@/auth";
 import { AsistenteFloating } from "./AsistenteFloating";
-import { ruta } from "@/lib/ruta";
 import { SelectorRolPruebas } from "./SelectorRolPruebas";
 import { cargarAvisos } from "@/lib/avisos-cache";
 import { Campana } from "./Campana";
 
-// El portal interno: menú + sesión. Las landings públicas (/cuentas-de-cobro y
+// El portal interno: menú lateral + sesión. Las landings públicas (/cuentas-de-cobro y
 // /cotizaciones) quedan FUERA de este grupo y por eso no lo heredan.
-// `(portal)` es un route group: no cambia ninguna URL.
-// El menú, en 4 grupos (pedido de Daniel 2026-08-18). Cada ítem lleva la
-// capacidad que lo habilita: un grupo aparece solo si la persona puede ver al
-// menos uno de sus ítems, así el contador externo no ve cajones vacíos.
-//
-// Los ítems SIN href son los que todavía no existen: se muestran como "pronto"
-// a propósito, para que el equipo sepa qué viene y no los pida dos veces.
-type Item = { label: string; href?: string; cap: Cap };
-type Grupo = { label: string; href?: string; cap?: Cap; items?: Item[]; pronto?: boolean };
-
-const MENU: Grupo[] = [
-  { label: "Dashboard", href: "/contabilidad/dashboard", cap: "dashboard" },
-  {
-    label: "Contabilidad",
-    items: [
-      { label: "Conciliación de pagos", href: "/contabilidad/conciliacion", cap: "ver_conciliacion" },
-      { label: "Pagos", href: "/contabilidad/pagos", cap: "ver_pagos" },
-      { label: "Conciliación de bancos", cap: "pagos" },
-      { label: "Cuentas de cobro", href: "/contabilidad/cuentas-de-cobro", cap: "ver_intake" },
-      // Lo que nadie nos factura (servicios públicos, impuestos, reembolsos). Lo
-      // carga el equipo desde adentro, no un proveedor desde afuera.
-      { label: "Gasto sin factura", href: "/contabilidad/gasto-sin-factura", cap: "clasificar" },
-      { label: "Cotizaciones", href: "/contabilidad/cotizaciones", cap: "ver_intake" },
-      { label: "Órdenes de compra", cap: "ver_conciliacion" },
-      { label: "Pagos internacionales", cap: "pagos" },
-    ],
-  },
-  { label: "Causaciones", items: [{ label: "Causaciones", href: "/contabilidad/causaciones", cap: "causar" }] },
-  // Borrador visual del módulo RRHH (solo el decisor mientras sea maqueta).
-  { label: "Nómina", href: "/nomina", cap: "nomina" },
-  // P&L al día por tienda (reflejo de BigQuery; solo el decisor mientras se calibra).
-  { label: "Finanzas", href: "/finanzas", cap: "finanzas" },
-  // Mercadeo: CRM + análisis Loopy + campañas (pantalla completa con su barra lateral).
-  { label: "Mercadeo", href: "/mercadeo", cap: "mercadeo" },
-  {
-    label: "Configuraciones",
-    items: [
-      { label: "Maestros", href: "/contabilidad/maestros", cap: "maestro_retenciones" },
-      { label: "Soportes", href: "/contabilidad/soportes", cap: "ver_conciliacion" },
-      { label: "Configuración", href: "/contabilidad/configuracion", cap: "usuarios" },
-    ],
-  },
-];
-
-/** Deja solo lo que el rol puede ver, y descarta los grupos que quedan vacíos. */
-function menuPara(rol: Rol): GrupoMenu[] {
-  const salida: GrupoMenu[] = [];
-  for (const g of MENU) {
-    if (g.pronto) { salida.push({ label: g.label, pronto: true }); continue; }
-    if (g.href) {
-      if (!g.cap || puede(rol, g.cap)) salida.push({ label: g.label, href: g.href });
-      continue;
-    }
-    const items = (g.items ?? [])
-      .filter((i) => puede(rol, i.cap))
-      .map(({ label, href }) => ({ label, href }));
-    if (items.length) salida.push({ label: g.label, items });
-  }
-  return salida;
-}
-
+// `(portal)` es un route group: no cambia ninguna URL. El menú (las 5 áreas y sus
+// permisos) vive en areas.ts; la cáscara que lo pinta, en CascaraPortal.tsx.
 export default async function PortalLayout({ children }: { children: React.ReactNode }) {
   const user = await getCurrentUserOrNull();
+  // Sin sesión (la pantalla de login) no hay cáscara.
+  if (!user) return <>{children}</>;
   // La campana: cuántas cosas tiene que mirar ESTA persona. Cacheado un minuto
   // para todos (lib/avisos.ts); si la base no responde, la campana no tumba el
   // portal — se muestra sin número.
   let pendientes = 0;
-  if (user) { try { pendientes = (await cargarAvisos(user.rol)).avisos.length; } catch (e) { console.error("[campana]", e); } }
+  try { pendientes = (await cargarAvisos(user.rol)).avisos.length; } catch (e) { console.error("[campana]", e); }
+  const iniciales = user.email.split(/[@.]/).filter(Boolean).slice(0, 2).map((x) => x[0]?.toUpperCase()).join("");
+  const salir = async () => { "use server"; await signOut({ redirectTo: "/login" }); };
   return (
-    <>
-      {user && (
-        <header className="nav">
-          <a href={ruta("/")} className="nav-brand">
-            <span className="nav-dot" />Oakberry<span className="nav-thin">· Portal</span>
-          </a>
-          <MenuPortal grupos={menuPara(user.rol)} />
-          <div className="nav-user">
-            <SelectorRolPruebas rol={user.rol} />
-            <Campana n={pendientes} />
-            <span className="nav-who"><b>{user.email}</b><i>{user.rol}</i></span>
-            <form action={async () => { "use server"; await signOut({ redirectTo: "/login" }); }}>
-              <button className="nav-out" type="submit">Salir</button>
-            </form>
-          </div>
-        </header>
-      )}
+    <CascaraPortal areas={areasPara(user.rol)} email={user.email} rol={user.rol} iniciales={iniciales} salir={salir}
+      derecha={<><SelectorRolPruebas rol={user.rol} /><Campana n={pendientes} /><span className="nav-who"><b>{user.email}</b><i>{user.rol}</i></span></>}>
       {children}
-      {user && puede(user.rol, "asistente") && <AsistenteFloating />}
-    </>
+      {puede(user.rol, "asistente") && <AsistenteFloating />}
+    </CascaraPortal>
   );
 }
