@@ -4,8 +4,8 @@ import { useActionState, useMemo, useState } from "react";
 import type { Resultado } from "@/lib/resultado";
 import type { Palanca, Campana } from "@/lib/crm-campanas";
 import {
-  proyectar, fmt, pesos, millones, pp, TIERS, TIER_TXT, CANALES, TOPE_DIARIO, TICKET,
-  type FilaAudiencia,
+  proyectar, tasaDe, fmt, pesos, millones, pp, TIERS, TIER_TXT, CANALES, TOPE_DIARIO, TICKET, HOLGURA,
+  type FilaAudiencia, type FilaFlujo, type FilaTasa,
 } from "@/lib/crm-proyeccion";
 import { crearCampana } from "./acciones";
 import { MensajePrevio, type VistaMensaje } from "./MensajePrevio";
@@ -37,9 +37,9 @@ function Chips({ opciones, sel, set, todas, deshabilitadas = [] }: {
   );
 }
 
-export function FormCampana({ usuario, esAdmin, hoy, pausado, palancas, audiencia, mensajes, aprobadas, alAire }: {
+export function FormCampana({ usuario, esAdmin, hoy, pausado, palancas, audiencia, flujo, tasas, mensajes, aprobadas, alAire }: {
   usuario: string; esAdmin: boolean; hoy: string; pausado: boolean; palancas: Palanca[]; audiencia: FilaAudiencia[];
-  mensajes: VistaMensaje[]; aprobadas: string[]; alAire: Campana[];
+  flujo: FilaFlujo[]; tasas: FilaTasa[]; mensajes: VistaMensaje[]; aprobadas: string[]; alAire: Campana[];
 }) {
   const [res, accion, enviando] = useActionState<Resultado | null, FormData>(crearCampana, null);
   const [nombre, setNombre] = useState("");
@@ -77,7 +77,17 @@ export function FormCampana({ usuario, esAdmin, hoy, pausado, palancas, audienci
   const sel = disponibles.filter((p) => elegidas.includes(p.id));
   const topeNum = Number(tope.replace(/\./g, "").replace(",", ".")) || 0;
 
-  const proy = proyectar(audiencia, { ciudades, tiendas, tiers: tiersEf, canales: canalesEf }, sel, control, { tipo: topeTipo, valor: topeNum });
+  const dias = desde && hasta && hasta >= desde ? Math.round((Date.parse(hasta) - Date.parse(desde)) / 864e5) + 1 : 1;
+  const proy = proyectar(audiencia, flujo, { ciudades, tiendas, tiers: tiersEf, canales: canalesEf }, sel, tasas, control,
+    { tipo: topeTipo, valor: topeNum }, dias);
+  const ddmm = (n: number) => { const x = new Date(desde + "T12:00:00"); x.setDate(x.getDate() + n - 1); return x.toLocaleDateString("es-CO", { day: "numeric", month: "short" }); };
+  // Tasas reales que usa la propuesta (una por palanca escogida, en sus grupos).
+  const fuentes = sel.map((p) => {
+    const ls = proy.lineas.filter((l) => l.palanca.id === p.id && l.tratados > 0);
+    const tr = ls.reduce((a, l) => a + l.tratados, 0), cj = ls.reduce((a, l) => a + l.canjes, 0);
+    const real = ls.some((l) => l.tasa.fuente !== "catálogo"), n = Math.max(0, ...ls.map((l) => l.tasa.n));
+    return { p, tasa: tr ? cj / tr : tasaDe(p, tiersEf[0], tasas).tasa, real, n };
+  }).filter((x) => x.p.costo_canje > 0);
   const porTier = proy.porTier;
 
   // Lo que conviene saber antes de lanzar.
@@ -99,7 +109,7 @@ export function FormCampana({ usuario, esAdmin, hoy, pausado, palancas, audienci
   if (pausado) avisos.push({ cls: "bad", txt: <>Los envíos a clientes están en pausa: si la lanzas queda al aire, pero no le escribe a nadie hasta que se reanuden.</> });
 
   const lanzar = (e: React.MouseEvent<HTMLButtonElement>) => {
-    if (!window.confirm(`¿Lanzar "${nombre || "la campaña"}"? Desde la próxima corrida de la mañana el CRM le escribe a quien le toque (hoy: ~${fmt(proy.tratados)} personas; ${fmt(proy.control)} quedan de control).`)) e.preventDefault();
+    if (!window.confirm(`¿Lanzar "${nombre || "la campaña"}"? Desde la próxima corrida de la mañana el CRM le escribe a quien le toque (~${fmt(proy.cupones)} cupones en ${dias} días; ${control} % de control).`)) e.preventDefault();
   };
   const diario = (canalesEf.includes("wa") ? TOPE_DIARIO.wa : 0) + (canalesEf.includes("email") ? TOPE_DIARIO.email : 0);
 
@@ -148,7 +158,7 @@ export function FormCampana({ usuario, esAdmin, hoy, pausado, palancas, audienci
                       <span className="cf-check" aria-hidden="true">{on ? "✓" : ""}</span>
                       <b>{p.nombre}</b>
                       <span className="cf-pal-desc">{p.descripcion}</span>
-                      <span className="cf-pal-meta">{p.costo_canje ? `${pesos(p.costo_canje)} por canje` : "Sin costo"} · vale {p.vigencia_dias} días{p.dia_envio != null ? ` · sale los ${DIAS[p.dia_envio]}` : ""}</span>
+                      <span className="cf-pal-meta">{p.costo_canje ? `${pesos(p.costo_canje)} por canje · se canjea ${(100 * tasaDe(p, tiersEf[0], tasas).tasa).toFixed(1).replace(".", ",")} %` : "Sin costo"} · vale {p.vigencia_dias} días{p.dia_envio != null ? ` · sale los ${DIAS[p.dia_envio]}` : ""}</span>
                       <span className="cf-efectos">{tiersEf.map((t) => {
                         const e = p.efecto?.[t];
                         const cls = !e ? "nulo" : e.pp > 0 ? "pos" : e.pp < 0 ? "neg" : "nulo";
@@ -197,6 +207,21 @@ export function FormCampana({ usuario, esAdmin, hoy, pausado, palancas, audienci
               <input type="hidden" name="paga" value={paga} />
               <p className="cf-sub">{esAdmin ? "Solo el administrador escoge entre los dos." : "Las campañas que arma un franquiciado las paga el franquiciado."}</p>
             </div>
+              {sel.length > 0 && (
+                <div className="cf-propuesta cf-ancho">
+                  {proy.propuesta == null ? (
+                    <p>Con estas palancas no hay canjes que cuesten: el tope no se gasta. Ponle uno chico como seguro.</p>
+                  ) : (
+                    <>
+                      <p className="cf-prop-cifra">Propuesta con datos: <b>{topeTipo === "canjes" ? `${fmt(proy.propuesta)} canjes` : pesos(proy.propuesta)}</b>
+                        <button type="button" className="boton cf-sec" onClick={() => setTope(String(proy.propuesta))}>Usar</button></p>
+                      <p>En {dias} días salen ~<b>{fmt(proy.cupones)}</b> cupones ({fmt(proy.contactables)} contactables hoy + ~{fmt(proy.nuevosDia)} nuevos por día){proy.limitadoDiario ? ", limitados por el tope diario de envíos" : ""}; {fmt(proy.tratados)} reciben y el resto es control.
+                        Se esperan ~<b>{fmt(proy.canjes)} canjes</b> por ~<b>{millones(proy.costo)}</b>. La propuesta le suma {Math.round((HOLGURA - 1) * 100)} % para que el tope solo corte si se canjea más de lo normal.</p>
+                      <p className="cf-sub">Tasa de canje: {fuentes.map((x, i) => <span key={x.p.id}>{i ? " · " : ""}{x.p.nombre} {(100 * x.tasa).toFixed(1).replace(".", ",")} %{x.real ? ` (real, ${fmt(x.n)} cupones)` : " (supuesto del catálogo)"}</span>)}</p>
+                    </>
+                  )}
+                </div>
+              )}
             <div className="cf-ancho"><label className="cf-etq" htmlFor="notas">Notas <em>opcional</em></label><textarea id="notas" className="cf-input" name="notas" rows={2} value={notas} onChange={(e) => setNotas(e.target.value)} placeholder="Para qué es, qué queremos aprender…" /></div>
           </div>
         </section>
@@ -204,10 +229,10 @@ export function FormCampana({ usuario, esAdmin, hoy, pausado, palancas, audienci
 
       <aside className="cf-der">
         <div className="tarjeta cf-resultado">
-          <header><h2>Resultado esperado</h2><p>Con lo medido hasta hoy</p></header>
+          <header><h2>Resultado esperado</h2><p>Toda la campaña · {dias} días · con lo medido hasta hoy</p></header>
           <div className="cuerpo">
-            <div className="cf-cifra"><b>{fmt(proy.contactables)}</b><span>contactables hoy</span></div>
-            <p className="cf-sub">{fmt(proy.tratados)} reciben mensaje · {fmt(proy.control)} de control · por día salen hasta {fmt(diario)} entre todas las campañas</p>
+            <div className="cf-cifra"><b>{fmt(proy.cupones)}</b><span>cupones en la vigencia</span></div>
+            <p className="cf-sub">{fmt(proy.contactables)} contactables hoy + ~{fmt(proy.nuevosDia)} nuevos por día · {fmt(proy.tratados)} reciben, {fmt(proy.control)} de control · por día salen hasta {fmt(diario)} entre todas las campañas</p>
             <table className="cf-tabla"><tbody>
               <tr><td>Clientes que vuelven por la campaña</td><td className={proy.extra < 0 ? "neg" : ""}>{sel.length ? fmt(proy.extra) : "—"}</td></tr>
               <tr><td>Venta extra <span className="cf-sub">(× {pesos(TICKET)})</span></td><td>{sel.length ? millones(proy.venta) : "—"}</td></tr>
@@ -217,9 +242,9 @@ export function FormCampana({ usuario, esAdmin, hoy, pausado, palancas, audienci
               <tr className="total"><td>Queda</td><td className={proy.neto < 0 ? "neg" : "pos"}>{sel.length ? millones(proy.neto) : "—"}</td></tr>
             </tbody></table>
             <p className="cf-sub">
-              {!sel.length ? "Escoge al menos una palanca." : proy.cuponesParaTope == null ? "Con estas palancas no hay canjes que cuenten contra el tope." :
-                proy.cuponesParaTope > proy.tratados ? `El tope (${topeTipo === "canjes" ? fmt(topeNum) + " canjes" : pesos(topeNum)}) da para ~${fmt(proy.cuponesParaTope)} cupones: más que la gente contactable hoy; el resto aparece a medida que se cumplen los enfriamientos.`
-                : `El tope se alcanza con ~${fmt(proy.cuponesParaTope)} cupones (de ${fmt(proy.tratados)} posibles hoy).`}
+              {!sel.length ? "Escoge al menos una palanca." : proy.consumo <= 0 ? "Con estas palancas no hay canjes que cuenten contra el tope." :
+                proy.diaCorte == null ? `El tope (${topeTipo === "canjes" ? fmt(topeNum) + " canjes" : pesos(topeNum)}) alcanza para toda la vigencia: se espera gastar ${topeTipo === "canjes" ? fmt(proy.consumo) + " canjes" : millones(proy.consumo)} (${Math.round((100 * proy.consumo) / Math.max(topeNum, 1))} %).`
+                : `Con este tope la campaña se apaga hacia el día ${proy.diaCorte} de ${dias} (${ddmm(proy.diaCorte)}): se esperan ${topeTipo === "canjes" ? fmt(proy.consumo) + " canjes" : millones(proy.consumo)} en toda la vigencia.`}
             </p>
             <p className="cf-sub">Sin contar el costo de los mensajes. Cada mañana el número se corrige con lo que van midiendo las campañas.</p>
           </div>

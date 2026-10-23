@@ -1,19 +1,19 @@
 // EL RESULTADO ESPERADO DE UNA CAMPAÑA — puro (sin base), lo usan el formulario
 // (en el navegador, mientras se arma) y la ficha de la campaña.
 //
-// Cómo se calcula:
-//   · A quién se le puede escribir HOY: la foto de audiencia (mk_snapshot) por
-//     tienda × grupo, filtrada por ciudades, tiendas y grupos. Con los dos canales
-//     cuenta a la persona una vez (el generador escribe primero por WhatsApp y le
-//     manda correo solo a quien no salió por ahí).
-//   · Las palancas se reparten por partes iguales (el generador sortea una por
-//     persona) y el control no recibe nada.
-//   · Clientes extra = tratados × efecto medido de esa palanca en ese grupo (pp de
-//     recompra a 21 días contra su control). Donde no hay medición la palanca cuenta
-//     CERO: el número solo sube cuando una campaña lo demuestra. Cada mañana el
-//     refresco recalcula los efectos con lo que van midiendo las campañas.
-//   · Venta = clientes extra × ticket sin IVA; contribución = venta × 56 %.
-//   · Canjes = tratados × tasa de canje esperada; costo = canjes × costo por canje.
+// Cómo se calcula, para TODA la vigencia (desde → hasta):
+//   · Cupones = los contactables de HOY (foto de audiencia por tienda × grupo, filtrada)
+//     + los que se vuelven contactables cada día (flujo: gente que entra a cada grupo
+//     × la parte que pasa las reglas de re-contacto y tiene canal, medido en las fotos
+//     diarias) × los días que quedan. Con los dos canales la persona cuenta una vez.
+//     Tope diario de envíos: WhatsApp 600 + correo 1.200, entre todas las campañas.
+//   · Las palancas se reparten por partes iguales y el control no recibe nada.
+//   · Canjes = tratados × tasa de canje REAL de esa palanca en ese grupo (cupones
+//     enviados y ya vencidos); con menos de 200 cupones en el grupo, la de la palanca
+//     en todos los grupos; si tampoco hay, la del catálogo.
+//   · Clientes extra = tratados × efecto medido (pp de recompra a 21 días contra su
+//     control). Sin medición la palanca cuenta CERO: el número sube cuando una
+//     campaña lo demuestra. Venta = extra × ticket; contribución = venta × 56 %.
 // No cuenta el costo de los mensajes.
 
 export const TIERS = ["T1", "T2", "T3", "T4", "T5"];
@@ -50,16 +50,22 @@ export function filasDeSnapshot(datos: unknown, tabla: string): Record<string, u
   return t.filas.map((f) => Object.fromEntries(t.cols.map((c, i) => [c, f[i]])));
 }
 
+export type FilaFlujo = { tienda: string; ciudad: string; tier: string; entradas_dia: number; conv: number };
+export type FilaTasa = { palanca: string; tier: string; enviados: number; canjes: number };
+export const MIN_N_TASA = 200;
+
+const cuenta = (r: { tienda: string; ciudad: string; tier: string }, f: Filtro) =>
+  // Sin tienda habitual (o con una cerrada) el generador no le escribe: el cupón va atado a la tienda.
+  r.tienda !== "Sin tienda" && r.tienda !== "Tienda cerrada" && /^T[1-5]$/.test(r.tier) &&
+  (!f.tiers.length || f.tiers.includes(r.tier)) && (!f.ciudades.length || f.ciudades.includes(r.ciudad)) &&
+  (!f.tiendas.length || f.tiendas.includes(r.tienda));
+
 /** Personas contactables hoy por grupo con ese filtro. */
 export function alcance(aud: FilaAudiencia[], f: Filtro): Record<string, { personas: number; wa: number; email: number; total: number }> {
   const out: Record<string, { personas: number; wa: number; email: number; total: number }> = {};
   const wa = f.canales.includes("wa"), em = f.canales.includes("email");
   for (const r of aud) {
-    // Sin tienda habitual (o con una cerrada) el generador no le escribe: el cupón va atado a la tienda.
-    if (r.tienda === "Sin tienda" || r.tienda === "Tienda cerrada" || !/^T[1-5]$/.test(r.tier)) continue;
-    if (f.tiers.length && !f.tiers.includes(r.tier)) continue;
-    if (f.ciudades.length && !f.ciudades.includes(r.ciudad)) continue;
-    if (f.tiendas.length && !f.tiendas.includes(r.tienda)) continue;
+    if (!cuenta(r, f)) continue;
     const o = (out[r.tier] ??= { personas: 0, wa: 0, email: 0, total: 0 });
     o.personas += r.personas;
     o.wa += wa ? r.elegible_wa : 0;
@@ -70,45 +76,101 @@ export function alcance(aud: FilaAudiencia[], f: Filtro): Record<string, { perso
   return out;
 }
 
-export type LineaProy = { palanca: PalancaProy; tier: string; tratados: number; pp: number | null; extra: number; canjes: number; costo: number };
+/** Contactables NUEVOS por día y grupo. El flujo se mide para WhatsApp ∪ correo; con un solo
+ *  canal se escala por la parte que ese canal alcanza hoy en ese grupo (todo el país). */
+export function flujoDia(flujo: FilaFlujo[], aud: FilaAudiencia[], f: Filtro): Record<string, number> {
+  const wa = f.canales.includes("wa"), em = f.canales.includes("email");
+  const parte: Record<string, number> = {};
+  if (!(wa && em)) {
+    const t: Record<string, { c: number; u: number }> = {};
+    for (const r of aud) {
+      const x = (t[r.tier] ??= { c: 0, u: 0 });
+      x.c += wa ? r.elegible_wa : em ? r.elegible_email : 0;
+      x.u += r.elegible_alguno ?? Math.max(r.elegible_wa, r.elegible_email);
+    }
+    for (const [k, x] of Object.entries(t)) parte[k] = x.u ? x.c / x.u : 0;
+  }
+  const out: Record<string, number> = {};
+  for (const r of flujo) {
+    if (!cuenta(r, f)) continue;
+    out[r.tier] = (out[r.tier] ?? 0) + r.entradas_dia * r.conv * (wa && em ? 1 : parte[r.tier] ?? 0);
+  }
+  return out;
+}
+
+/** La tasa de canje con la que se proyecta, y de dónde sale. */
+export function tasaDe(p: PalancaProy, tier: string, tasas: FilaTasa[]): { tasa: number; n: number; fuente: "grupo" | "palanca" | "catálogo" } {
+  const mias = tasas.filter((t) => t.palanca === p.id);
+  const g = mias.find((t) => t.tier === tier);
+  if (g && g.enviados >= MIN_N_TASA) return { tasa: g.canjes / g.enviados, n: g.enviados, fuente: "grupo" };
+  const env = mias.reduce((s, t) => s + t.enviados, 0), cj = mias.reduce((s, t) => s + t.canjes, 0);
+  if (env >= MIN_N_TASA) return { tasa: cj / env, n: env, fuente: "palanca" };
+  return { tasa: p.tasa_canje, n: 0, fuente: "catálogo" };
+}
+
+export type LineaProy = { palanca: PalancaProy; tier: string; tratados: number; pp: number | null; extra: number;
+  tasa: ReturnType<typeof tasaDe>; canjes: number; costo: number };
 export type Proyeccion = {
-  porTier: ReturnType<typeof alcance>; contactables: number; tratados: number; control: number;
+  dias: number; porTier: ReturnType<typeof alcance>; flujo: Record<string, number>;
+  contactables: number;            // hoy
+  nuevosDia: number;               // contactables nuevos por día
+  cupones: number; tratados: number; control: number; limitadoDiario: boolean;
   lineas: LineaProy[]; extra: number; venta: number; contribucion: number; canjes: number; costo: number; neto: number;
-  sinMedir: number;               // tratados que reciben una palanca sin efecto medido en su grupo
-  cuponesParaTope: number | null; // cupones que hay que emitir para llegar al tope
-  primeraCorrida: number;         // cupones que saldrían en la primera mañana (topes diarios)
+  sinMedir: number;                // tratados con una palanca sin efecto medido en su grupo
+  consumo: number;                 // lo que la campaña gasta del tope (canjes o pesos)
+  diaCorte: number | null;         // día en que el tope se acaba (null = alcanza para toda la vigencia)
+  propuesta: number | null;        // tope sugerido: lo esperado + 20 % de holgura, redondeado
 };
 
-export function proyectar(aud: FilaAudiencia[], f: Filtro, palancas: PalancaProy[], controlPct: number,
-                          tope: { tipo: "canjes" | "pesos"; valor: number }): Proyeccion {
-  const porTier = alcance(aud, f);
+export const HOLGURA = 1.2;
+const redondear = (x: number, tipo: "canjes" | "pesos") => {
+  const paso = tipo === "canjes" ? (x < 100 ? 5 : 10) : x < 1e6 ? 50000 : 100000;
+  return Math.max(paso, Math.ceil(x / paso) * paso);
+};
+
+export function proyectar(aud: FilaAudiencia[], flujo: FilaFlujo[], f: Filtro, palancas: PalancaProy[], tasas: FilaTasa[],
+                          controlPct: number, tope: { tipo: "canjes" | "pesos"; valor: number }, dias: number): Proyeccion {
+  dias = Math.max(1, Math.round(dias));
+  const porTier = alcance(aud, f), fl = flujoDia(flujo, aud, f);
+  const tiers = [...new Set([...Object.keys(porTier), ...Object.keys(fl)])].sort();
+  const contactables = tiers.reduce((s, t) => s + (porTier[t]?.total ?? 0), 0);
+  const nuevosDia = tiers.reduce((s, t) => s + (fl[t] ?? 0), 0);
+  const diario = (f.canales.includes("wa") ? TOPE_DIARIO.wa : 0) + (f.canales.includes("email") ? TOPE_DIARIO.email : 0);
+  const bruto = contactables + nuevosDia * (dias - 1);
+  // Lo que no cabe en los envíos diarios no sale (entre todas las campañas: es un techo).
+  const escala = bruto > diario * dias ? (diario * dias) / bruto : 1;
   const k = Math.max(palancas.length, 1), tratar = 1 - controlPct / 100;
   const lineas: LineaProy[] = [];
-  let contactables = 0, tratados = 0, sinMedir = 0;
-  for (const [tier, a] of Object.entries(porTier).sort()) {
-    contactables += a.total;
-    const t = a.total * tratar;
+  let cupones = 0, tratados = 0, sinMedir = 0;
+  for (const tier of tiers) {
+    const c = ((porTier[tier]?.total ?? 0) + (fl[tier] ?? 0) * (dias - 1)) * escala;
+    cupones += c;
+    const t = c * tratar;
     tratados += t;
     for (const p of palancas) {
       const e = p.efecto?.[tier];
       const pp = e && typeof e.pp === "number" ? e.pp : null;
-      const tr = t / k;
+      const tr = t / k, tasa = tasaDe(p, tier, tasas);
       if (pp == null) sinMedir += tr;
-      const canjes = tr * p.tasa_canje;
-      lineas.push({ palanca: p, tier, tratados: tr, pp, extra: pp == null ? 0 : tr * pp / 100, canjes, costo: canjes * p.costo_canje });
+      const canjes = tr * tasa.tasa;
+      lineas.push({ palanca: p, tier, tratados: tr, pp, extra: pp == null ? 0 : (tr * pp) / 100, tasa, canjes, costo: canjes * p.costo_canje });
     }
   }
   const suma = (key: "extra" | "canjes" | "costo") => lineas.reduce((s, l) => s + l[key], 0);
   const extra = suma("extra"), canjes = suma("canjes"), costo = suma("costo");
   const venta = extra * TICKET, contribucion = venta * CONTRIBUCION;
-  // Consumo del tope por cupón emitido (lo mismo que descuenta el generador).
-  const porCupon = tratados > 0 ? (tope.tipo === "canjes" ? canjes : costo) / tratados : 0;
-  const diario = (f.canales.includes("wa") ? TOPE_DIARIO.wa : 0) + (f.canales.includes("email") ? TOPE_DIARIO.email : 0);
+  const consumo = tope.tipo === "canjes" ? canjes : costo;
+  // Día de corte: el consumo crece con los tratados (hoy el stock, después el flujo).
+  let diaCorte: number | null = null;
+  if (consumo > 0 && tope.valor < consumo && tratados > 0) {
+    const porTratado = consumo / tratados, necesarios = tope.valor / porTratado;
+    const stock = contactables * escala * tratar, porDia = nuevosDia * escala * tratar;
+    diaCorte = necesarios <= stock || porDia <= 0 ? 1 : Math.min(dias, 1 + Math.ceil((necesarios - stock) / porDia));
+  }
   return {
-    porTier, contactables, tratados, control: contactables - tratados, lineas, extra, venta, contribucion, canjes, costo,
-    neto: contribucion - costo, sinMedir,
-    cuponesParaTope: porCupon > 0 ? tope.valor / porCupon : null,
-    primeraCorrida: Math.min(tratados, diario),
+    dias, porTier, flujo: fl, contactables, nuevosDia, cupones, tratados, control: cupones - tratados, limitadoDiario: escala < 1,
+    lineas, extra, venta, contribucion, canjes, costo, neto: contribucion - costo, sinMedir, consumo, diaCorte,
+    propuesta: consumo > 0 ? redondear(consumo * HOLGURA, tope.tipo) : null,
   };
 }
 

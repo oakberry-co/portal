@@ -160,3 +160,9 @@
 @media (max-width: 520px) { .mk .cf-catalogo { grid-template-columns: 1fr; } }
 .mk .cf-catalogo .tarjeta { margin: 0; }
 .mk .cf-catalogo h2 .chip { margin-left: 8px; vertical-align: middle; }
+.mk .cf-propuesta { margin-top: 12px; background: #F6F1FB; border: 1px solid #E2D6EE; border-radius: 12px; padding: 12px 14px; font-size: 13.5px; color: var(--mk-ink2); }
+.mk .cf-propuesta p { margin: 0 0 6px; line-height: 1.45; }
+.mk .cf-propuesta p:last-child { margin-bottom: 0; }
+.mk .cf-prop-cifra { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; color: var(--mk-ink); }
+.mk .cf-prop-cifra b { font-size: 17px; color: var(--mk-morado); }
+.mk .cf-prop-cifra .boton { padding: 5px 14px; font-size: 13px; }
