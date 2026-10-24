@@ -4,16 +4,18 @@
 // 10_referencia_ux_cifrato.md): "atraso crítico" con umbral explícito.
 // Componente de servidor: solo cuenta lo que ya trajo el cargador.
 import type { FacturaRow } from "./FacturaCard";
-import { ATRASO_CRITICO_DIAS, copN, cuentasDe, diasEnPortal, num } from "./_cuentas";
+import { ATRASO_CRITICO_DIAS, VENTANA_DIAS, copN, cuentasDe, diasEnPortal, enVentana, num } from "./_cuentas";
 import { ruta } from "@/lib/ruta";
 
 export function ResumenConciliacion({ filas, puedeClasificar }: { filas: FacturaRow[]; puedeClasificar: boolean }) {
   const ahora = Date.now();
   const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
-  const pend = filas.filter((f) => f.estado === "capturada");
+  // Por clasificar y sin XML: solo la ventana de trabajo (lo viejo es herencia
+  // del Sheet). Para pagar: todo, porque una vencida es plata real aunque sea vieja.
+  const pend = filas.filter((f) => f.estado === "capturada" && enVentana(f, ahora));
   const atrasadas = pend.filter((f) => diasEnPortal(f, ahora) > ATRASO_CRITICO_DIAS);
   // Sin XML hace 7 días o más: ya no llega solo (FacturaCard explica el 93 %).
-  const sinXml = filas.filter((f) => f.origen === "dian"
+  const sinXml = filas.filter((f) => f.origen === "dian" && enVentana(f, ahora)
     && Math.floor((ahora - new Date(f.fecha_emision).getTime()) / 86_400_000) >= 7);
   const paraPago = filas.filter((f) => {
     const venc = f.fecha_vencimiento ? new Date(f.fecha_vencimiento) : null;
@@ -23,9 +25,9 @@ export function ResumenConciliacion({ filas, puedeClasificar }: { filas: Factura
 
   const tarjetas = [
     { k: "pend", titulo: "Por clasificar", n: pend.length, plata: suma(pend, (f) => num(f.total)),
-      nota: "facturas sin concepto ni destino", tono: pend.length ? "warn" : "ok" },
+      nota: `sin concepto ni destino · últimos ${VENTANA_DIAS} días`, tono: pend.length ? "warn" : "ok" },
     { k: "atraso", titulo: "Con atraso crítico", n: atrasadas.length, plata: suma(atrasadas, (f) => num(f.total)),
-      nota: `más de ${ATRASO_CRITICO_DIAS} días en el portal sin clasificar`, tono: atrasadas.length ? "bad" : "ok" },
+      nota: `más de ${ATRASO_CRITICO_DIAS} días sin clasificar · últimos ${VENTANA_DIAS} días`, tono: atrasadas.length ? "bad" : "ok" },
     { k: "xml", titulo: "Sin XML (7+ días)", n: sinXml.length, plata: suma(sinXml, (f) => num(f.total)),
       nota: "pedírselo al proveedor: sin él no hay soporte del IVA", tono: sinXml.length ? "warn" : "ok" },
     { k: "pago", titulo: "Para pagar ya", n: paraPago.length, plata: suma(paraPago, (f) => cuentasDe(f).valorAPagar),
@@ -46,7 +48,7 @@ export function ResumenConciliacion({ filas, puedeClasificar }: { filas: Factura
       </div>
       {puedeClasificar && pend.length > 0 && (
         <a className="resumen-cola" href={ruta("/contabilidad/conciliacion/cola")}>
-          ▶ Revisar en fila <span>({pend.length} por clasificar, las más atrasadas primero)</span>
+          ▶ Revisar en fila <span>({pend.length} por clasificar de los últimos {VENTANA_DIAS} días, las más atrasadas primero)</span>
         </a>
       )}
     </section>

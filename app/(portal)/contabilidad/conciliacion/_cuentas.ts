@@ -17,6 +17,14 @@ export function diasEnPortal(f: Pick<FacturaRow, "sincronizado_en" | "fecha_emis
 /** Umbral de atraso crítico: una factura por clasificar que lleva más de esto
  *  en el portal ya está retrasando su pago y su causación. */
 export const ATRASO_CRITICO_DIAS = 15;
+/** Ventana de trabajo del tablero y de la revisión en fila. En producción hay
+ *  ~3.700 "por clasificar", casi todas herencia del Google Sheet (antes de
+ *  junio) que nadie va a tocar: contarlas convierte el tablero en ruido y
+ *  pondría lo viejo de primero en la fila (decisión de Daniel, 24-oct-2026). */
+export const VENTANA_DIAS = 60;
+export function enVentana(f: Pick<FacturaRow, "sincronizado_en" | "fecha_emision">, ahora = Date.now()): boolean {
+  return diasEnPortal(f, ahora) <= VENTANA_DIAS;
+}
 
 export function cuentasDe(f: FacturaRow) {
   const total = num(f.total);

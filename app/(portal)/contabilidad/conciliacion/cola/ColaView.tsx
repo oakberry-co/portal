@@ -11,7 +11,7 @@ import type { FacturaRow, FilaPatch } from "../FacturaCard";
 import { Combobox } from "../Combobox";
 import { RetencionesModal } from "../RetencionesModal";
 import { guardarClasificacion } from "../actions";
-import { ATRASO_CRITICO_DIAS, copN, cuentasDe, diasEnPortal, num } from "../_cuentas";
+import { ATRASO_CRITICO_DIAS, VENTANA_DIAS, copN, cuentasDe, diasEnPortal, num } from "../_cuentas";
 import { ruta } from "@/lib/ruta";
 
 function ddmmaa(d: string | Date | null): string {
@@ -43,8 +43,8 @@ function Ficha({ etiqueta, valor, copiar, resaltar }: { etiqueta: string; valor:
   );
 }
 
-export function ColaView({ filas, conceptos, destinos }: {
-  filas: FacturaRow[]; conceptos: string[]; destinos: string[];
+export function ColaView({ filas, conceptos, destinos, todas = false }: {
+  filas: FacturaRow[]; conceptos: string[]; destinos: string[]; todas?: boolean;
 }) {
   const [i, setI] = useState(0);
   const [patches, setPatches] = useState<Record<string, FilaPatch>>({});
@@ -102,7 +102,7 @@ export function ColaView({ filas, conceptos, destinos }: {
     return (
       <div className="cola-vacia card">
         <h1>Revisión en fila</h1>
-        <p>No hay facturas por clasificar. 🎉</p>
+        <p>No hay facturas por clasificar{todas ? "" : ` en los últimos ${VENTANA_DIAS} días`}. 🎉</p>
         {volver}
       </div>
     );
@@ -138,6 +138,10 @@ export function ColaView({ filas, conceptos, destinos }: {
         <div>
           {volver}
           <h1>Revisión en fila</h1>
+          <p className="muted mini">
+            {todas ? <>Todas las por clasificar, incluida la herencia vieja · <a href={ruta("/contabilidad/conciliacion/cola")}>solo últimos {VENTANA_DIAS} días</a></>
+                   : <>Últimos {VENTANA_DIAS} días · <a href={ruta("/contabilidad/conciliacion/cola?todas=1")}>ver también las más viejas</a></>}
+          </p>
         </div>
         <div className="cola-prog" aria-live="polite">
           <span>Factura <strong>{i + 1}</strong> de {total}</span>
