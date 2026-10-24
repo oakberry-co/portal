@@ -1,0 +1,118 @@
+// EL CARGADOR DE CONCILIACIÓN — una sola consulta para la tabla y para la
+// revisión en fila (cola/). Si cada pantalla tuviera su SELECT, la fila de la
+// tabla y la de la cola dirían cosas distintas de la misma factura.
+import { getPool } from "@/lib/db";
+import type { FacturaRow } from "./FacturaCard";
+import { type DocNoDianUI } from "./DocsNoDian";
+import { porClasificar } from "@/lib/documentos-no-dian";
+import { NC_APLICADA, NC_SIN_CRUZAR, SQL_NC_DETALLE } from "@/lib/notas-credito";
+
+export type SyncStatus = { ultima: string | null; nuevas: number | null; pendiente: string | null };
+
+function haceCuanto(d: Date): string {
+  const min = Math.round((Date.now() - d.getTime()) / 60000);
+  if (min < 1) return "hace un momento";
+  if (min < 60) return `hace ${min} min`;
+  const h = Math.round(min / 60);
+  if (h < 24) return `hace ${h} h`;
+  return d.toLocaleString("es-CO", { timeZone: "America/Bogota", day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
+}
+function hora(d: Date): string {
+  return d.toLocaleString("es-CO", { timeZone: "America/Bogota", hour: "2-digit", minute: "2-digit" });
+}
+
+export async function cargarConciliacion(): Promise<{ filas: FacturaRow[]; conceptos: string[]; destinos: string[]; sync: SyncStatus; docsNoDian: DocNoDianUI[] }> {
+  const pool = getPool();
+  const filas = await pool.query<FacturaRow>(
+    `SELECT f.cufe, f.nombre_proveedor, f.nit_proveedor, f.numero, f.fecha_emision,
+            f.subtotal, f.iva, f.total, f.responsabilidad_dian, f.link_drive, f.sincronizado_en,
+            f.origen,
+            e.estado, e.concepto, e.destino, e.plazo_dias, e.fecha_vencimiento,
+            e.retencion_ok, e.reten_total, e.retefuente, e.reteiva, e.reteica, e.valor_a_pagar,
+            e.otros_valor, e.otros_concepto, e.observaciones,
+            e.pago_estado, e.fecha_pago_prog,
+            -- A qué MES pertenece el gasto (§27): lo resuelve la vista, una sola definición.
+            vp.periodo_gasto, vp.periodo_fuente,
+            -- El último pago revertido de ESTA factura: quien la vea otra vez
+            -- pendiente tiene que saber que alguien quitó el pago y por qué,
+            -- no creer que el portal se equivocó (lib/revertir-pago.ts).
+            rp.motivo AS rev_motivo, rp.revertido_por AS rev_por, rp.revertido_en AS rev_en,
+            coalesce(e.abono_aplicado,0)::float AS abono_aplicado,
+            cot.id AS cot_id, cot.codigo AS cot_codigo,
+            COALESCE(p.concepto_sug, mp.concepto_default) AS concepto_sug,
+            COALESCE(p.destino_sug, mp.destino_default) AS destino_sug,
+            p.confianza, mp.plazo_dias AS plazo_sug,
+            COALESCE(e.tipo_pago, mp.tipo_pago_default) AS tipo_pago,
+            p.retefuente_sug, p.reteiva_sug, p.reteica_sug,
+            -- ::float antes de ::text: un NUMERIC da '0.0000' y '2.5000', que en la
+            -- casilla se leen mal. Así quedan '0' y '2.5'.
+            mr.ret_rf::float::text AS ret_rf, mr.ret_ica::float::text AS ret_ica,
+            mr.ret_iva::float::text AS ret_iva,
+            rc.retefuente::text AS rc_rf, rc.reteica::text AS rc_ica,
+            rc.aplica AS rc_aplica, rc.n_casos AS rc_n,
+            rc.concordancia::text AS rc_conc, rc.fuente AS rc_fuente,
+            vs.soporte_url, vs.n_soportes, vs.destino_drive,
+            -- Desvío del pago de ESTA factura + la cuenta del maestro, para
+            -- poder mostrar de dónde se está desviando.
+            e.cta_dest_banco, e.cta_dest_tipo, e.cta_dest_numero, e.cta_dest_titular,
+            e.cta_dest_doc, e.cta_dest_tipo_doc, e.cta_dest_motivo, e.cta_dest_por,
+            cb.banco AS cb_banco, cb.num_cuenta AS cb_num_cuenta,
+            -- Notas crédito que corrigen ESTA factura + qué es ella misma. Si ES
+            -- una nota: de dónde salió su referencia (xml / manual / fuera_portal)
+            -- y si todavía no descuenta de nada (lib/cruzar-nota.ts).
+            f.doc_tipo, f.ref_numero, f.ref_motivo, f.ref_cufe, f.ref_fuente,
+            f.ref_manual_por, f.ref_manual_en, f.ref_manual_nota,
+            ${NC_SIN_CRUZAR("f")} AS nc_sin_cruzar,
+            ${NC_APLICADA("f")}::float AS nc_aplicada,
+            ${SQL_NC_DETALLE("f")} AS nc_detalle
+       FROM facturas f
+       JOIN factura_estado e USING (cufe)
+       LEFT JOIN factura_propuesta p USING (cufe)
+       LEFT JOIN v_factura_periodo vp USING (cufe)
+       LEFT JOIN maestro_proveedores mp ON mp.nit = f.nit_proveedor
+       LEFT JOIN (
+         SELECT nit_proveedor,
+                max(CASE WHEN tipo='ReteFuente' THEN tarifa END) AS ret_rf,
+                max(CASE WHEN tipo='ReteICA'    THEN tarifa END) AS ret_ica,
+                max(CASE WHEN tipo='ReteIVA'    THEN tarifa END) AS ret_iva
+         FROM maestro_retenciones GROUP BY nit_proveedor
+       ) mr ON mr.nit_proveedor = f.nit_proveedor
+       -- Lo que el equipo YA viene practicando para ESTE concepto
+       -- (scripts/aprender_retenciones.py). No se aplica solo: precarga el modal
+       -- diciendo en cuántos casos se basa, y decide un humano.
+       LEFT JOIN regla_retencion_concepto rc ON rc.concepto = e.concepto
+       LEFT JOIN v_factura_soportes vs USING (cufe)
+       LEFT JOIN cuentas_bancarias_proveedor cb ON cb.nit = f.nit_proveedor
+       -- La cotización cuyo adelanto ya se aplicó a esta factura (el cruce).
+       LEFT JOIN cotizaciones cot ON cot.cufe_factura = f.cufe
+       LEFT JOIN LATERAL (
+         SELECT x.motivo, x.revertido_por, x.revertido_en
+           FROM pagos_revertidos x WHERE x.cufe = f.cufe
+          ORDER BY x.id DESC LIMIT 1) rp ON TRUE
+      ORDER BY (e.estado = 'capturada') DESC, f.fecha_emision DESC`
+  );
+  const c = await pool.query<{ nombre: string }>("SELECT nombre FROM maestro_conceptos WHERE activo ORDER BY nombre");
+  const d = await pool.query<{ nombre: string }>("SELECT nombre FROM maestro_destinos WHERE activo ORDER BY nombre");
+
+  // Estado del sync: último evento 'sync' + si hay una solicitud pendiente.
+  const s = await pool.query<{ creado_en: Date; nuevas: number | null }>(
+    "SELECT creado_en, (valor_nuevo->>'facturas_nuevas')::int AS nuevas FROM eventos WHERE tipo = 'sync' ORDER BY id DESC LIMIT 1"
+  );
+  const pend = await pool.query<{ solicitado_por: string; solicitado_en: Date }>(
+    "SELECT solicitado_por, solicitado_en FROM sync_solicitudes WHERE estado = 'pendiente' ORDER BY id DESC LIMIT 1"
+  );
+  const sync: SyncStatus = {
+    ultima: s.rows[0] ? haceCuanto(new Date(s.rows[0].creado_en)) : null,
+    nuevas: s.rows[0]?.nuevas ?? null,
+    pendiente: pend.rows[0]
+      ? `Solicitada por ${pend.rows[0].solicitado_por.split("@")[0]} · ${hora(new Date(pend.rows[0].solicitado_en))}`
+      : null,
+  };
+
+  // Los documentos SIN factura DIAN (cuentas de cobro aprobadas y gastos
+  // internos) que están esperando concepto/destino/retenciones.
+  const docsNoDian = (await porClasificar()) as unknown as DocNoDianUI[];
+
+  return { filas: filas.rows, conceptos: c.rows.map((r) => r.nombre), destinos: d.rows.map((r) => r.nombre), sync, docsNoDian };
+}
+

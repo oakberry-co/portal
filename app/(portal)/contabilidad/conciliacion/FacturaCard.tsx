@@ -11,6 +11,7 @@ import { RevertirPagoModal } from "./RevertirPagoModal";
 import { CruzarNotaModal } from "./CruzarNotaModal";
 import { EN_PRUEBAS_CLIENTE } from "@/lib/ambiente";
 import { etiquetaMes, mesDe, opcionesPeriodo } from "@/lib/periodo-gasto";
+import { copN, cuentasDe, num } from "./_cuentas";
 
 export type FacturaRow = {
   cufe: string;
@@ -96,9 +97,6 @@ export type FacturaRow = {
 /** Parche que devuelven las acciones para actualizar la fila en sitio (optimista). */
 export type FilaPatch = Partial<FacturaRow>;
 
-const cop = new Intl.NumberFormat("es-CO", { style: "currency", currency: "COP", maximumFractionDigits: 0 });
-const copN = (n: number) => cop.format(Math.round(n || 0));
-const num = (s: string | number | null) => (s != null && s !== "" ? Number(s) : 0);
 const contents = { display: "contents" as const };
 
 function ddmm(d: string | Date | null): string {
@@ -240,16 +238,9 @@ export const FacturaCard = memo(function FacturaCard({
     : f.ref_fuente === "fuera_portal"
       ? `Nota crédito fuera del portal (${quien(f.ref_manual_por)}): ${f.ref_manual_nota ?? ""}`
       : `Nota crédito de la factura ${f.ref_numero ?? "—"} · ${f.ref_motivo ?? ""}${f.ref_fuente === "manual" ? ` · cruzada a mano por ${quien(f.ref_manual_por)}` : ""}`;
-  const retenTotal = f.retencion_ok && f.reten_total != null
-    ? num(f.reten_total)
-    : num(f.retefuente_sug) + num(f.reteiva_sug) + num(f.reteica_sug);
-  const otros = num(f.otros_valor);   // con signo: negativo = adicional a favor del proveedor
-  // Lo que las notas crédito le quitan a ESTA factura. Se resta acá y no solo
-  // en Pagos: si la grilla dijera un número y el tablero otro, el equipo dejaría
-  // de creerle a los dos. Nunca baja de cero — una nota mayor que la factura no
-  // genera un pago negativo, genera un saldo a favor, y eso lo cruza una persona.
-  const notaCredito = Number(f.nc_aplicada ?? 0);
-  const valorAPagar = Math.max(0, total - retenTotal - otros - notaCredito);
+  // Retención, notas crédito y "se le paga": la misma cuenta que la revisión en
+  // fila (_cuentas.ts). Las notas crédito se restan acá y no solo en Pagos.
+  const { retenTotal, valorAPagar } = cuentasDe(f);
 
   // Vencimiento (día de pago) y si ya toca pagar.
   const venc = f.fecha_vencimiento ? new Date(f.fecha_vencimiento) : null;

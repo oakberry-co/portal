@@ -1846,3 +1846,128 @@ tr.desfasada td { background: #fff8e6; }
 .no-aplica input { flex: 1 1 220px; min-width: 0; font-size: 13px; padding: 4px 6px; }
 .subir-recibo { cursor: pointer; }
 .subir-recibo:hover { opacity: 1; color: var(--purple); border-color: var(--purple); }
+
+/* ═══ CONCILIACIÓN: tablero + revisión en fila (2026-10-24) ═══════════════════
+   Patrones de la referencia de Cifrato (10_referencia_ux_cifrato.md) con la
+   paleta de la casa. Celular primero en lo que se apila (Regla 20). */
+.resumen-conc { margin: 14px 0 18px; }
+.resumen-tarjetas { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.resumen-tarjeta {
+  background: var(--card); border: 1px solid var(--border); border-radius: 14px;
+  padding: 14px 16px; box-shadow: var(--shadow); min-width: 0;
+}
+.resumen-tarjeta .rt-titulo { font-size: 13px; color: var(--lav); font-weight: 600; }
+.resumen-tarjeta .rt-n { font-size: 30px; font-weight: 800; color: var(--ink); line-height: 1.1; margin-top: 4px; font-variant-numeric: tabular-nums; }
+.resumen-tarjeta .rt-plata { font-size: 13px; font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; }
+.resumen-tarjeta .rt-nota { font-size: 11px; color: var(--lav); margin-top: 4px; }
+.resumen-tarjeta.warn .rt-n { color: var(--warn); }
+.resumen-tarjeta.bad { border-color: #f1c4bd; }
+.resumen-tarjeta.bad .rt-n { color: var(--danger); }
+.resumen-tarjeta.ok .rt-n { color: var(--ok); }
+.resumen-cola {
+  display: inline-flex; align-items: center; gap: 8px; margin-top: 12px;
+  background: var(--purple); color: #fff; border-radius: 10px; padding: 11px 16px;
+  font-weight: 700; text-decoration: none; min-height: 44px;
+}
+.resumen-cola span { font-weight: 500; opacity: .85; }
+.resumen-cola:hover { background: var(--purple-deep); }
+
+.cola { display: flex; flex-direction: column; gap: 14px; padding-bottom: 16px; }
+.cola-cab { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; flex-wrap: wrap; }
+.cola-cab h1 { margin: 4px 0 0; }
+.cola-volver { font-size: 13px; color: var(--purple); text-decoration: none; }
+.cola-prog { min-width: 240px; font-size: 14px; }
+.cola-barra { height: 6px; background: var(--lav-soft); border-radius: 99px; margin-top: 6px; overflow: hidden; }
+.cola-barra i { display: block; height: 100%; background: var(--purple); border-radius: 99px; transition: width .2s; }
+
+.cola-doc-tit { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+.cola-doc-tit h2 { margin: 0; font-size: 20px; color: var(--ink); overflow-wrap: anywhere; }
+.cola-chip { font-size: 11px; font-weight: 700; border-radius: 99px; padding: 3px 9px; background: var(--lav-soft); color: var(--purple); }
+.cola-chip.xml { background: #fff4dc; color: var(--warn); }
+.cola-chip.atraso { background: #fde8e4; color: var(--danger); }
+.cola-chip.ok { background: #e3f6ea; color: var(--ok); }
+.cola-chip.nc { background: #efe9fb; color: var(--purple-deep); }
+
+.fichas { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 10px; }
+.ficha {
+  position: relative; border: 1px solid var(--border-lav); border-radius: 10px;
+  padding: 9px 36px 9px 12px; background: #fff; min-width: 0;
+}
+.ficha-clave { background: var(--lav-soft); border-color: #d9cdf3; }
+.ficha-et { font-size: 11px; color: var(--lav); font-weight: 600; }
+.ficha-val { font-family: var(--mono); font-size: 14px; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ficha-copiar {
+  position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
+  border: 0; background: transparent; color: var(--purple); font-size: 16px;
+  width: 30px; height: 30px; border-radius: 8px; cursor: pointer;
+}
+.ficha-copiar:hover { background: var(--lav-soft); }
+.cola-docs { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 12px; font-size: 13px; }
+.cola-docs a { color: var(--purple); font-weight: 600; text-decoration: none; }
+
+.cola-cuerpo { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 14px; align-items: start; }
+.cola-decision h3, .cola-totales h3 { margin: 0 0 10px; font-size: 15px; }
+.cola-sug { font-size: 13px; border-radius: 10px; padding: 8px 12px; margin: 0 0 12px; }
+.cola-sug.alta { background: #e3f6ea; color: #1e7a45; }
+.cola-sug.baja { background: #fff4dc; color: var(--warn); }
+.cola-campo { display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 600; color: var(--ink); margin-bottom: 14px; }
+.cola-campo input[type="number"] { max-width: 140px; min-height: 40px; font-size: 16px; }
+.cola-campo.falta .combobox, .cola-campo.falta input { outline: 2px solid var(--danger); border-radius: 8px; }
+.cola-error { color: var(--danger); font-size: 12px; font-weight: 600; }
+
+.cola-totales { position: sticky; top: 16px; }
+.tot-fila { display: flex; justify-content: space-between; gap: 10px; font-size: 14px; padding: 5px 0; font-variant-numeric: tabular-nums; }
+.tot-fila i { font-style: normal; font-size: 11px; color: var(--lav); margin-left: 4px; }
+.tot-fila .neg { color: var(--coral); }
+.tot-factura { font-weight: 700; border-top: 1px solid var(--border); margin-top: 4px; padding-top: 8px; }
+.tot-pagar {
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  background: var(--lav-soft); border-radius: 12px; padding: 12px; margin: 12px 0 8px;
+}
+.tot-pagar span { font-size: 12px; color: var(--lav); font-weight: 600; }
+.tot-pagar strong { font-size: 26px; color: var(--purple-deep); font-variant-numeric: tabular-nums; }
+.cola-btn-sec {
+  border: 1px solid var(--purple); background: #fff; color: var(--purple); font-weight: 700;
+  border-radius: 10px; padding: 10px 14px; min-height: 44px; cursor: pointer; width: 100%;
+}
+.cola-btn-sec:hover { background: var(--lav-soft); }
+
+/* Pegada al fondo DENTRO del contenido (sticky, no fixed): con fixed tapaba el
+   menú lateral. El margen derecho le deja sitio a la burbuja del asistente,
+   que si no se come «Guardar y siguiente». */
+.cola-pie {
+  position: sticky; bottom: 0; z-index: 30;
+  display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap;
+  background: rgba(255,255,255,.97); border: 1px solid var(--border); border-radius: 14px;
+  padding: 10px 84px calc(10px + env(safe-area-inset-bottom)) 12px;
+  box-shadow: 0 -8px 24px rgba(44,24,56,.08);
+}
+.cola-pie-der { display: flex; gap: 10px; margin-left: auto; }
+.cola-atras, .cola-saltar {
+  border: 1px solid var(--border-lav); background: #fff; color: var(--ink); font-weight: 600;
+  border-radius: 10px; padding: 10px 14px; min-height: 44px; cursor: pointer;
+}
+.cola-guardar {
+  border: 0; background: var(--purple); color: #fff; font-weight: 800;
+  border-radius: 10px; padding: 10px 18px; min-height: 44px; cursor: pointer;
+}
+.cola-guardar:hover { background: var(--purple-deep); }
+.cola-atras:disabled, .cola-saltar:disabled, .cola-guardar:disabled { opacity: .5; cursor: default; }
+.cola-atajo { width: 100%; text-align: right; }
+.cola-vacia { max-width: 560px; }
+.cola-vacia-acc { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; margin-top: 12px; }
+.cola-vacia-acc .cola-btn-sec { width: auto; }
+
+@media (max-width: 980px) {
+  .resumen-tarjetas { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .cola-cuerpo { grid-template-columns: minmax(0, 1fr); }
+  .cola-totales { position: static; }
+}
+@media (max-width: 560px) {
+  .resumen-tarjeta .rt-n { font-size: 24px; }
+  .cola-pie { padding-right: 72px; }
+  .fichas { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .cola-atajo { display: none; }
+  .cola-pie-der { width: 100%; }
+  .cola-saltar, .cola-guardar { flex: 1; }
+}
