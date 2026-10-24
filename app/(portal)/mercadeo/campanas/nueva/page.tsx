@@ -3,7 +3,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { puede } from "@/lib/permisos";
 import { ruta } from "@/lib/ruta";
 import { cargarCampanas, cargarPalancas, cargarSnapshot } from "@/lib/crm-campanas";
-import { filasDeSnapshot, type FilaAudiencia, type FilaFlujo, type FilaTasa } from "@/lib/crm-proyeccion";
+import { filasDeSnapshot, enPausa, type FilaAudiencia, type FilaFlujo, type FilaTasa } from "@/lib/crm-proyeccion";
 import { FormCampana, type VistaMensaje } from "../FormCampana";
 
 export const dynamic = "force-dynamic";
@@ -20,7 +20,8 @@ export default async function NuevaCampanaPage() {
   const mensajes = filasDeSnapshot(datos, "vista_mensajes") as unknown as VistaMensaje[];
   const flujo = filasDeSnapshot(datos, "flujo") as unknown as FilaFlujo[];
   const tasas = filasDeSnapshot(datos, "tasas") as unknown as FilaTasa[];
-  const pausado = filasDeSnapshot(datos, "envios").some((e) => e.estado === "pausado");
+  const envios = filasDeSnapshot(datos, "envios");
+  const pausado = { CO: enPausa(envios, "CO"), DO: enPausa(envios, "DO") };
   const aprobadas = filasDeSnapshot(datos, "plantillas").filter((p) => p.estado === "APPROVED").map((p) => String(p.nombre));
   const hoy = new Date(Date.now() - 5 * 3600 * 1000).toISOString().slice(0, 10);
   return (

@@ -2,7 +2,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { puede } from "@/lib/permisos";
 import { ruta } from "@/lib/ruta";
 import { cargarCampanas, cargarPalancas, cargarSnapshot } from "@/lib/crm-campanas";
-import { filasDeSnapshot, avanceDe, usadoTope, recompra, fmt, pesos, pp, p1, ESTADO_TXT, TIER_TXT, PAISES, type FilaAvance } from "@/lib/crm-proyeccion";
+import { filasDeSnapshot, avanceDe, usadoTope, recompra, enPausa, fmt, pesos, pp, p1, ESTADO_TXT, TIER_TXT, PAISES, type FilaAvance } from "@/lib/crm-proyeccion";
 import { VistaMercadeo } from "../VistaMercadeo";
 
 export const dynamic = "force-dynamic";
@@ -17,7 +17,8 @@ export default async function CampanasPage() {
   const puedeLanzar = puede(u.rol, "lanzar_campanas");
   const nombre = Object.fromEntries(palancas.map((p) => [p.id, p.nombre]));
   const avance = filasDeSnapshot(datos, "avance") as unknown as FilaAvance[];
-  const pausado = filasDeSnapshot(datos, "envios").some((e) => e.estado === "pausado");
+  const envios = filasDeSnapshot(datos, "envios");
+  const pausa = { CO: enPausa(envios, "CO"), DO: enPausa(envios, "DO") };
   const sello = generado?.toLocaleString("es-CO", { timeZone: "America/Bogota", day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
 
   const quien = (c: (typeof campanas)[number]) => [
@@ -39,8 +40,8 @@ export default async function CampanasPage() {
           </div>
           {puedeLanzar && <a className="boton" href={ruta("/mercadeo/campanas/nueva")}>+ Nueva campaña</a>}
         </div>
-        {pausado && (
-          <div className="aviso"><div><b>Los envíos a clientes están en pausa.</b>Una campaña al aire no le escribe a nadie hasta que se reanuden.</div></div>
+        {(pausa.CO || pausa.DO) && (
+          <div className="aviso"><div><b>Envíos a clientes en pausa: {[pausa.CO && "Colombia", pausa.DO && "República Dominicana"].filter(Boolean).join(" y ")}.</b>Una campaña al aire de ese país no le escribe a nadie hasta que se prendan los envíos.</div></div>
         )}
         <div className="tarjeta">
           <header><h2>Campañas</h2><p>Al aire primero · el tope cuenta lo canjeado y lo que se espera canjear de los cupones vivos</p></header>

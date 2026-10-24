@@ -166,7 +166,8 @@ function pintar(root, SEC, D, BASE, TIP) {
       const s = sem[k] = sem[k] || { programa: r.programa, semana: r.semana, desde: r.desde, e: 0, q: 0, ctrl: 0, cj: 0, costo: 0, vt: 0, vc: 0, pal: new Set() };
       s.e += r.enviados; s.q += r.en_cola; s.ctrl += r.control; s.cj += r.canjes; s.costo += r.costo; s.vt += r.volvio_t; s.vc += r.volvio_c; s.pal.add(palanca(r.palanca)); if (r.desde < s.desde) s.desde = r.desde; });
     const lista = Object.values(sem).sort((a, b) => b.semana.localeCompare(a.semana) || a.programa.localeCompare(b.programa));
-    const pausado = filas("envios").some((e) => e.estado === "pausado");
+    // Solo los procesos de Colombia (sorteos e influencers RD tienen su propia pausa).
+    const pausado = filas("envios").some((e) => e.estado === "pausado" && ["daily_campanas.sh CO", "hourly_wa_dispatch.sh", "hourly_email_dispatch.sh"].includes(e.proceso));
     const rows = lista.map((s) => { const lt = s.e ? 100 * s.vt / s.e : null, lc = s.ctrl ? 100 * s.vc / s.ctrl : null, d = (lt != null && lc != null) ? lt - lc : null;
       return `<tr><td>${esc(s.programa)}</td><td class="izq">${esc(s.semana)} · ${esc(s.desde)}</td><td class="izq" style="white-space:normal;min-width:180px">${[...s.pal].map(esc).join(", ")}</td><td>${fmt(s.e)}</td><td>${s.q ? fmt(s.q) : "—"}</td><td>${fmt(s.ctrl)}</td><td>${fmt(s.cj)}</td><td>${pesos(s.costo)}</td><td>${p1(lt)}</td><td>${p1(lc)}</td><td class="${d == null ? "" : d > 0 ? "pos" : "neg"}">${dpp(d)}</td></tr>`; });
     // Va debajo de la lista de campañas (campanas/page.tsx): el histórico de tandas por semana.

@@ -38,7 +38,7 @@ function Chips({ opciones, sel, set, todas, deshabilitadas = [] }: {
 }
 
 export function FormCampana({ usuario, esAdmin, hoy, pausado, palancas, audiencia, flujo, tasas, mensajes, aprobadas, alAire }: {
-  usuario: string; esAdmin: boolean; hoy: string; pausado: boolean; palancas: Palanca[]; audiencia: FilaAudiencia[];
+  usuario: string; esAdmin: boolean; hoy: string; pausado: Record<Pais, boolean>; palancas: Palanca[]; audiencia: FilaAudiencia[];
   flujo: FilaFlujo[]; tasas: FilaTasa[]; mensajes: VistaMensaje[]; aprobadas: string[]; alAire: Campana[];
 }) {
   const [res, accion, enviando] = useActionState<Resultado | null, FormData>(crearCampana, null);
@@ -116,7 +116,7 @@ export function FormCampana({ usuario, esAdmin, hoy, pausado, palancas, audienci
     (!c.ciudades.length || !ciudades.length || c.ciudades.some((x) => ciudades.includes(x))) &&
     (!c.tiendas.length || !tiendas.length || c.tiendas.some((x) => tiendas.includes(x))) && c.desde <= hasta && c.hasta >= desde);
   for (const c of cruces) avisos.push({ cls: "warn", txt: <>Se cruza con <b>{c.codigo}</b> ({c.nombre}), que ya está al aire: quien quepa en las dos recibe la de {c.codigo}.</> });
-  if (pausado) avisos.push({ cls: "bad", txt: <>Los envíos a clientes están en pausa: si la lanzas queda al aire, pero no le escribe a nadie hasta que se reanuden.</> });
+  if (pausado[pais]) avisos.push({ cls: "bad", txt: <>Los envíos a clientes de {P.nombre} están en pausa: si la lanzas queda al aire, pero no le escribe a nadie hasta que se prendan.</> });
 
   const lanzar = (e: React.MouseEvent<HTMLButtonElement>) => {
     if (!window.confirm(`¿Lanzar "${nombre || "la campaña"}"? Desde la próxima corrida de la mañana el CRM le escribe a quien le toque (~${fmt(proy.cupones)} cupones en ${dias} días; ${control} % de control).`)) e.preventDefault();

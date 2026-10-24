@@ -43,6 +43,17 @@ export const TRANSICIONES: Record<string, { a: EstadoCampana; desde: EstadoCampa
   terminar: { a: "terminada", desde: ["borrador", "al_aire", "pausada"], label: "Terminar" },
 };
 
+// Los procesos que le escriben a clientes, por país: su interruptor es orchestration/campanas_envios.sh
+// (VM). La foto `envios` dice si cada uno está prendido; uno solo apagado = ese país en pausa.
+export const PROCESOS_PAIS: Record<Pais, string[]> = {
+  CO: ["daily_campanas.sh CO", "hourly_wa_dispatch.sh", "hourly_email_dispatch.sh", "daily_email_secuencia.sh"],
+  DO: ["daily_campanas.sh DO", "hourly_rd_campanas_dispatch.sh"],
+};
+export function enPausa(envios: Record<string, unknown>[], pais: Pais): boolean {
+  const mios = envios.filter((e) => PROCESOS_PAIS[pais].includes(String(e.proceso)));
+  return mios.length ? mios.some((e) => e.estado === "pausado") : envios.some((e) => e.estado === "pausado");
+}
+
 export const TICKET = 28000;      // ticket presencial sin IVA (sep-2026)
 export const CONTRIBUCION = 0.56; // margen de contribución del bowl
 export const TOPE_DIARIO = { wa: 600, email: 1200 };
