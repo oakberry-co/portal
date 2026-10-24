@@ -9,7 +9,7 @@
 // Solo se pueden escoger palancas 'disponible': el catálogo (crm_palancas) dice cuáles
 // tienen todo listo (descuento en Toteat, plantilla aprobada, regla del validador).
 import { getPool, withTx } from "@/lib/db";
-import { TIERS, CANALES, TRANSICIONES } from "@/lib/crm-proyeccion";
+import { TIERS, CANALES, TRANSICIONES, PAISES, type Pais } from "@/lib/crm-proyeccion";
 export { TIERS, CANALES, TRANSICIONES };
 
 export type EfectoTier = { pp: number; n?: number; ctrl?: number; fuente?: string };
@@ -18,7 +18,7 @@ export type Palanca = {
   descripcion: string | null; tipo_cupon: string | null; producto: string | null;
   costo_canje: number; tasa_canje: number; vigencia_dias: number; dia_envio: number | null;
   wa_plantilla: string | null; email_plantilla: string | null; toteat: string | null;
-  efecto: Record<string, EfectoTier>; falta: string | null; orden: number;
+  efecto: Record<string, EfectoTier>; falta: string | null; orden: number; pais: Pais;
 };
 export type { EstadoCampana } from "@/lib/crm-proyeccion";
 import type { EstadoCampana } from "@/lib/crm-proyeccion";
@@ -26,7 +26,7 @@ export type Campana = {
   id: number; codigo: string; nombre: string; estado: EstadoCampana; creada_por: string; creada_en: Date;
   ciudades: string[]; tiendas: string[]; tiers: string[]; canales: string[]; palancas: string[];
   control_pct: number; desde: string; hasta: string; tope_tipo: "canjes" | "pesos"; tope_valor: number;
-  paga: "marca" | "franquiciado"; semilla: string | null; notas: string | null; actualizado_en: Date;
+  paga: "marca" | "franquiciado"; semilla: string | null; notas: string | null; actualizado_en: Date; pais: Pais;
 };
 export type LogCampana = { accion: string; por: string; detalle: unknown; en: Date };
 
@@ -73,7 +73,7 @@ export async function cargarCampana(codigo: string): Promise<{ campana: Campana;
 export type NuevaCampana = {
   nombre: string; ciudades: string[]; tiendas: string[]; tiers: string[]; canales: string[]; palancas: string[];
   control_pct: number; desde: string; hasta: string; tope_tipo: "canjes" | "pesos"; tope_valor: number;
-  paga: "marca" | "franquiciado"; notas: string;
+  paga: "marca" | "franquiciado"; notas: string; pais: Pais;
 };
 
 const hoyBogota = () => new Date(Date.now() - 5 * 3600 * 1000).toISOString().slice(0, 10);
@@ -84,9 +84,10 @@ export function validar(c: NuevaCampana, palancas: Palanca[], lanzar: boolean): 
   if (!c.nombre.trim() || c.nombre.trim().length < 4) err.push("Ponle un nombre de al menos 4 letras.");
   if (!c.canales.length) err.push("Escoge al menos un canal.");
   if (c.canales.some((k) => !CANALES.find((x) => x.id === k && x.listo))) err.push("Hay un canal que todavía no está listo.");
-  if (c.tiers.some((t) => !TIERS.includes(t))) err.push("Hay un grupo que no existe.");
+  if (!PAISES[c.pais]) err.push("Escoge el país.");
+  else if (c.tiers.some((t) => !PAISES[c.pais].tiers.includes(t))) err.push("Hay un grupo que no existe en ese país.");
   if (!c.palancas.length) err.push("Escoge al menos una palanca.");
-  const noDisp = c.palancas.filter((id) => palancas.find((p) => p.id === id)?.estado !== "disponible");
+  const noDisp = c.palancas.filter((id) => { const p = palancas.find((x) => x.id === id); return p?.estado !== "disponible" || p.pais !== c.pais; });
   if (noDisp.length) err.push(`Estas palancas no están disponibles: ${noDisp.join(", ")}.`);
   if (!(c.control_pct >= 0 && c.control_pct <= 50)) err.push("El control va entre 0 y 50 %.");
   if (!/^\d{4}-\d{2}-\d{2}$/.test(c.desde) || !/^\d{4}-\d{2}-\d{2}$/.test(c.hasta)) err.push("Revisa las fechas de vigencia.");
@@ -110,10 +111,10 @@ export async function crear(c: NuevaCampana, por: string, lanzar: boolean): Prom
     const estado: EstadoCampana = lanzar ? "al_aire" : "borrador";
     await cx.query(
       `INSERT INTO crm_campanas (codigo, nombre, estado, creada_por, ciudades, tiendas, tiers, canales, palancas,
-         control_pct, desde, hasta, tope_tipo, tope_valor, paga, notas)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
+         control_pct, desde, hasta, tope_tipo, tope_valor, paga, notas, pais)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)`,
       [codigo, c.nombre.trim(), estado, por, c.ciudades, c.tiendas, c.tiers, c.canales, c.palancas,
-       c.control_pct, c.desde, c.hasta, c.tope_tipo, c.tope_valor, c.paga, c.notas.trim() || null]);
+       c.control_pct, c.desde, c.hasta, c.tope_tipo, c.tope_valor, c.paga, c.notas.trim() || null, c.pais]);
     await cx.query("INSERT INTO crm_campanas_log (codigo, accion, por, detalle) VALUES ($1, $2, $3, $4)",
       [codigo, lanzar ? "creada_y_lanzada" : "creada", por, JSON.stringify(c)]);
     return codigo;

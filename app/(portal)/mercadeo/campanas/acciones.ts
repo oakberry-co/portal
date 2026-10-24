@@ -15,7 +15,8 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { exigirCap } from "@/lib/auth";
 import { intentar, type Resultado } from "@/lib/resultado";
-import { cargarPalancas, validar, crear, cambiarEstado, cambiarEstadoPalanca, TIERS, type NuevaCampana } from "@/lib/crm-campanas";
+import { cargarPalancas, validar, crear, cambiarEstado, cambiarEstadoPalanca, type NuevaCampana } from "@/lib/crm-campanas";
+import { PAISES, type Pais } from "@/lib/crm-proyeccion";
 
 const lista = (fd: FormData, k: string) => fd.getAll(k).map((x) => String(x).trim()).filter(Boolean);
 
@@ -25,6 +26,7 @@ export async function crearCampana(_prev: Resultado | null, fd: FormData): Promi
     const u = await exigirCap("lanzar_campanas");
     const lanzar = fd.get("lanzar") === "1";
     const tiers = lista(fd, "tiers");
+    const pais: Pais = fd.get("pais") === "DO" ? "DO" : "CO";
     // Quién paga lo escoge solo el admin; cualquier otro (cuando se abra a
     // franquiciados) arma campañas que paga el franquiciado.
     const pagaPedida = String(fd.get("paga") ?? "");
@@ -34,7 +36,7 @@ export async function crearCampana(_prev: Resultado | null, fd: FormData): Promi
       nombre: String(fd.get("nombre") ?? ""),
       ciudades: lista(fd, "ciudades"), tiendas: lista(fd, "tiendas"),
       // "Todos" se guarda explícito: T0 (activos) nunca entra a una campaña de reactivación.
-      tiers: tiers.length ? tiers : TIERS,
+      tiers: tiers.length ? tiers : PAISES[pais].tiers, pais,
       canales: lista(fd, "canales"), palancas: lista(fd, "palancas"),
       control_pct: Number(fd.get("control_pct")), desde: String(fd.get("desde") ?? ""), hasta: String(fd.get("hasta") ?? ""),
       tope_tipo: fd.get("tope_tipo") === "pesos" ? "pesos" : "canjes",

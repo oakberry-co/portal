@@ -4,7 +4,7 @@ import { puede } from "@/lib/permisos";
 import { ruta } from "@/lib/ruta";
 import { cargarCampana, cargarPalancas, cargarSnapshot } from "@/lib/crm-campanas";
 import {
-  filasDeSnapshot, avanceDe, usadoTope, recompra, palancaDeTipo, fmt, pesos, pp, p1, ESTADO_TXT, TIER_TXT, type FilaAvance,
+  filasDeSnapshot, avanceDe, usadoTope, recompra, palancaDeTipo, fmt, pesos as pesosCO, pp, p1, ESTADO_TXT, TIER_TXT, PAISES, type FilaAvance,
 } from "@/lib/crm-proyeccion";
 import { BotonesEstado } from "../BotonesEstado";
 import { MensajePrevio, type VistaMensaje } from "../MensajePrevio";
@@ -23,8 +23,12 @@ export default async function CampanaPage({ params }: { params: Promise<{ codigo
   const [u, x, palancas, { datos, generado }] = await Promise.all([getCurrentUser(), cargarCampana(codigo), cargarPalancas(), cargarSnapshot()]);
   if (!x) notFound();
   const { campana: c, log } = x;
+  const P = PAISES[c.pais ?? "CO"];
+  const pesos = (v: number | null | undefined) => pesosCO(v, P.moneda);
   const nombre = Object.fromEntries(palancas.map((p) => [p.id, p.nombre]));
   nombre.bowl_gratis = "Bowl gratis";
+  // En RD el tipo de cupón es el mismo de Colombia; el nombre sale de la palanca de RD.
+  const deTipo = (t: string) => { const id = palancaDeTipo(t); return c.pais === "DO" ? (palancas.find((p) => p.pais === "DO" && (p.tipo_cupon === t || p.id === "rd_" + id))?.id ?? id) : id; };
   const a = avanceDe(filasDeSnapshot(datos, "avance") as unknown as FilaAvance[], c.codigo, palancas);
   const usado = usadoTope(a, c.tope_tipo), r = recompra(a), e = ESTADO_TXT[c.estado];
   const mensajes = filasDeSnapshot(datos, "vista_mensajes") as unknown as VistaMensaje[];
@@ -35,8 +39,8 @@ export default async function CampanaPage({ params }: { params: Promise<{ codigo
   // Resultado por grupo × palanca (la palanca se lee del tipo de cupón que quedó en BigQuery).
   const g: Record<string, { tier: string; pal: string; cupones: number; control: number; vt: number; vc: number; canjes: number; costo: number; vivos: number }> = {};
   for (const f of a.filas) {
-    const k = f.tier + "|" + palancaDeTipo(f.palanca);
-    const o = (g[k] ??= { tier: f.tier, pal: palancaDeTipo(f.palanca), cupones: 0, control: 0, vt: 0, vc: 0, canjes: 0, costo: 0, vivos: 0 });
+    const k = f.tier + "|" + deTipo(f.palanca);
+    const o = (g[k] ??= { tier: f.tier, pal: deTipo(f.palanca), cupones: 0, control: 0, vt: 0, vc: 0, canjes: 0, costo: 0, vivos: 0 });
     o.cupones += f.cupones; o.control += f.control; o.vt += f.volvio_t; o.vc += f.volvio_c; o.canjes += f.canjes; o.costo += f.costo; o.vivos += f.vivos;
   }
   const lineas = Object.values(g).sort((p, q) => p.tier.localeCompare(q.tier) || q.cupones - p.cupones);
@@ -64,6 +68,7 @@ export default async function CampanaPage({ params }: { params: Promise<{ codigo
         <div className="dos">
           <div className="tarjeta"><header><h2>Cómo está armada</h2></header>
             <div className="cuerpo"><table className="cf-ficha"><tbody>
+              <tr><td>País</td><td>{P.nombre}</td></tr>
               <tr><td>Ciudades</td><td>{c.ciudades.length ? c.ciudades.join(", ") : "Todas"}</td></tr>
               <tr><td>Tiendas</td><td>{c.tiendas.length ? c.tiendas.join(", ") : "Todas"}</td></tr>
               <tr><td>Grupos</td><td>{c.tiers.map((t) => `${t} ${TIER_TXT[t] ?? ""}`).join(" · ")}</td></tr>
@@ -86,7 +91,7 @@ export default async function CampanaPage({ params }: { params: Promise<{ codigo
           </div>
         </div>
 
-        <div className="tarjeta"><header><h2>Resultado por grupo y palanca</h2><p>Volvieron = compraron (sello Loopy) en los 21 días siguientes al cupón · con controles chicos, una o dos personas mueven el porcentaje</p></header>
+        <div className="tarjeta"><header><h2>Resultado por grupo y palanca</h2><p>Volvieron = compraron (sello en la tarjeta) en los 21 días siguientes al cupón · con controles chicos, una o dos personas mueven el porcentaje</p></header>
           <div className="cuerpo">{lineas.length ? <div className="tabla"><table>
             <thead><tr><th>Grupo</th><th className="izq">Palanca</th><th>Recibieron</th><th>Volvieron</th><th>Control</th><th>Control volvió</th><th>Diferencia</th><th>Canjes</th><th>Costo</th><th>Vivos</th></tr></thead>
             <tbody>{lineas.map((l) => {

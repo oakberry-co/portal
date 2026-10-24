@@ -166,3 +166,5 @@
 .mk .cf-prop-cifra { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; color: var(--mk-ink); }
 .mk .cf-prop-cifra b { font-size: 17px; color: var(--mk-morado); }
 .mk .cf-prop-cifra .boton { padding: 5px 14px; font-size: 13px; }
+.mk .cf-pais { font-size: 18px; margin: 22px 0 12px; color: var(--mk-morado); }
+.mk section:first-of-type > .cf-pais { margin-top: 4px; }

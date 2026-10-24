@@ -2,7 +2,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { puede } from "@/lib/permisos";
 import { ruta } from "@/lib/ruta";
 import { cargarCampanas, cargarPalancas, cargarSnapshot } from "@/lib/crm-campanas";
-import { filasDeSnapshot, avanceDe, usadoTope, recompra, fmt, pesos, pp, p1, ESTADO_TXT, TIER_TXT, type FilaAvance } from "@/lib/crm-proyeccion";
+import { filasDeSnapshot, avanceDe, usadoTope, recompra, fmt, pesos, pp, p1, ESTADO_TXT, TIER_TXT, PAISES, type FilaAvance } from "@/lib/crm-proyeccion";
 import { VistaMercadeo } from "../VistaMercadeo";
 
 export const dynamic = "force-dynamic";
@@ -21,6 +21,7 @@ export default async function CampanasPage() {
   const sello = generado?.toLocaleString("es-CO", { timeZone: "America/Bogota", day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
 
   const quien = (c: (typeof campanas)[number]) => [
+    c.pais === "DO" ? "🇩🇴 RD" : null,
     c.ciudades.length ? c.ciudades.join(", ") : "Todo el país",
     c.tiendas.length ? `${c.tiendas.length} tienda${c.tiendas.length > 1 ? "s" : ""}` : null,
     c.tiers.length === 5 ? "todos los grupos" : c.tiers.join(" "),
@@ -68,7 +69,7 @@ export default async function CampanasPage() {
                         <td>{fmt(a.cupones)}<span className="cf-sub">{fmt(a.canjes)} canjes</span></td>
                         <td className="izq">
                           <div className="cf-barra" title={`${fmt(usado)} de ${fmt(c.tope_valor)}`}><i style={{ width: `${frac * 100}%` }} /></div>
-                          <span className="cf-sub">{c.tope_tipo === "canjes" ? `${fmt(usado)} / ${fmt(c.tope_valor)} canjes` : `${pesos(usado)} / ${pesos(c.tope_valor)}`}</span>
+                          <span className="cf-sub">{c.tope_tipo === "canjes" ? `${fmt(usado)} / ${fmt(c.tope_valor)} canjes` : `${pesos(usado, PAISES[c.pais ?? "CO"].moneda)} / ${pesos(c.tope_valor, PAISES[c.pais ?? "CO"].moneda)}`}</span>
                         </td>
                         <td className={r.dif == null ? "" : r.dif > 0 ? "pos" : "neg"} title={`Recibieron: ${p1(r.lt)} · control: ${p1(r.lc)}`}>
                           {a.cupones ? pp(r.dif) : "—"}

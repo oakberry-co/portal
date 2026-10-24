@@ -35,7 +35,7 @@ export function MensajePrevio({ m, waAprobada }: { m: VistaMensaje | undefined; 
           <iframe className="cf-correo" sandbox="" srcDoc={m.email_html} title="Vista previa del correo" />
         </>
       ) : <div className="vacio">Esta palanca no tiene correo.</div>}
-      <p className="cf-sub">Datos de muestra: Ana, Oakberry Andino, código RX7K2P. Cada cliente recibe su nombre, su tienda y su código.</p>
+      <p className="cf-sub">Con datos de muestra (Ana, su tienda, un código). Cada cliente recibe su nombre, su tienda y su código.</p>
     </div>
   );
 }

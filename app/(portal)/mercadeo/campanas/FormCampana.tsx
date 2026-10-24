@@ -4,7 +4,7 @@ import { useActionState, useMemo, useState } from "react";
 import type { Resultado } from "@/lib/resultado";
 import type { Palanca, Campana } from "@/lib/crm-campanas";
 import {
-  proyectar, tasaDe, fmt, pesos, millones, pp, TIERS, TIER_TXT, CANALES, TOPE_DIARIO, TICKET, HOLGURA,
+  proyectar, tasaDe, fmt, pesos as pesosCO, millones as millonesCO, pp, TIER_TXT, CANALES, PAISES, HOLGURA, type Pais,
   type FilaAudiencia, type FilaFlujo, type FilaTasa,
 } from "@/lib/crm-proyeccion";
 import { crearCampana } from "./acciones";
@@ -42,6 +42,7 @@ export function FormCampana({ usuario, esAdmin, hoy, pausado, palancas, audienci
   flujo: FilaFlujo[]; tasas: FilaTasa[]; mensajes: VistaMensaje[]; aprobadas: string[]; alAire: Campana[];
 }) {
   const [res, accion, enviando] = useActionState<Resultado | null, FormData>(crearCampana, null);
+  const [pais, setPais] = useState<Pais>("CO");
   const [nombre, setNombre] = useState("");
   const [ciudades, setCiudades] = useState<string[]>([]);
   const [tiendas, setTiendas] = useState<string[]>([]);
@@ -57,12 +58,20 @@ export function FormCampana({ usuario, esAdmin, hoy, pausado, palancas, audienci
   const [notas, setNotas] = useState("");
   const [viendo, setViendo] = useState<string | null>(null);
 
+  // Todo lo de la campaña es de UN país: palancas, tiendas, grupos, moneda y topes.
+  const P = PAISES[pais];
+  const pesos = (x: number | null | undefined) => pesosCO(x, P.moneda);
+  const millones = (x: number) => millonesCO(x, P.moneda);
+  const cambiarPais = (p: Pais) => {
+    if (p === pais) return;
+    setPais(p); setCiudades([]); setTiendas([]); setTiers([]); setElegidas([]); setViendo(null);
+  };
   // Ciudades y tiendas salen de la audiencia (solo donde hay clientes con tienda habitual).
   const mapa = useMemo(() => {
     const m: Record<string, Set<string>> = {};
-    for (const r of audiencia) if (r.tienda !== "Sin tienda" && r.tienda !== "Tienda cerrada" && r.ciudad && !["Sin ciudad", "Otros"].includes(r.ciudad)) (m[r.ciudad] ??= new Set()).add(r.tienda);
+    for (const r of audiencia) if ((r.pais ?? "CO") === pais && r.tienda !== "Sin tienda" && r.tienda !== "Tienda cerrada" && r.ciudad && !["Sin ciudad", "Otros"].includes(r.ciudad)) (m[r.ciudad] ??= new Set()).add(r.tienda);
     return m;
-  }, [audiencia]);
+  }, [audiencia, pais]);
   const listaCiudades = Object.keys(mapa).sort((a, b) => mapa[b].size - mapa[a].size || a.localeCompare(b, "es"));
   const tiendasVisibles = (ciudades.length ? ciudades : listaCiudades).flatMap((c) => [...(mapa[c] ?? [])].sort().map((t) => ({ t, c })));
   const cambiarCiudades = (v: string[]) => {
@@ -70,15 +79,16 @@ export function FormCampana({ usuario, esAdmin, hoy, pausado, palancas, audienci
     if (v.length) setTiendas((ts) => ts.filter((t) => v.some((c) => mapa[c]?.has(t))));
   };
 
-  const disponibles = palancas.filter((p) => p.estado === "disponible");
-  const otras = palancas.filter((p) => p.estado !== "disponible");
+  const delPais = palancas.filter((p) => (p.pais ?? "CO") === pais);
+  const disponibles = delPais.filter((p) => p.estado === "disponible");
+  const otras = delPais.filter((p) => p.estado !== "disponible");
   const canalesEf = canales.length ? canales : CANALES.filter((c) => c.listo).map((c) => c.id);
-  const tiersEf = tiers.length ? tiers : TIERS;
+  const tiersEf = tiers.length ? tiers : P.tiers;
   const sel = disponibles.filter((p) => elegidas.includes(p.id));
   const topeNum = Number(tope.replace(/\./g, "").replace(",", ".")) || 0;
 
   const dias = desde && hasta && hasta >= desde ? Math.round((Date.parse(hasta) - Date.parse(desde)) / 864e5) + 1 : 1;
-  const proy = proyectar(audiencia, flujo, { ciudades, tiendas, tiers: tiersEf, canales: canalesEf }, sel, tasas, control,
+  const proy = proyectar(audiencia, flujo, { ciudades, tiendas, tiers: tiersEf, canales: canalesEf, pais }, sel, tasas, control,
     { tipo: topeTipo, valor: topeNum }, dias);
   const ddmm = (n: number) => { const x = new Date(desde + "T12:00:00"); x.setDate(x.getDate() + n - 1); return x.toLocaleDateString("es-CO", { day: "numeric", month: "short" }); };
   // Tasas reales que usa la propuesta (una por palanca escogida, en sus grupos).
@@ -101,7 +111,7 @@ export function FormCampana({ usuario, esAdmin, hoy, pausado, palancas, audienci
     if (canalesEf.includes("wa") && p.wa_plantilla && !aprobadas.includes(p.wa_plantilla))
       avisos.push({ cls: "warn", txt: <>{p.nombre}: la plantilla de WhatsApp no está aprobada; a esas personas les llega solo por correo.</> });
   }
-  const cruces = alAire.filter((c) =>
+  const cruces = alAire.filter((c) => (c.pais ?? "CO") === pais &&
     c.canales.some((k) => canalesEf.includes(k)) && c.tiers.some((t) => tiersEf.includes(t)) &&
     (!c.ciudades.length || !ciudades.length || c.ciudades.some((x) => ciudades.includes(x))) &&
     (!c.tiendas.length || !tiendas.length || c.tiendas.some((x) => tiendas.includes(x))) && c.desde <= hasta && c.hasta >= desde);
@@ -111,10 +121,11 @@ export function FormCampana({ usuario, esAdmin, hoy, pausado, palancas, audienci
   const lanzar = (e: React.MouseEvent<HTMLButtonElement>) => {
     if (!window.confirm(`¿Lanzar "${nombre || "la campaña"}"? Desde la próxima corrida de la mañana el CRM le escribe a quien le toque (~${fmt(proy.cupones)} cupones en ${dias} días; ${control} % de control).`)) e.preventDefault();
   };
-  const diario = (canalesEf.includes("wa") ? TOPE_DIARIO.wa : 0) + (canalesEf.includes("email") ? TOPE_DIARIO.email : 0);
+  const diario = (canalesEf.includes("wa") ? P.topeDiario.wa : 0) + (canalesEf.includes("email") ? P.topeDiario.email : 0);
 
   return (
     <form action={accion} className="cf">
+      <input type="hidden" name="pais" value={pais} />
       {ciudades.map((x) => <input key={x} type="hidden" name="ciudades" value={x} />)}
       {tiendas.map((x) => <input key={x} type="hidden" name="tiendas" value={x} />)}
       {tiersEf.map((x) => <input key={x} type="hidden" name="tiers" value={x} />)}
@@ -126,18 +137,25 @@ export function FormCampana({ usuario, esAdmin, hoy, pausado, palancas, audienci
 
         <section className="tarjeta"><header><h2>1 · Nombre</h2><p>Lo crea {usuario} · el código (CAM-…) se asigna al guardar</p></header>
           <div className="cuerpo">
-            <input className="cf-input" name="nombre" value={nombre} onChange={(e) => setNombre(e.target.value)} placeholder="Ej.: Medellín · dormidos · bowl gratis" maxLength={80} required />
+            <input className="cf-input" name="nombre" value={nombre} onChange={(e) => setNombre(e.target.value)} placeholder={pais === "DO" ? "Ej.: RD · recién caídos · doble sello" : "Ej.: Medellín · dormidos · bowl gratis"} maxLength={80} required />
           </div>
         </section>
 
         <section className="tarjeta"><header><h2>2 · A quién</h2><p>Contactables hoy: ya descuenta a quien recibió algo hace poco o pidió no recibir más</p></header>
           <div className="cuerpo cf-campos">
+            <label className="cf-etq">País</label>
+            <span className="seg">
+              {(Object.keys(PAISES) as Pais[]).map((k) => (
+                <button key={k} type="button" className={pais === k ? "on" : ""} onClick={() => cambiarPais(k)}>{PAISES[k].nombre}</button>
+              ))}
+            </span>
+            {pais === "DO" && <p className="cf-sub">Plaza Andalucía · tarjeta de lealtad del POS · WhatsApp por la línea +1 809-463-1128 · montos en pesos dominicanos. Grupos por días sin venir; NC = se inscribió y no ha comprado.</p>}
             <label className="cf-etq">Ciudades</label>
             <Chips todas="Todas" sel={ciudades} set={cambiarCiudades} opciones={listaCiudades.map((c) => ({ id: c, label: c }))} />
             <label className="cf-etq">Tiendas {ciudades.length ? <em>de {ciudades.join(", ")}</em> : null}</label>
             <Chips todas="Todas" sel={tiendas} set={setTiendas} opciones={tiendasVisibles.map(({ t, c }) => ({ id: t, label: corta(t), title: `${t} · ${c}` }))} />
             <label className="cf-etq">Grupos</label>
-            <Chips todas="Todos" sel={tiers} set={setTiers} opciones={TIERS.map((t) => ({ id: t, label: <><b>{t}</b> {TIER_TXT[t]} <span className="cf-n">{fmt(porTier[t]?.total ?? 0)}</span></> }))} />
+            <Chips todas="Todos" sel={tiers} set={setTiers} opciones={P.tiers.map((t) => ({ id: t, label: <><b>{t}</b> {TIER_TXT[t]} <span className="cf-n">{fmt(porTier[t]?.total ?? 0)}</span></> }))} />
             <label className="cf-etq">Canales</label>
             <Chips todas="Todos" sel={canales} set={setCanales} deshabilitadas={CANALES.filter((c) => !c.listo).map((c) => c.id)}
               opciones={CANALES.map((c) => ({ id: c.id, label: c.listo ? c.label : <>{c.label} <span className="cf-n">pronto</span></> }))} />
@@ -235,7 +253,7 @@ export function FormCampana({ usuario, esAdmin, hoy, pausado, palancas, audienci
             <p className="cf-sub">{fmt(proy.contactables)} contactables hoy + ~{fmt(proy.nuevosDia)} nuevos por día · {fmt(proy.tratados)} reciben, {fmt(proy.control)} de control · por día salen hasta {fmt(diario)} entre todas las campañas</p>
             <table className="cf-tabla"><tbody>
               <tr><td>Clientes que vuelven por la campaña</td><td className={proy.extra < 0 ? "neg" : ""}>{sel.length ? fmt(proy.extra) : "—"}</td></tr>
-              <tr><td>Venta extra <span className="cf-sub">(× {pesos(TICKET)})</span></td><td>{sel.length ? millones(proy.venta) : "—"}</td></tr>
+              <tr><td>Venta extra <span className="cf-sub">(× {pesos(P.ticket)})</span></td><td>{sel.length ? millones(proy.venta) : "—"}</td></tr>
               <tr><td>Contribución (56 %)</td><td>{sel.length ? millones(proy.contribucion) : "—"}</td></tr>
               <tr><td>Canjes esperados</td><td>{sel.length ? fmt(proy.canjes) : "—"}</td></tr>
               <tr><td>Costo de los canjes</td><td>{sel.length ? millones(-proy.costo) : "—"}</td></tr>

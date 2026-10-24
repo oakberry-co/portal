@@ -2,7 +2,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { puede } from "@/lib/permisos";
 import { ruta } from "@/lib/ruta";
 import { cargarCampanas, cargarPalancas, cargarSnapshot } from "@/lib/crm-campanas";
-import { filasDeSnapshot, fmt, pesos, pp, TIERS } from "@/lib/crm-proyeccion";
+import { filasDeSnapshot, fmt, pesos, pp, PAISES, type Pais } from "@/lib/crm-proyeccion";
 import { BotonPalanca } from "./BotonPalanca";
 
 export const dynamic = "force-dynamic";
@@ -37,8 +37,11 @@ export default async function CatalogoPage() {
           </div>
           {admin && <a className="boton" href={ruta("/mercadeo/campanas/nueva")}>+ Nueva campaña</a>}
         </div>
+        {(Object.keys(PAISES) as Pais[]).map((pais) => (
+        <section key={pais}>
+        <h2 className="cf-pais">{PAISES[pais].nombre}</h2>
         <div className="cf-catalogo">
-          {palancas.map((p) => {
+          {palancas.filter((p) => (p.pais ?? "CO") === pais).map((p) => {
             const e = ESTADO[p.estado], c = usando(p.id);
             return (
               <div key={p.id} className="tarjeta">
@@ -48,11 +51,11 @@ export default async function CatalogoPage() {
                 <div className="cuerpo">
                   <p style={{ margin: "0 0 10px" }}>{p.descripcion}</p>
                   <table className="cf-ficha"><tbody>
-                    <tr><td>Costo por canje</td><td>{p.costo_canje ? pesos(p.costo_canje) : "Sin costo"}{p.tasa_canje ? ` · se canjea ~${(p.tasa_canje * 100).toFixed(0)} %` : ""}</td></tr>
+                    <tr><td>Costo por canje</td><td>{p.costo_canje ? pesos(p.costo_canje, PAISES[p.pais ?? "CO"].moneda) : "Sin costo"}{p.tasa_canje ? ` · se canjea ~${(p.tasa_canje * 100).toFixed(0)} %` : ""}</td></tr>
                     <tr><td>Cupón</td><td>vale {p.vigencia_dias} días{p.dia_envio != null ? ` · sale solo los ${["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"][p.dia_envio]}` : ""}{p.toteat ? ` · Toteat: ${p.toteat}` : ""}</td></tr>
                     <tr><td>WhatsApp</td><td>{wa(p.wa_plantilla)}</td></tr>
                     <tr><td>Correo</td><td>{p.email_plantilla ? <code>{p.email_plantilla}</code> : "—"}</td></tr>
-                    <tr><td>Efecto medido</td><td><span className="cf-efectos">{TIERS.map((t) => {
+                    <tr><td>Efecto medido</td><td><span className="cf-efectos">{PAISES[p.pais ?? "CO"].tiers.map((t) => {
                       const x = p.efecto?.[t];
                       return <span key={t} className={`cf-ef ${!x ? "nulo" : x.pp > 0 ? "pos" : x.pp < 0 ? "neg" : "nulo"}`} title={x ? `${x.fuente ?? ""}${x.n ? ` · ${fmt(x.n)} recibieron` : ""}` : "Nunca se midió en este grupo"}>{t} {x ? pp(x.pp) : "sin medir"}</span>;
                     })}</span></td></tr>
@@ -64,6 +67,8 @@ export default async function CatalogoPage() {
             );
           })}
         </div>
+        </section>
+        ))}
       </div>
     </div>
   );

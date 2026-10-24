@@ -17,7 +17,14 @@
 // No cuenta el costo de los mensajes.
 
 export const TIERS = ["T1", "T2", "T3", "T4", "T5"];
-export const TIER_TXT: Record<string, string> = { T1: "Recién caído", T2: "Enfriándose", T3: "Dormido", T4: "Dormido largo", T5: "Perdido" };
+export const TIER_TXT: Record<string, string> = { NC: "Inscrito sin compra", T1: "Recién caído", T2: "Enfriándose", T3: "Dormido", T4: "Dormido largo", T5: "Perdido" };
+// Lo que cambia por país. RD (23-oct-2026): Plaza Andalucía, tarjeta de lealtad del POS, línea WA
+// +1 809-463-1128 (número nuevo → tope bajo), pesos dominicanos; grupos por días sin venir + NC.
+export type Pais = "CO" | "DO";
+export const PAISES: Record<Pais, { nombre: string; tiers: string[]; ticket: number; moneda: string; topeDiario: { wa: number; email: number } }> = {
+  CO: { nombre: "Colombia", tiers: ["T1", "T2", "T3", "T4", "T5"], ticket: 28000, moneda: "$", topeDiario: { wa: 600, email: 1200 } },
+  DO: { nombre: "República Dominicana", tiers: ["NC", "T1", "T2", "T3", "T4", "T5"], ticket: 780, moneda: "RD$", topeDiario: { wa: 200, email: 600 } },
+};
 export const CANALES: { id: string; label: string; listo: boolean }[] = [
   { id: "wa", label: "WhatsApp", listo: true },
   { id: "email", label: "Correo", listo: true },
@@ -40,9 +47,9 @@ export const TICKET = 28000;      // ticket presencial sin IVA (sep-2026)
 export const CONTRIBUCION = 0.56; // margen de contribución del bowl
 export const TOPE_DIARIO = { wa: 600, email: 1200 };
 
-export type FilaAudiencia = { tienda: string; ciudad: string; tier: string; personas: number; elegible_wa: number; elegible_email: number; elegible_alguno?: number };
+export type FilaAudiencia = { tienda: string; ciudad: string; tier: string; personas: number; elegible_wa: number; elegible_email: number; elegible_alguno?: number; pais?: string };
 export type PalancaProy = { id: string; nombre: string; tipo_cupon?: string | null; costo_canje: number; tasa_canje: number; dia_envio: number | null; efecto: Record<string, { pp: number; n?: number; ctrl?: number; fuente?: string }> };
-export type Filtro = { ciudades: string[]; tiendas: string[]; tiers: string[]; canales: string[] };
+export type Filtro = { ciudades: string[]; tiendas: string[]; tiers: string[]; canales: string[]; pais?: Pais };
 
 export function filasDeSnapshot(datos: unknown, tabla: string): Record<string, unknown>[] {
   const t = (datos as Record<string, { cols: string[]; filas: unknown[][] }> | null)?.[tabla];
@@ -50,13 +57,14 @@ export function filasDeSnapshot(datos: unknown, tabla: string): Record<string, u
   return t.filas.map((f) => Object.fromEntries(t.cols.map((c, i) => [c, f[i]])));
 }
 
-export type FilaFlujo = { tienda: string; ciudad: string; tier: string; entradas_dia: number; conv: number };
+export type FilaFlujo = { tienda: string; ciudad: string; tier: string; entradas_dia: number; conv: number; pais?: string };
 export type FilaTasa = { palanca: string; tier: string; enviados: number; canjes: number };
 export const MIN_N_TASA = 200;
 
-const cuenta = (r: { tienda: string; ciudad: string; tier: string }, f: Filtro) =>
+const cuenta = (r: { tienda: string; ciudad: string; tier: string; pais?: string }, f: Filtro) =>
   // Sin tienda habitual (o con una cerrada) el generador no le escribe: el cupón va atado a la tienda.
-  r.tienda !== "Sin tienda" && r.tienda !== "Tienda cerrada" && /^T[1-5]$/.test(r.tier) &&
+  (r.pais ?? "CO") === (f.pais ?? "CO") &&
+  r.tienda !== "Sin tienda" && r.tienda !== "Tienda cerrada" && PAISES[f.pais ?? "CO"].tiers.includes(r.tier) &&
   (!f.tiers.length || f.tiers.includes(r.tier)) && (!f.ciudades.length || f.ciudades.includes(r.ciudad)) &&
   (!f.tiendas.length || f.tiendas.includes(r.tienda));
 
@@ -84,6 +92,7 @@ export function flujoDia(flujo: FilaFlujo[], aud: FilaAudiencia[], f: Filtro): R
   if (!(wa && em)) {
     const t: Record<string, { c: number; u: number }> = {};
     for (const r of aud) {
+      if ((r.pais ?? "CO") !== (f.pais ?? "CO")) continue;
       const x = (t[r.tier] ??= { c: 0, u: 0 });
       x.c += wa ? r.elegible_wa : em ? r.elegible_email : 0;
       x.u += r.elegible_alguno ?? Math.max(r.elegible_wa, r.elegible_email);
@@ -123,8 +132,8 @@ export type Proyeccion = {
 };
 
 export const HOLGURA = 1.2;
-const redondear = (x: number, tipo: "canjes" | "pesos") => {
-  const paso = tipo === "canjes" ? (x < 100 ? 5 : 10) : x < 1e6 ? 50000 : 100000;
+const redondear = (x: number, tipo: "canjes" | "pesos", pais: Pais = "CO") => {
+  const paso = tipo === "canjes" ? (x < 100 ? 5 : 10) : pais === "DO" ? (x < 10000 ? 500 : 1000) : x < 1e6 ? 50000 : 100000;
   return Math.max(paso, Math.ceil(x / paso) * paso);
 };
 
@@ -135,7 +144,8 @@ export function proyectar(aud: FilaAudiencia[], flujo: FilaFlujo[], f: Filtro, p
   const tiers = [...new Set([...Object.keys(porTier), ...Object.keys(fl)])].sort();
   const contactables = tiers.reduce((s, t) => s + (porTier[t]?.total ?? 0), 0);
   const nuevosDia = tiers.reduce((s, t) => s + (fl[t] ?? 0), 0);
-  const diario = (f.canales.includes("wa") ? TOPE_DIARIO.wa : 0) + (f.canales.includes("email") ? TOPE_DIARIO.email : 0);
+  const P = PAISES[f.pais ?? "CO"];
+  const diario = (f.canales.includes("wa") ? P.topeDiario.wa : 0) + (f.canales.includes("email") ? P.topeDiario.email : 0);
   const bruto = contactables + nuevosDia * (dias - 1);
   // Lo que no cabe en los envíos diarios no sale (entre todas las campañas: es un techo).
   const escala = bruto > diario * dias ? (diario * dias) / bruto : 1;
@@ -158,7 +168,7 @@ export function proyectar(aud: FilaAudiencia[], flujo: FilaFlujo[], f: Filtro, p
   }
   const suma = (key: "extra" | "canjes" | "costo") => lineas.reduce((s, l) => s + l[key], 0);
   const extra = suma("extra"), canjes = suma("canjes"), costo = suma("costo");
-  const venta = extra * TICKET, contribucion = venta * CONTRIBUCION;
+  const venta = extra * P.ticket, contribucion = venta * CONTRIBUCION;
   const consumo = tope.tipo === "canjes" ? canjes : costo;
   // Día de corte: el consumo crece con los tratados (hoy el stock, después el flujo).
   let diaCorte: number | null = null;
@@ -170,7 +180,7 @@ export function proyectar(aud: FilaAudiencia[], flujo: FilaFlujo[], f: Filtro, p
   return {
     dias, porTier, flujo: fl, contactables, nuevosDia, cupones, tratados, control: cupones - tratados, limitadoDiario: escala < 1,
     lineas, extra, venta, contribucion, canjes, costo, neto: contribucion - costo, sinMedir, consumo, diaCorte,
-    propuesta: consumo > 0 ? redondear(consumo * HOLGURA, tope.tipo) : null,
+    propuesta: consumo > 0 ? redondear(consumo * HOLGURA, tope.tipo, f.pais ?? "CO") : null,
   };
 }
 
@@ -181,11 +191,12 @@ export function palancaDeTipo(tipo: string): string {
 }
 
 export const fmt = (x: number | null | undefined) => (x == null || isNaN(x) ? "—" : Math.round(x).toLocaleString("es-CO"));
-export const pesos = (x: number | null | undefined) => (x == null || isNaN(x) ? "—" : (x < 0 ? "−$" : "$") + Math.abs(Math.round(x)).toLocaleString("es-CO"));
-export const millones = (x: number) => {
+export const pesos = (x: number | null | undefined, m = "$") => (x == null || isNaN(x) ? "—" : (x < 0 ? "−" : "") + m + Math.abs(Math.round(x)).toLocaleString("es-CO"));
+export const millones = (x: number, m = "$") => {
   const a = Math.abs(x), s = x < 0 ? "−" : "";
-  if (a >= 1e6) return `${s}$${(a / 1e6).toFixed(1).replace(".", ",")} M`;
-  return `${s}$${Math.round(a / 1000).toLocaleString("es-CO")} mil`;
+  if (a >= 1e6) return `${s}${m}${(a / 1e6).toFixed(1).replace(".", ",")} M`;
+  if (m !== "$") return `${s}${m}${Math.round(a).toLocaleString("es-CO")}`;   // RD: montos chicos, cifra completa
+  return `${s}${m}${Math.round(a / 1000).toLocaleString("es-CO")} mil`;
 };
 export const pp = (x: number | null | undefined) => (x == null ? "sin medir" : (x > 0 ? "+" : x < 0 ? "−" : "") + Math.abs(x).toFixed(1).replace(".", ",") + " pp");
 
