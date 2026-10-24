@@ -83,9 +83,43 @@ export default async function CampanasPage() {
             )}
           </div>
         </div>
+        <Devolucion filas={filasDeSnapshot(datos, "devolucion")} />
         <p className="cf-pie">Grupos: {Object.entries(TIER_TXT).map(([k, v]) => `${k} ${v.toLowerCase()}`).join(" · ")}. Si una persona cabe en dos campañas al aire, la toma la más antigua.</p>
       </div>
       {datos ? <VistaMercadeo seccion="campanas" datos={datos} base={ruta("/mercadeo")} /> : null}
+    </div>
+  );
+}
+
+// LO QUE SE LE DEVUELVE A LAS FRANQUICIAS por las campañas que paga la marca (24-oct-2026).
+// Lo calcula datawarehouse/reports/devolucion_crm_campanas.py cada mañana: un código validado
+// respalda UNA orden de Toteat con descuento CRM de su tienda a ±15 min. Se devuelve lo que la
+// caja descontó (descuento 100 %, topping, bowl, martes); doble sello no. Va contra el Marketing Fee.
+function Devolucion({ filas }: { filas: Record<string, unknown>[] }) {
+  if (!filas.length) return null;
+  const n = (x: unknown) => Number(x) || 0;
+  const meses = [...new Set(filas.map((f) => String(f.mes)))].sort().reverse();
+  return (
+    <div className="tarjeta">
+      <header><h2>Devolución a franquicias</h2>
+        <p>Campañas que paga la marca · código validado + su orden en Toteat (±15 min) · se resta del Marketing Fee</p></header>
+      <div className="cuerpo">
+        <div className="tabla"><table>
+          <thead><tr><th>Mes</th><th className="izq">Tienda</th><th>Canjes</th><th>Se devuelven</th><th>Sin orden (revisar)</th>
+            <th>No aplica</th><th>A devolver (con IVA)</th><th>Contra el fee (sin IVA)</th></tr></thead>
+          <tbody>{meses.flatMap((m) => {
+            const fs = filas.filter((f) => f.mes === m);
+            const t = (k: string) => fs.reduce((a, f) => a + n(f[k]), 0);
+            return [...fs.map((f) => (
+              <tr key={m + String(f.tienda)}><td>{m}</td><td className="izq">{String(f.tienda)}</td><td>{fmt(n(f.canjes))}</td>
+                <td>{fmt(n(f.pagables))}</td><td className={n(f.sin_orden) ? "neg" : ""}>{fmt(n(f.sin_orden))}</td><td>{fmt(n(f.no_aplica))}</td>
+                <td>{pesos(n(f.devolver))}</td><td>{pesos(n(f.base_sin_iva))}</td></tr>)),
+              <tr key={m + "-total"} className="total"><td>{m}</td><td className="izq">Total</td><td>{fmt(t("canjes"))}</td><td>{fmt(t("pagables"))}</td>
+                <td>{fmt(t("sin_orden"))}</td><td>{fmt(t("no_aplica"))}</td><td>{pesos(t("devolver"))}</td><td>{pesos(t("base_sin_iva"))}</td></tr>];
+          })}</tbody>
+        </table></div>
+        <p className="cf-sub">Se devuelve lo que la caja descontó: descuento al 100 %, topping premium, bowl gratis y la diferencia del martes. Doble sello y saludo no (“no aplica”). “Sin orden”: el código se validó pero no aparece su orden con descuento CRM en Toteat a ±15 min — el comentario del descuento llega con el sync del día siguiente; si sigue sin orden, la caja no registró el descuento y no se paga. Solo franquicias.</p>
+      </div>
     </div>
   );
 }
