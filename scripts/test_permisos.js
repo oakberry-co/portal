@@ -49,6 +49,24 @@ check(!puede("operador", "usuarios"), "NO da ni quita accesos: eso es del deciso
 check(!puede("operador", "revertir_pago"), "NO quita pagos: la única acción que devuelve una factura a Pagos es del decisor");
 check(puede("admin", "revertir_pago") && puede("admin", "usuarios"), "…y el admin sí, las dos");
 
+console.log("\n1c) El equipo ve SOLO Contabilidad y Finanzas (Daniel, 26-oct-2026)");
+// Recursos humanos (nomina), Operaciones y Mercadeo son del decisor. Si alguien
+// devuelve una de estas al operador, el equipo vuelve a ver un área que no es suya.
+check(puede("operador", "finanzas"), "el equipo SÍ ve Finanzas (el P&L al día)");
+for (const c of ["nomina", "operaciones", "mercadeo", "lanzar_campanas"]) {
+  check(!puede("operador", c), `el equipo NO ve: ${c}`);
+  check(puede("admin", c), `el decisor sí: ${c}`);
+}
+for (const rol of ["causador", "conciliador", "pagador"]) {
+  for (const c of ["nomina", "operaciones", "mercadeo", "finanzas"]) {
+    check(!puede(rol, c), `${rol} NO ve: ${c}`);
+  }
+}
+// Ningún ítem del menú puede saltarse la matriz con un permiso propio ("equipo"
+// dejaba ver a cualquier operador los programas externos de áreas ajenas).
+const areasTxt = fs.readFileSync(path.join(RAIZ, "app/(portal)/areas.ts"), "utf8");
+check(!/cap:\s*"equipo"|=== "equipo"/.test(areasTxt), 'areas.ts no usa el permiso suelto "equipo"');
+
 console.log("\n2) Lo que NO puede pasar nunca");
 check(!puede("causador", "intake"),
       "el contador NO aprueba: aprobar es lo que manda la plata al banco");

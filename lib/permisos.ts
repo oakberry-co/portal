@@ -24,13 +24,17 @@ export type Cap =
   // La ventana Nómina (borrador visual del módulo RRHH, spec 04_rrhh v3). Por
   // ahora solo la ve el decisor: muestra salarios reales del maestro.
   | "nomina"
-  // Finanzas: el P&L al día por tienda (reflejo de BigQuery). Arranca solo para
-  // el decisor; gerencia entra cuando el backtest lleve dos cierres cuadrando.
+  // Finanzas: el P&L al día por tienda (reflejo de BigQuery). Arrancó solo para el
+  // decisor; desde el 26-oct-2026 lo ve todo el equipo (pedido de Daniel: el equipo
+  // ve Contabilidad y Finanzas, nada más).
   | "finanzas"
   // Mercadeo: CRM, cohortes/LTV/retención de Loopy y resultados de campañas
-  // (reflejo de BigQuery, solo lectura). Todo el equipo @manelfoods.com (pedido de
-  // Daniel, 23-oct-2026); lanzar campañas será una capacidad aparte.
+  // (reflejo de BigQuery, solo lectura). Se abrió al equipo el 23-oct y se cerró
+  // el 26-oct-2026: solo el decisor. Lanzar campañas es una capacidad aparte.
   | "mercadeo"
+  // Operaciones: los programas de tienda que cuelgan del menú (lectura de ventas,
+  // validador de cupones, concursos, domicilios). Solo el decisor (26-oct-2026).
+  | "operaciones"
   // Crear, lanzar, pausar y terminar campañas del CRM (le escriben a clientes y
   // gastan plata). Por ahora solo el decisor (Daniel, 24-oct-2026); cuando se abra
   // a franquiciados será otra capacidad, acotada a sus tiendas y a "lo paga
@@ -40,7 +44,7 @@ export type Cap =
 const TODAS: Cap[] = [
   "ver_conciliacion", "clasificar", "retenciones", "tipo_pago",
   "ver_pagos", "pagos", "export_historial", "causar", "maestros", "maestro_retenciones",
-  "ver_intake", "intake", "dashboard", "asistente", "usuarios", "revertir_pago", "cruzar_nota", "nomina", "finanzas", "mercadeo", "lanzar_campanas",
+  "ver_intake", "intake", "dashboard", "asistente", "usuarios", "revertir_pago", "cruzar_nota", "nomina", "finanzas", "mercadeo", "operaciones", "lanzar_campanas",
 ];
 
 // VER ≠ OPERAR. La bandeja del intake se parte en dos capacidades porque quien
@@ -56,7 +60,9 @@ const IMPLICA: Partial<Record<Cap, Cap[]>> = {
 // LO QUE SOLO HACE EL DECISOR. Daniel es el decisor máximo y el único admin
 // (2026-09-10): dar y quitar accesos, y deshacer un pago —la única acción que
 // devuelve una factura a la cola de Pagos— no las hace quien opera a diario.
-const SOLO_DECISOR: Cap[] = ["usuarios", "revertir_pago", "nomina", "finanzas", "lanzar_campanas"];
+// Desde el 26-oct-2026 el equipo ve SOLO Contabilidad y Finanzas: Recursos humanos
+// (nomina), Operaciones y Mercadeo son del decisor.
+const SOLO_DECISOR: Cap[] = ["usuarios", "revertir_pago", "nomina", "mercadeo", "operaciones", "lanzar_campanas"];
 
 // Rol → qué puede hacer.
 const MATRIZ: Record<Rol, Cap[]> = {

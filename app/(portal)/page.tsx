@@ -20,7 +20,9 @@ const TEXTO: Record<string, { ico: string; txt: string }> = {
 export default async function Home() {
   const user = await getCurrentUserOrNull();
   if (!user) redirect("/login");
-  const areas = areasPortada(user.rol);
+  // Solo las áreas que esta persona puede abrir (26-oct-2026: el equipo ve
+  // Contabilidad y Finanzas; las demás ni se asoman como "sin acceso").
+  const areas = areasPortada(user.rol).filter((a) => a.conAcceso);
   return (
     <div className="container">
       <section className="hero">

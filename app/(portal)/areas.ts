@@ -9,14 +9,16 @@ import type { AreaMenu } from "./CascaraPortal";
 //
 // Cada ítem lleva la capacidad que lo habilita: un área aparece solo si la persona
 // puede ver al menos uno de sus ítems, así el contador externo no ve cajones vacíos.
-// "equipo" = admin u operador (el equipo interno de Manel Foods).
+// Desde el 26-oct-2026 el equipo ve solo Contabilidad y Finanzas: los programas
+// externos llevan la capacidad de SU área (antes "equipo" = cualquier admin u
+// operador), así un enlace no le abre al equipo un área que no ve.
 // Los ítems SIN href son los que todavía no existen: se muestran como "pronto"
 // a propósito, para que el equipo sepa qué viene y no los pida dos veces.
 // externo = programa que vive fuera del portal (oakberry-cupones.com, dashboards): se
 // abre en pestaña nueva y no lleva el prefijo del ambiente de pruebas.
-type Item = { label: string; href?: string; cap: Cap | "equipo"; ico: string; sub?: string; externo?: boolean };
+type Item = { label: string; href?: string; cap: Cap; ico: string; sub?: string; externo?: boolean };
 const CUP = "https://www.oakberry-cupones.com";
-const ext = (label: string, href: string, ico: string, sub?: string): Item => ({ label, href, ico, sub, cap: "equipo", externo: true });
+const ext = (cap: Cap, label: string, href: string, ico: string, sub?: string): Item => ({ label, href, ico, sub, cap, externo: true });
 type Area = { id: string; label: string; ico: string; items: Item[] };
 
 const AREAS: Area[] = [
@@ -36,22 +38,22 @@ const AREAS: Area[] = [
     { label: "Maestros", href: "/contabilidad/maestros", cap: "maestro_retenciones", ico: "maestros", sub: "Configuración contable" },
     { label: "Soportes", href: "/contabilidad/soportes", cap: "ver_conciliacion", ico: "soportes", sub: "Configuración contable" },
   ] },
-  // P&L al día por tienda (reflejo de BigQuery; solo el decisor mientras se calibra).
+  // P&L al día por tienda (reflejo de BigQuery). Lo ve todo el equipo desde el 26-oct-2026.
   { id: "finanzas", label: "Finanzas", ico: "finanzas", items: [
     { label: "P&L al día", href: "/finanzas", cap: "finanzas", ico: "pnl" },
-    ext("Conciliación de programas", `${CUP}/conciliacion`, "conciliacion", "Programas"),
+    ext("finanzas", "Conciliación de programas", `${CUP}/conciliacion`, "conciliacion", "Programas"),
   ] },
   // Recursos humanos = la app de Nómina, ahora dentro de la misma barra (23-oct-2026).
   // Sus ítems dependen de la PERSPECTIVA (RRHH / administrador de punto / colaborador),
   // no solo del rol: los pone areasPara() desde NOMINA (abajo).
   { id: "rrhh", label: "Recursos humanos", ico: "rrhh", items: [] },
   { id: "operaciones", label: "Operaciones", ico: "operaciones", items: [
-    ext("Lectura de ventas vs meta", `${CUP}/lectura`, "finanzas", "Programas"),
-    ext("Validador de cupones (caja)", `${CUP}/validar`, "conciliacion", "Programas"),
-    ext("Concursos entre tiendas", "https://www.oakberry-eventos.com/concursos", "palanca", "Programas"),
-    ext("Domicilios", "https://dashboard.oakberry-eventos.com/dashboard/", "operaciones", "Programas"),
-    { label: "Tiendas", cap: "equipo", ico: "operaciones", sub: "Próximamente" },
-    { label: "Compras e inventario", cap: "equipo", ico: "ordenes", sub: "Próximamente" },
+    ext("operaciones", "Lectura de ventas vs meta", `${CUP}/lectura`, "finanzas", "Programas"),
+    ext("operaciones", "Validador de cupones (caja)", `${CUP}/validar`, "conciliacion", "Programas"),
+    ext("operaciones", "Concursos entre tiendas", "https://www.oakberry-eventos.com/concursos", "palanca", "Programas"),
+    ext("operaciones", "Domicilios", "https://dashboard.oakberry-eventos.com/dashboard/", "operaciones", "Programas"),
+    { label: "Tiendas", cap: "operaciones", ico: "operaciones", sub: "Próximamente" },
+    { label: "Compras e inventario", cap: "operaciones", ico: "ordenes", sub: "Próximamente" },
   ] },
   // Mercadeo: CRM + análisis Loopy + campañas (reflejo diario de BigQuery).
   { id: "mercadeo", label: "Mercadeo", ico: "mercadeo", items: [
@@ -69,28 +71,26 @@ const AREAS: Area[] = [
     { label: "Por palanca", href: "/mercadeo/palancas", cap: "mercadeo", ico: "palanca", sub: "Resultados del CRM" },
     { label: "Mensajes", href: "/mercadeo/mensajes", cap: "mercadeo", ico: "mensajes", sub: "Resultados del CRM" },
     { label: "Canjes y costos", href: "/mercadeo/canjes", cap: "mercadeo", ico: "canjes", sub: "Resultados del CRM" },
-    ext("Dashboard CRM Growth", "https://dashboard.oakberry-eventos.com/dashboard/", "tablero", "Programas"),
-    ext("Consola de reactivación", `${CUP}/consola`, "react", "Programas"),
-    ext("Influencers", `${CUP}/influencers`, "personas", "Programas"),
-    ext("Premios", `${CUP}/premios`, "canjes", "Programas"),
-    ext("Amigos · campañas", `${CUP}/amigos-config`, "audiencia", "Programas"),
-    ext("Amigos · panel", `${CUP}/amigos-panel`, "audiencia", "Programas"),
-    ext("Cupón sorpresa", `${CUP}/sorpresa-config`, "canjes", "Programas"),
-    ext("Centro de control (sorteos)", `${CUP}/centrodecontrol`, "envios", "Programas"),
-    ext("Juegos · centro de mando", `${CUP}/centro`, "palanca", "Programas"),
-    ext("Generador de links", `${CUP}/links`, "soportes", "Programas"),
-    ext("Mensajería Instagram", `${CUP}/mensajeria`, "mensajes", "Programas"),
-    ext("Creador de flyers", `${CUP}/flyer`, "plantillas", "Programas"),
-    ext("Mapa de calor adquisición", `${CUP}/mapadecalor`, "cohortes", "Programas"),
-    ext("Centro de cupones RD", `${CUP}/rd/centro`, "internacional", "República Dominicana"),
-    ext("Creadores RD · seguimiento", `${CUP}/rd/seguimiento`, "personas", "República Dominicana"),
+    ext("mercadeo", "Dashboard CRM Growth", "https://dashboard.oakberry-eventos.com/dashboard/", "tablero", "Programas"),
+    ext("mercadeo", "Consola de reactivación", `${CUP}/consola`, "react", "Programas"),
+    ext("mercadeo", "Influencers", `${CUP}/influencers`, "personas", "Programas"),
+    ext("mercadeo", "Premios", `${CUP}/premios`, "canjes", "Programas"),
+    ext("mercadeo", "Amigos · campañas", `${CUP}/amigos-config`, "audiencia", "Programas"),
+    ext("mercadeo", "Amigos · panel", `${CUP}/amigos-panel`, "audiencia", "Programas"),
+    ext("mercadeo", "Cupón sorpresa", `${CUP}/sorpresa-config`, "canjes", "Programas"),
+    ext("mercadeo", "Centro de control (sorteos)", `${CUP}/centrodecontrol`, "envios", "Programas"),
+    ext("mercadeo", "Juegos · centro de mando", `${CUP}/centro`, "palanca", "Programas"),
+    ext("mercadeo", "Generador de links", `${CUP}/links`, "soportes", "Programas"),
+    ext("mercadeo", "Mensajería Instagram", `${CUP}/mensajeria`, "mensajes", "Programas"),
+    ext("mercadeo", "Creador de flyers", `${CUP}/flyer`, "plantillas", "Programas"),
+    ext("mercadeo", "Mapa de calor adquisición", `${CUP}/mapadecalor`, "cohortes", "Programas"),
+    ext("mercadeo", "Centro de cupones RD", `${CUP}/rd/centro`, "internacional", "República Dominicana"),
+    ext("mercadeo", "Creadores RD · seguimiento", `${CUP}/rd/seguimiento`, "personas", "República Dominicana"),
   ] },
   { id: "config", label: "Configuración", ico: "config", items: [
     { label: "Usuarios y permisos", href: "/contabilidad/configuracion", cap: "usuarios", ico: "config" },
   ] },
 ];
-
-const esEquipo = (rol: Rol) => rol === "admin" || rol === "operador";
 
 // NÓMINA: mismos grupos, nombres y orden que tenía su barra propia (NavNomina, estilo
 // Oak-Crew). `solo` = perspectivas que lo ven; sin `solo`, lo ven las tres.
@@ -129,7 +129,7 @@ export function areasPara(rol: Rol, tipoNomina?: TipoNomina): AreaMenu[] {
     .map((a) => ({ id: a.id, label: a.label, ico: a.ico,
       items: a.id === "rrhh"
         ? (tipo ? NOMINA.filter((i) => !i.solo || i.solo.includes(tipo)).map(({ label, href, ico, sub }) => ({ label, href, ico, sub })) : [])
-        : a.items.filter((i) => (i.cap === "equipo" ? esEquipo(rol) : puede(rol, i.cap)))
+        : a.items.filter((i) => puede(rol, i.cap))
             .map(({ label, href, ico, sub, externo }) => ({ label, href, ico, sub, externo })) }))
     .filter((a) => a.items.length > 0);
 }
