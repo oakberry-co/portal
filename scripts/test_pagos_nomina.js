@@ -124,6 +124,37 @@ async function libro(filas, { titulo = false, otraHoja = false } = {}) {
   check(R.filas.length === 2 && R.problemas.length === 0, "el Reporte Neto a pagar se lee con su título y la fila de grupos", `${R.filas.length} filas`);
   check(R.filas[0]?.neto === 1504548 && R.filas[0]?.devengado === 1624548, "«Neto a Pagar» es el neto y «Total Ingresos» el devengado (para el P&L)");
 
+  // El maestro de RRHH «activos manel foods» como fuente maestra (29-oct-2026):
+  // sin columna de tipo de cuenta, «Centro de Costo» como punto y cuentas
+  // guardadas como número con formato «00000000000».
+  {
+    const wb = new ExcelJS.Workbook(); const h = wb.addWorksheet("Activos");
+    h.addRow([]); h.addRow([]);
+    h.addRow(["ID", "Cedula", "Nombres y Apellidos", "Centro de Costo", "Celular", "Banco", "Cuenta", "Teléfono"]);
+    h.addRow([1, 1000000021, "PRUEBA CERO", "SOCIOS", 3001112233, "BANCOLOMBIA", 1234567890, 3000000000]);
+    h.getCell("G4").numFmt = "00000000000";
+    h.addRow([2, 1000000022, "PRUEBA BODEGA", "BODEGA ", 3004445566, "Daviplata ", 3004445566, ""]);
+    h.addRow([3, 1000000023, "PRUEBA TURNANTE", "TURNANTE", "", "Davivienda ", 1234567890, ""]);
+    h.addRow([4, 1000000009, "PRUEBA CORTA", "ZONA T", "", "Bancolombia", 123456789, ""]);
+    h.addRow([5, 1000000010, "PRUEBA DAVI", 140, "", "DAVIVIENDA", 550012345678901, ""]);
+    const DS = [...DESTINOS, { nombre: "SOCIOS", short_code: "SOCIOS" }, { nombre: "Oakberry Calle 140", short_code: "BOG013" }];
+    const M = await N.leerEmpleados(await wb.xlsx.writeBuffer(), DS);
+    const mm = Object.fromEntries(M.filas.map((f) => [f.num_doc, f]));
+    check(mm["1000000021"]?.num_cuenta === "01234567890", "cuenta como número con formato 000… recupera el 0 de adelante", mm["1000000021"]?.num_cuenta);
+    check(mm["1000000021"]?.tipo_cuenta === "ahorros" && mm["1000000021"]?.tipoCuentaAsumido, "sin columna de tipo: ahorros, y se dice que fue asumido");
+    check(mm["1000000022"]?.tipo_cuenta === "daviplata" && !mm["1000000022"]?.tipoCuentaAsumido, "DaviPlata se afirma por el banco, no se asume");
+    check(mm["1000000021"]?.destino === "SOCIOS" && mm["1000000022"]?.destino === "Administrativo", "SOCIOS va a SOCIOS y BODEGA a Administrativo");
+    check(mm["1000000010"]?.destino === "Oakberry Calle 140", "«140» escrito como número es Calle 140");
+    check(mm["1000000021"]?.celular === "573001112233", "«Celular» gana sobre «Teléfono» (el de emergencia)");
+    check(M.problemas.some((p) => p.quien === "PRUEBA TURNANTE" && /12 o 15/.test(p.detalle)), "Davivienda de 10 dígitos NO entra (Davivienda→Davivienda no rebota)");
+    check(M.problemas.some((p) => p.quien === "PRUEBA CORTA" && /11 dígitos/.test(p.detalle)), "Bancolombia que no tiene 11 dígitos NO entra");
+    const tc = await (async () => { const w = new ExcelJS.Workbook(); const x = w.addWorksheet("A");
+      x.addRow(["Cedula", "Nombres y Apellidos", "Punto", "Banco", "Tipo de cuenta", "Numero de cuenta"]);
+      x.addRow([1000000011, "PRUEBA TIPO VACIO", "ZONA T", "Bancolombia", "", "03300013737"]);
+      return N.leerEmpleados(await w.xlsx.writeBuffer(), DESTINOS); })();
+    check(tc.filas.length === 0 && tc.problemas.some((p) => /tipo de cuenta/.test(p.detalle)), "con la columna de tipo presente, vacío sigue siendo un faltante (no se asume)");
+  }
+
   console.log("\n4) Bancos: igualdad o alias, nunca contención");
   check(bancoCanonico("Davivienda") === "BANCO DAVIVIENDA", "«Davivienda» → BANCO DAVIVIENDA");
   check(bancoCanonico("banco de bogota") === "BANCO DE BOGOTÁ", "«banco de bogota» → BANCO DE BOGOTÁ");

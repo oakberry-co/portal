@@ -539,6 +539,7 @@ function SubirEmpleados() {
                     {c.cambiaCuenta && <span className="cc-badge warn">CAMBIA LA CUENTA</span>}
                     {c.tipoAsumido && c.nuevo && <div className="muted mini">tipo de documento: CC (no venía la columna)</div>}
                     {c.cuentaComoNumero && <div className="muted mini">⚠ la cuenta venía como número: si empezaba por 0, revísala</div>}
+                    {c.tipoCuentaAsumido && <div className="muted mini">tipo de cuenta: ahorros (no venía la columna)</div>}
                   </td>
                   <td className="mini">{Object.entries(c.campos).map(([k, [a, d]]) => (
                     <div key={k}><b>{k}:</b> {a && <><s>{a}</s> → </>}{d}</div>))}</td>

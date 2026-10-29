@@ -57,7 +57,7 @@ export type CambioEmpleado = {
   fila: number; num_doc: string; nombre: string; nuevo: boolean;
   /** campo → [antes, después], ya listo para pintar (la cuenta, enmascarada). */
   campos: Record<string, [string, string]>;
-  cambiaCuenta: boolean; tipoAsumido: boolean; cuentaComoNumero: boolean;
+  cambiaCuenta: boolean; tipoAsumido: boolean; cuentaComoNumero: boolean; tipoCuentaAsumido: boolean;
 };
 export type PlanEmpleados = {
   ok: boolean; error?: string; archivo?: string; hoja?: string;
@@ -137,7 +137,8 @@ async function planearEmpleados(fd: FormData): Promise<{ plan: PlanEmpleados; nu
     if (!Object.keys(campos).length) { sinCambio++; continue; }
     const cambiaCuenta = !!a && !!a.num_cuenta && (a.num_cuenta !== n.num_cuenta || a.banco !== n.banco);
     cambios.push({ fila: fila.fila, num_doc: fila.num_doc, nombre: fila.nombre_completo, nuevo: !a, campos,
-                   cambiaCuenta, tipoAsumido: fila.tipoAsumido, cuentaComoNumero: fila.cuentaComoNumero });
+                   cambiaCuenta, tipoAsumido: fila.tipoAsumido, cuentaComoNumero: fila.cuentaComoNumero,
+                   tipoCuentaAsumido: fila.tipoCuentaAsumido });
     nuevos.set(fila.num_doc, n);
   }
   const enArchivo = new Set(lect.filas.map((x) => x.num_doc));

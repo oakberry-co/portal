@@ -96,6 +96,11 @@ export const PUNTO_A_DESTINO: Record<string, string> = {
   "calle 76": "Oakberry Baq calle 76", "76": "Oakberry Baq calle 76", "baq 76": "Oakberry Baq calle 76",
   "barranquilla 76": "Oakberry Baq calle 76",
   eventos: "EVENTOS",
+  // Centros de costo del maestro de RRHH que no son una tienda (decisión de
+  // Daniel, 29-oct-2026, al volverlo la fuente maestra): la bodega y los
+  // turnantes —que rotan entre tiendas— van al ítem de administrativos.
+  // «SOCIOS» no está acá porque existe tal cual en Maestros.
+  bodega: "Administrativo", turnante: "Administrativo", turnantes: "Administrativo",
   administrativo: "Administrativo", administrativos: "Administrativo", administracion: "Administrativo",
   oficina: "Administrativo", "oficina central": "Administrativo",
 };
@@ -114,12 +119,25 @@ export function destinoDe(
   return mapeado && destinos.some((d) => d.nombre === mapeado) ? mapeado : null;
 }
 
+/** Largos que se conocen con certeza. Una cuenta corta es la de otra persona
+ *  (o ninguna): Davivienda a Davivienda acredita sin pasar por ACH, así que el
+ *  banco no la devuelve. Ej.: «1234567890» en Davivienda tiene 10 dígitos. */
+export function largoInvalido(banco: string, tipo: TipoCuenta, cuenta: string): string | null {
+  const n = cuenta.length;
+  if (tipo === "daviplata" || banco === "NEQUI") {
+    return /^3\d{9}$/.test(cuenta) ? null : `${banco === "NEQUI" ? "Nequi" : "DaviPlata"} es el celular: 10 dígitos que empiezan por 3, y «${cuenta}» no lo es.`;
+  }
+  if (banco === "BANCOLOMBIA" && n !== 11) return `Una cuenta Bancolombia tiene 11 dígitos y «${cuenta}» tiene ${n}. Corrígela en el maestro de RRHH.`;
+  if (banco === "BANCO DAVIVIENDA" && n !== 12 && n !== 15) return `Una cuenta Davivienda tiene 12 o 15 dígitos y «${cuenta}» tiene ${n}. Corrígela en el maestro de RRHH.`;
+  return null;
+}
+
 // Periodo y concepto viven en ./nomina-periodo (sin dependencias): la pantalla
 // los necesita y este módulo arrastra exceljs, que no tiene por qué ir al navegador.
 export { CONCEPTOS, ETIQUETA_CONCEPTO, periodoValido, mesDePeriodo, etiquetaPeriodo, type Concepto } from "./nomina-periodo";
 
 // ── Lectura genérica de la hoja ─────────────────────────────────────────────
-type Hoja = { filas: { n: number; get: (k: string) => unknown; esNumero: (k: string) => boolean }[];
+type Hoja = { filas: { n: number; get: (k: string) => unknown; esNumero: (k: string) => boolean; fmt: (k: string) => string }[];
               tiene: Set<string>; hoja: string };
 
 /** Busca el encabezado (la primera fila con la columna llave, en las primeras
@@ -146,7 +164,8 @@ async function leerHoja(buf: ArrayBuffer, columnas: Record<string, string[]>, ll
     for (let i = filaEnc + 1; i <= ws.rowCount; i++) {
       const r = ws.getRow(i);
       const cel = (k: string) => (idx[k] === undefined ? null : valorCelda(r.getCell(idx[k]).value));
-      filas.push({ n: i, get: cel, esNumero: (k) => typeof cel(k) === "number" });
+      filas.push({ n: i, get: cel, esNumero: (k) => typeof cel(k) === "number",
+                   fmt: (k) => (idx[k] === undefined ? "" : String(r.getCell(idx[k]).numFmt ?? "")) });
     }
     return { filas, tiene: new Set(Object.keys(idx)), hoja: ws.name };
   }
@@ -197,6 +216,8 @@ export type FilaEmpleado = {
   /** Esta fila trajo cuenta y venía en una celda de número: el cero de la
    *  izquierda pudo perderse antes de llegar acá. */
   cuentaComoNumero: boolean;
+  /** No venía la columna de tipo de cuenta y se asumió «ahorros». */
+  tipoCuentaAsumido: boolean;
 };
 export type LecturaEmpleados = {
   filas: FilaEmpleado[]; problemas: Problema[]; avisos: Problema[]; hoja: string;
@@ -251,9 +272,14 @@ export async function leerEmpleados(
 
     // Banco, tipo y número van juntos: dos de tres no sirven para pagar.
     let banco: string | null = null, tipoCuenta: TipoCuenta | null = null, cuenta: string | null = null;
+    let tipoCuentaAsumido = false;
     const bRaw = txt(r.get("banco")), tRaw = txt(r.get("tipoCuenta"));
     const cRaw = r.get("cuenta");
-    const cTxt = cRaw == null ? "" : String(typeof cRaw === "number" ? cRaw.toFixed(0) : cRaw).trim();
+    // Una cuenta guardada como NÚMERO pierde el 0 de adelante; si la celda tenía
+    // formato «00000000000», Excel lo mostraba y RRHH lo ve bien: se repone a ese
+    // largo (Bancolombia 01234567890 → venía como 1234567890).
+    const ceros = /^0+$/.test(r.fmt("cuenta")) ? r.fmt("cuenta").length : 0;
+    const cTxt = cRaw == null ? "" : String(typeof cRaw === "number" ? cRaw.toFixed(0).padStart(ceros, "0") : cRaw).trim();
     const algo = !!(bRaw || tRaw || cTxt);
     if (algo) {
       banco = bancoCanonico(bRaw);
@@ -263,11 +289,17 @@ export async function leerEmpleados(
       // puede afirmar, porque no hay otro tipo de producto en esas entidades.
       if (!tipoCuenta && banco === "DAVIPLATA") tipoCuenta = "daviplata";
       if (!tipoCuenta && banco === "NEQUI") tipoCuenta = "deposito";
+      // El maestro de RRHH no trae la columna de tipo: la cuenta de nómina es de
+      // ahorros. Se asume SOLO si la columna no existe (vacía en una columna que
+      // sí existe sigue siendo un faltante) y la vista previa lo dice.
+      if (!tipoCuenta && !h.tiene.has("tipoCuenta") && banco) { tipoCuenta = "ahorros"; tipoCuentaAsumido = true; }
       const faltan = [!banco && (bRaw ? `el banco «${bRaw}» no está en la lista` : "falta el banco"),
                       !tipoCuenta && (tRaw ? `el tipo de cuenta «${tRaw}» no se reconoce (ahorros / corriente / daviplata)` : "falta el tipo de cuenta"),
                       !/^\d{4,20}$/.test(cuenta) && (cuenta ? `la cuenta «${cTxt}» tiene algo que no son dígitos` : "falta el número de cuenta")]
         .filter(Boolean);
       if (faltan.length) { mal(`Datos bancarios incompletos: ${faltan.join("; ")}.`); continue; }
+      const largo = largoInvalido(banco!, tipoCuenta!, cuenta);
+      if (largo) { mal(largo); continue; }
     }
 
     // Un celular que no se puede leer NO bloquea la fila (sin él solo no le
@@ -284,7 +316,7 @@ export async function leerEmpleados(
       banco, tipo_cuenta: tipoCuenta, num_cuenta: cuenta || null, destino,
       cargo: txt(r.get("cargo")), correo: limpiarCorreo(txt(r.get("correo"))), celular,
       activo: !["no", "inactivo", "retirado", "false", "0"].includes(act),
-      cuentaComoNumero: algo && typeof cRaw === "number",
+      cuentaComoNumero: algo && typeof cRaw === "number", tipoCuentaAsumido,
     });
   }
   return { filas, problemas, avisos, hoja: h.hoja, tiene: {
