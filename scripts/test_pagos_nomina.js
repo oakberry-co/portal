@@ -110,6 +110,20 @@ async function libro(filas, { titulo = false, otraHoja = false } = {}) {
   try { await N.leerPago(await libro([["Cedula", "Nombre"], [123456, "X"]])); } catch (e) { err = e.message; }
   check(/valor a depositar/.test(err), "sin columna de valor el archivo se rechaza", err.slice(0, 60));
 
+  // El «Reporte Neto a pagar» del software de nómina, como sale: 4 filas de
+  // título, una fila de grupos (Datos empleados / Ingresos / Deducciones) y el
+  // encabezado en la 6; la cédula se llama «Identificación».
+  const R = await N.leerPago(await libro([
+    ["Nómina detallada por concepto"], ["MANEL FOODS SAS"], ["Nómina: NOMINA 1Q OCTUBRE 2026"], ["Periodo: 01/10/2026 - 15/10/2026"],
+    ["Datos empleados", "", "", "Ingresos", "", "Deducciones", "", ""],
+    ["Nombre", "Identificación", "No contrato", "Sueldo", "Total Ingresos", "Fondo de salud", "Total deducciones", "Neto a Pagar"],
+    ["PRUEBA UNO", "1000000001", "1000000001", 1500000, 1624548, 60000, 120000, 1504548],
+    ["PRUEBA DOS", "1000000002", "1000000002-1", 975452, 1313751, 47568, 95136, 1218615],
+    ["", null, null, null, null, null, null, null],
+  ]));
+  check(R.filas.length === 2 && R.problemas.length === 0, "el Reporte Neto a pagar se lee con su título y la fila de grupos", `${R.filas.length} filas`);
+  check(R.filas[0]?.neto === 1504548 && R.filas[0]?.devengado === 1624548, "«Neto a Pagar» es el neto y «Total Ingresos» el devengado (para el P&L)");
+
   console.log("\n4) Bancos: igualdad o alias, nunca contención");
   check(bancoCanonico("Davivienda") === "BANCO DAVIVIENDA", "«Davivienda» → BANCO DAVIVIENDA");
   check(bancoCanonico("banco de bogota") === "BANCO DE BOGOTÁ", "«banco de bogota» → BANCO DE BOGOTÁ");

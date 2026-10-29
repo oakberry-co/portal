@@ -301,7 +301,10 @@ const COL_PAGO: Record<string, string[]> = {
   nombre: ["nombres y apellidos", "nombre completo", "empleado", "nombre"],
   neto: ["neto a pagar", "neto pagar", "total a pagar", "valor a pagar", "valor a depositar",
          "neto", "valor neto", "total neto", "a pagar", "valor"],
-  devengado: ["total devengado", "devengado", "total devengos", "devengos"],
+  // «Total Ingresos» es como lo llama el «Reporte Neto a pagar» del software de
+  // nómina (1Q oct-2026): sin este alias el P&L caía al neto y perdía la
+  // seguridad social y los préstamos descontados.
+  devengado: ["total devengado", "devengado", "total devengos", "devengos", "total ingresos"],
   punto: ["punto", "tienda", "destino", "sede", "centro de costo"],
   nota: ["nota", "observacion", "observaciones", "detalle"],
 };
