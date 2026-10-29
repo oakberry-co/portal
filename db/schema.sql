@@ -1797,3 +1797,95 @@ CREATE TABLE IF NOT EXISTS crm_campanas_log (
   detalle   JSONB,
   en        TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- -----------------------------------------------------------------------------
+-- 29) PAGOS DE NÓMINA — el mismo tablero de Pagos, para la gente (2026-10-29)
+--
+-- Por qué NO se reusa `pagos`/`pago_facturas`: esas tablas cuelgan de una
+-- factura DIAN (CUFE) y un sueldo no tiene factura. Meter la nómina ahí era
+-- inventar CUFE falsos o aflojar el FK — y el FK es lo que impide pagar algo
+-- que no existe.
+--
+-- Por qué NO se reusa `rrhh_empleados`: es un REFLEJO del Excel de RRHH
+-- (sync_rrhh_maestro.py lo pisa en cada corrida) y no guarda cédula a propósito.
+-- Si la cuenta bancaria viviera ahí, el próximo sync la borraría y el archivo
+-- del banco saldría sin la persona — sin ningún error. Acá la llave es la
+-- CÉDULA, que es lo que el banco valida contra la cuenta.
+--
+-- Solo el decisor (capacidad `pagos_nomina`): estas tablas tienen el sueldo y
+-- la cuenta de cada persona.
+-- -----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS nomina_beneficiarios (
+  num_doc          TEXT PRIMARY KEY,                -- solo dígitos (CC/CE) o alfanumérico (PPT/pasaporte)
+  tipo_doc         TEXT NOT NULL CHECK (tipo_doc IN ('CC','CE','PPT','PASAPORTE','TI')),
+  nombre_completo  TEXT NOT NULL,                   -- como lo escribe RRHH («ZABALA GOMEZ JENNY MILENA»)
+  -- Davivienda pide nombre y apellido en columnas aparte. El maestro de RRHH los
+  -- trae juntos y con el apellido primero; partirlos es adivinar (¿«ESTRELLA
+  -- PRADA VIVIANA» o «ESTRELLA» de nombre?). Se llenan solo si el Excel trae las
+  -- dos columnas; mientras falten, el archivo del banco marca la fila REVISAR.
+  nombres          TEXT,
+  apellidos        TEXT,
+  banco            TEXT,                            -- nombre EXACTO de la lista de lib/bancos.ts
+  tipo_cuenta      TEXT CHECK (tipo_cuenta IN ('ahorros','corriente','daviplata','deposito')),
+  num_cuenta       TEXT,                            -- TEXTO: los ceros a la izquierda son parte de la cuenta
+  destino          TEXT NOT NULL,                   -- maestro_destinos.nombre: la tienda o «Administrativo» (P&L)
+  cargo            TEXT,
+  correo           TEXT,
+  activo           BOOLEAN NOT NULL DEFAULT TRUE,
+  -- Cambiar la cuenta de un empleado es el fraude de nómina más común. Se
+  -- guarda cuándo cambió por última vez y el archivo del banco lo grita
+  -- durante 30 días, para que quien lo sube mire esa fila dos veces.
+  cuenta_cambio_en TIMESTAMPTZ,
+  creado_por       TEXT NOT NULL,
+  creado_en        TIMESTAMPTZ NOT NULL DEFAULT now(),
+  actualizado_por  TEXT,
+  actualizado_en   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- UN LOTE = un Excel de pago (la quincena, la prima, una liquidación). Es la
+-- unidad que se mueve por el tablero: por pagar → validación → pagado, como un
+-- proveedor en Pagos. El estado solo avanza (o vuelve de validación a por
+-- pagar con «devolver»); un lote pagado no se toca.
+CREATE TABLE IF NOT EXISTS nomina_lotes (
+  id               BIGSERIAL PRIMARY KEY,
+  periodo          TEXT NOT NULL,                   -- '2026-11-Q1', '2026-11-Q2', '2026-11' (mensual)
+  concepto         TEXT NOT NULL CHECK (concepto IN ('quincena','prima','liquidacion','bonificacion','vacaciones','otro')),
+  mes_gasto        DATE NOT NULL,                   -- primer día del mes al que pertenece en el P&L
+  descripcion      TEXT,
+  estado           TEXT NOT NULL DEFAULT 'por_pagar'
+                   CHECK (estado IN ('por_pagar','validacion','pagado','anulado')),
+  cuenta_pago      TEXT,                            -- cuentas_pago.nombre (Davivienda): desde dónde sale
+  fecha_pago_prog  DATE,
+  archivo_nombre   TEXT,                            -- el Excel que lo originó
+  creado_por       TEXT NOT NULL,
+  creado_en        TIMESTAMPTZ NOT NULL DEFAULT now(),
+  pagado_en        DATE,
+  pagado_por       TEXT,
+  comprobante_url  TEXT,
+  nota             TEXT
+);
+-- EL MISMO PERIODO NO SE PAGA DOS VECES. Subir otra vez el Excel de la
+-- primera quincena de noviembre es el doble pago más fácil de cometer; con este
+-- índice la base lo rechaza aunque la pantalla falle. «otro» y «liquidacion» se
+-- repiten de verdad (varias liquidaciones en un mes) y por eso quedan afuera.
+CREATE UNIQUE INDEX IF NOT EXISTS ux_nomina_lote_periodo
+  ON nomina_lotes (periodo, concepto)
+  WHERE estado <> 'anulado' AND concepto NOT IN ('liquidacion','otro');
+
+CREATE TABLE IF NOT EXISTS nomina_pagos (
+  id               BIGSERIAL PRIMARY KEY,
+  lote_id          BIGINT NOT NULL REFERENCES nomina_lotes(id) ON DELETE CASCADE,
+  num_doc          TEXT NOT NULL REFERENCES nomina_beneficiarios(num_doc),
+  destino          TEXT NOT NULL,                   -- a qué tienda cae en el P&L (puede no ser la del maestro)
+  neto             NUMERIC(16,2) NOT NULL CHECK (neto > 0),   -- lo que va al banco
+  devengado        NUMERIC(16,2) CHECK (devengado IS NULL OR devengado >= neto),  -- antes de deducciones
+  nota             TEXT,
+  -- La cuenta A LA QUE SE PAGÓ, congelada al confirmar. El maestro cambia; el
+  -- historial tiene que poder decir a dónde salió la plata ese día.
+  pagado_banco     TEXT,
+  pagado_tipo      TEXT,
+  pagado_cuenta    TEXT,
+  UNIQUE (lote_id, num_doc, destino)
+);
+CREATE INDEX IF NOT EXISTS ix_nomina_pagos_doc ON nomina_pagos (num_doc);
+-- (fin §29)

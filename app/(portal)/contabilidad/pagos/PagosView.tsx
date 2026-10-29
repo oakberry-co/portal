@@ -776,7 +776,7 @@ function ConfigView({ cuentas, diaPago }: { cuentas: CuentaPago[]; diaPago: numb
  *  respaldo. El archivo va a CONTABILIDAD/Comprobantes de pago/{proveedor}/{mes}
  *  y, además, es el que se le adjunta al proveedor en el correo de "ya te
  *  pagamos". */
-function CampoComprobante({ onOcupado }: { onOcupado?: (ocupado: boolean) => void }) {
+export function CampoComprobante({ onOcupado }: { onOcupado?: (ocupado: boolean) => void }) {
   // Se aliviana la foto y se pesa ANTES de enviar (lib/archivo-liviano.ts): un
   // comprobante de más de 4 MB tumbaba la página entera (2-oct-2026).
   const c = usarArchivoLiviano("Comprobante de pago");

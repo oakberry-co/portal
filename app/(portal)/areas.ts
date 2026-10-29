@@ -26,6 +26,9 @@ const AREAS: Area[] = [
     { label: "Dashboard", href: "/contabilidad/dashboard", cap: "dashboard", ico: "tablero" },
     { label: "Conciliación de pagos", href: "/contabilidad/conciliacion", cap: "ver_conciliacion", ico: "conciliacion" },
     { label: "Pagos", href: "/contabilidad/pagos", cap: "ver_pagos", ico: "pagos" },
+    // Mismo tablero que Pagos, para la nómina: Excel de empleados + Excel de pago
+    // por quincena → archivo de Davivienda. Solo el decisor (29-oct-2026).
+    { label: "Pagos de nómina", href: "/contabilidad/pagos-nomina", cap: "pagos_nomina", ico: "pagos" },
     { label: "Conciliación de bancos", cap: "pagos", ico: "bancos" },
     { label: "Cuentas de cobro", href: "/contabilidad/cuentas-de-cobro", cap: "ver_intake", ico: "cuentas" },
     // Lo que nadie nos factura (servicios públicos, impuestos, reembolsos). Lo

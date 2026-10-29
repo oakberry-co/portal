@@ -145,3 +145,51 @@ export function revisarFila(
   }
   return avisos;
 }
+
+// ── 8. La fila del archivo — UNA sola definición ────────────────────────────
+// La usan el archivo de proveedores (pagos/export) y el de nómina
+// (pagos-nomina/export). Dos copias del formato del banco envejecen distinto, y
+// la que se quede atrás es una fila rechazada o plata en otra cuenta.
+export const ENCABEZADO_DAVIVIENDA = [
+  "Tipo de Identificación", "Número de Identificación", "Nombre", "Apellido",
+  "Código del Banco", "Tipo de Producto o Servicio", "Número del Producto o Servicio",
+  "Valor del pago o de la recarga", "Referencia (Opcional)",
+  "Correo Electronico (Opcional)", "Descripción o Detalle (Opcional)",
+];
+
+export type CeldasDavivienda = {
+  tipoDoc: string | null; numDoc: string; nombre: string; apellido: string;
+  codigoBanco: string; tipoCuenta: string | null; numCuenta: string | null;
+  monto: number; referencia?: string | null; correo?: string | null; detalle?: string | null;
+};
+
+/** Los valores de la fila, ya traducidos a lo que exige el banco. */
+export function celdasDavivienda(x: CeldasDavivienda): (string | number)[] {
+  return [
+    codigoTipoId(x.tipoDoc),            // 1 · código numérico, no "NIT"
+    x.numDoc,                           // 10 · no se toca
+    textoBanco(x.nombre),               // 6 y 7 · sin tildes, ñ ni signos
+    textoBanco(x.apellido),
+    x.codigoBanco,                      // 4 · no se modifica, se valida
+    codigoProducto(x.tipoCuenta),       // 3 · CC/CA/DP/TP/DE
+    x.numCuenta ?? "",                  // 5 · TEXTO (ver formatoFilaDavivienda)
+    Math.round(x.monto),                // 9 · número, sin separador de miles
+    textoBanco(x.referencia),           // 7
+    x.correo ?? "",                     // 10 · no se toca
+    textoBanco(x.detalle),
+  ];
+}
+
+/** Formato de celdas de una fila ya agregada a la hoja (exceljs). Regla 5: el
+ *  número de producto en formato Texto y con el valor exacto — sin esto los
+ *  ceros a la izquierda se pierden solos. Tipado estructural para no importar
+ *  exceljs en un módulo que se compila suelto. */
+export function formatoFilaDavivienda(
+  fila: { getCell: (c: number) => { numFmt: string; value: unknown } },
+  numCuenta: string | null,
+  numDoc: string,
+): void {
+  const cta = fila.getCell(7); cta.numFmt = "@"; cta.value = String(numCuenta ?? "");
+  const doc = fila.getCell(2); doc.numFmt = "@"; doc.value = numDoc;
+  fila.getCell(8).numFmt = "0.00";      // 9 · 16 enteros + 2 decimales, sin miles
+}

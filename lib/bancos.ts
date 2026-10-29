@@ -206,3 +206,35 @@ export function esBancoConocido(nombre: string | null | undefined): boolean {
   const n = (nombre ?? "").trim();
   return n === "" || BANCOS.some((b) => b.nombre === n);
 }
+
+/** Los nombres con los que la gente escribe un banco en un Excel, hacia el
+ *  nombre EXACTO de la lista. Es una tabla cerrada y escrita a mano a propósito:
+ *  `codigoBanco` resuelve por contención, y eso sirve para un archivo que un
+ *  humano revisa, no para guardar en un maestro de nómina — «BANCO» contiene a
+ *  medio catálogo (Regla 3: el parecido sugiere, nunca afirma). */
+const ALIAS_BANCO: Record<string, string> = {
+  "DAVIVIENDA": "BANCO DAVIVIENDA",
+  "BOGOTA": "BANCO DE BOGOTÁ", "BANCO BOGOTA": "BANCO DE BOGOTÁ",
+  "AV VILLAS": "BANCO AV VILLAS", "AVVILLAS": "BANCO AV VILLAS",
+  "BBVA": "BBVA COLOMBIA", "BANCO BBVA": "BBVA COLOMBIA",
+  "BANCO CAJA SOCIAL": "CAJA SOCIAL", "BCSC": "CAJA SOCIAL",
+  "OCCIDENTE": "BANCO DE OCCIDENTE", "POPULAR": "BANCO POPULAR",
+  "FALABELLA": "BANCO FALABELLA", "AGRARIO": "BANCO AGRARIO DE COLOMBIA",
+  "BANCO AGRARIO": "BANCO AGRARIO DE COLOMBIA", "PICHINCHA": "BANCO PICHINCHA",
+  "NU BANK": "NU", "NUBANK": "NU", "NU COLOMBIA": "NU",
+  "BANCO BANCOLOMBIA": "BANCOLOMBIA", "BANCOLOMBIA S A": "BANCOLOMBIA",
+  "SCOTIABANK COLPATRIA": "DAVIbank S.A", "COLPATRIA": "DAVIbank S.A",
+  "LULO": "LULO BANK S.A.", "LULO BANK": "LULO BANK S.A.",
+};
+
+/** Nombre del banco tal como lo escribió una persona → nombre EXACTO de la
+ *  lista, o `null` si no se puede afirmar cuál es. Igualdad tras normalizar
+ *  (tildes, mayúsculas, signos) o alias explícito; nada de contención. */
+export function bancoCanonico(nombre: string | null | undefined): string | null {
+  const n = norm(nombre ?? "");
+  if (!n) return null;
+  const directo = BANCOS.find((b) => norm(b.nombre) === n);
+  if (directo) return directo.nombre;
+  const alias = ALIAS_BANCO[n];
+  return alias && BANCOS.some((b) => b.nombre === alias) ? alias : null;
+}

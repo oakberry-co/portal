@@ -3,7 +3,8 @@ import { getPool } from "@/lib/db";
 import { getCurrentUserOrNull } from "@/lib/auth";
 import { puede } from "@/lib/permisos";
 import { codigoBanco, codigoBancoDavivienda, CODIGOS_DAVIVIENDA, TIPO_DOC_FULL, TIPO_CUENTA_FULL } from "@/lib/bancos";
-import { codigoTipoId, codigoProducto, textoBanco, revisarFila, type Aviso } from "@/lib/davivienda";
+import { revisarFila, type Aviso,
+         ENCABEZADO_DAVIVIENDA, celdasDavivienda, formatoFilaDavivienda } from "@/lib/davivienda";
 import { LISTO_PARA_PAGOS } from "@/lib/documentos-no-dian";
 import { SQL_VA_AL_BANCO } from "@/lib/gastos-periodicos";
 import { SALDO_NETO, NO_ES_NOTA } from "@/lib/notas-credito";
@@ -168,30 +169,16 @@ export async function GET(req: NextRequest) {
     // miles. No se toca por gusto: una fila fuera de formato la rechaza el banco.
     const validos = new Set(CODIGOS_DAVIVIENDA);
     const avisos: Aviso[] = [];
-    hoja.addRow(["Tipo de Identificación", "Número de Identificación", "Nombre", "Apellido",
-                 "Código del Banco", "Tipo de Producto o Servicio", "Número del Producto o Servicio",
-                 "Valor del pago o de la recarga", "Referencia (Opcional)",
-                 "Correo Electronico (Opcional)", "Descripción o Detalle (Opcional)"]);
+    hoja.addRow(ENCABEZADO_DAVIVIENDA);
     pagables.forEach((r, i) => {
       const cod = codigoBancoDavivienda(r.banco);
       avisos.push(...revisarFila(i + 2, r, cod, validos));   // +2: fila real del Excel
-      const fila = hoja.addRow([
-        codigoTipoId(doc(r)),                 // 1 · código numérico, no "NIT"
-        numDoc(r),                            // 10 · no se toca
-        textoBanco(nombre(r)),                // 6 y 7 · sin tildes, ñ ni signos
-        textoBanco(apellido(r)),
-        cod,                                  // 4 · no se modifica, se valida
-        codigoProducto(r.tipo_cuenta),        // 3 · CC/CA/DP/TP/DE
-        r.num_cuenta ?? "",                   // 5 · TEXTO (abajo)
-        Math.round(r.monto),                  // 9 · número, sin separador de miles
-        textoBanco(r.referencia),             // 7
-        r.correo ?? "",                       // 10 · no se toca
-        "",
-      ]);
-      // Regla 5: la celda del número de producto queda en formato Texto y con
-      // el valor exacto. Sin esto los ceros a la izquierda se pierden solos.
-      cuentaComoTexto(fila, 7, r.num_cuenta);
-      fila.getCell(8).numFmt = "0.00";        // 9 · 16 enteros + 2 decimales, sin miles
+      const fila = hoja.addRow(celdasDavivienda({
+        tipoDoc: doc(r), numDoc: numDoc(r), nombre: nombre(r), apellido: apellido(r),
+        codigoBanco: cod, tipoCuenta: r.tipo_cuenta, numCuenta: r.num_cuenta,
+        monto: r.monto, referencia: r.referencia, correo: r.correo, detalle: "",
+      }));
+      formatoFilaDavivienda(fila, r.num_cuenta, numDoc(r));
     });
     revisar = avisos.length;
     if (revisar) {
