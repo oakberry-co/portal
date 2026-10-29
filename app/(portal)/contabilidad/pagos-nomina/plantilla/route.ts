@@ -28,17 +28,17 @@ export async function GET(req: NextRequest) {
   if (tipo === "empleados") {
     const h = wb.addWorksheet("Empleados");
     h.addRow(["Tipo de documento", "Cedula", "Nombres y Apellidos", "Nombres", "Apellidos", "Punto",
-              "Cargo", "Email", "Banco", "Tipo de cuenta", "Numero de cuenta", "Activo"]).font = { bold: true };
+              "Cargo", "Email", "Celular", "Banco", "Tipo de cuenta", "Numero de cuenta", "Activo"]).font = { bold: true };
     const r = await pool.query(`SELECT tipo_doc, num_doc, nombre_completo, nombres, apellidos, destino, cargo, correo,
-                                       banco, tipo_cuenta, num_cuenta, activo
+                                       celular, banco, tipo_cuenta, num_cuenta, activo
                                   FROM nomina_beneficiarios ORDER BY destino, nombre_completo`);
     for (const b of r.rows) {
       const f = h.addRow([b.tipo_doc, b.num_doc, b.nombre_completo, b.nombres ?? "", b.apellidos ?? "", b.destino,
-                          b.cargo ?? "", b.correo ?? "", b.banco ?? "", b.tipo_cuenta ?? "", b.num_cuenta ?? "", b.activo ? "SI" : "NO"]);
-      texto(f, [2, 11]);
+                          b.cargo ?? "", b.correo ?? "", b.celular ?? "", b.banco ?? "", b.tipo_cuenta ?? "", b.num_cuenta ?? "", b.activo ? "SI" : "NO"]);
+      texto(f, [2, 9, 12]);
     }
-    if (!r.rowCount) for (let i = 2; i <= 60; i++) { h.getCell(i, 2).numFmt = "@"; h.getCell(i, 11).numFmt = "@"; }
-    h.columns.forEach((c, i) => { c.width = [16, 14, 36, 22, 22, 26, 26, 30, 22, 14, 18, 8][i]; });
+    if (!r.rowCount) for (let i = 2; i <= 60; i++) for (const c of [2, 9, 12]) h.getCell(i, c).numFmt = "@";
+    h.columns.forEach((c, i) => { c.width = [16, 14, 36, 22, 22, 26, 26, 30, 14, 22, 14, 18, 8][i]; });
     const g = wb.addWorksheet("Cómo llenarla");
     [["Tipo de documento", "CC, CE, PPT, PASAPORTE o TI. Si la cédula viene como «PPT 5017896» no hace falta."],
      ["Nombres / Apellidos", "SEPARADOS. Davivienda los pide aparte; si solo está «Nombres y Apellidos», el archivo del banco marca la fila para revisar."],
@@ -46,6 +46,7 @@ export async function GET(req: NextRequest) {
      ["Banco", "Como en la lista del portal: BANCOLOMBIA, BANCO DAVIVIENDA, NEQUI, DAVIPLATA, NU, BANCO DE BOGOTÁ…"],
      ["Tipo de cuenta", "ahorros, corriente o daviplata."],
      ["Numero de cuenta", "Solo dígitos, en celda de TEXTO. Si empieza por 0, revisa que el cero siga ahí."],
+     ["Celular", "10 dígitos (ej. 320 8058309). A ese número le llega el aviso de pago por WhatsApp."],
      ["Activo", "SI / NO. Quien no venga en el archivo NO se desactiva: hay que escribir NO."],
      ["Celdas en blanco", "No borran lo que ya está guardado. Para cambiar una cuenta, escribe la nueva."]]
       .forEach((x) => g.addRow(x));

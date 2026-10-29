@@ -11,6 +11,7 @@
 // Todo cambio deja su evento en la bitácora, en la misma transacción.
 
 import { revalidatePath } from "next/cache";
+import type { PoolClient } from "pg";
 import { getPool, withTx } from "@/lib/db";
 import { registrarEvento } from "@/lib/eventos";
 import { exigirCap } from "@/lib/auth";
@@ -18,6 +19,8 @@ import { intentar, type Resultado } from "@/lib/resultado";
 import { subirComprobante } from "@/lib/intake";
 import { hoyBogota } from "@/lib/habiles";
 import { TOPE_ENVIO_BYTES, pesoLegible } from "@/lib/documentos";
+import { fechaAbono, fechaLarga } from "@/lib/nomina-abono";
+import { ETIQUETA_CONCEPTO } from "@/lib/nomina-periodo";
 import {
   leerEmpleados, leerPago, destinoDe, periodoValido, mesDePeriodo, etiquetaPeriodo, ultimos4,
   CONCEPTOS, type Concepto, type Problema, type FilaEmpleado,
@@ -47,7 +50,7 @@ function archivoDe(fd: FormData): File | string {
 type Actual = {
   num_doc: string; tipo_doc: string; nombre_completo: string; nombres: string | null; apellidos: string | null;
   banco: string | null; tipo_cuenta: string | null; num_cuenta: string | null; destino: string;
-  cargo: string | null; correo: string | null; activo: boolean;
+  cargo: string | null; correo: string | null; activo: boolean; celular: string | null;
 };
 
 export type CambioEmpleado = {
@@ -59,13 +62,17 @@ export type CambioEmpleado = {
 export type PlanEmpleados = {
   ok: boolean; error?: string; archivo?: string; hoja?: string;
   cambios: CambioEmpleado[]; sinCambio: number; problemas: Problema[];
+  /** Filas que entran pero con algo que mirar (celular ilegible). */
+  avisos: Problema[];
+  /** Activos que quedarían sin celular: no les llega el aviso de pago. */
+  sinCelular: number;
   /** Están en el maestro de nómina y NO vienen en el archivo. No se tocan:
    *  que falten en un Excel no prueba que se hayan ido (Regla 13). */
   ausentes: { num_doc: string; nombre: string }[];
   sinCuenta: number; faltanNombresSeparados: boolean;
   aplicados?: number;
 };
-const VACIO_EMP: PlanEmpleados = { ok: true, cambios: [], sinCambio: 0, problemas: [], ausentes: [], sinCuenta: 0, faltanNombresSeparados: false };
+const VACIO_EMP: PlanEmpleados = { ok: true, cambios: [], sinCambio: 0, problemas: [], avisos: [], sinCelular: 0, ausentes: [], sinCuenta: 0, faltanNombresSeparados: false };
 
 /** Lo que queda en el maestro si se aplica esta fila. Una columna AUSENTE del
  *  archivo, o una celda bancaria vacía, conserva lo que ya había: vacío no es
@@ -87,6 +94,7 @@ function fusionar(f: FilaEmpleado, a: Actual | undefined, tieneBanco: boolean): 
     destino: f.destino,
     cargo: f.cargo ?? a?.cargo ?? null,
     correo: f.correo ?? a?.correo ?? null,
+    celular: f.celular ?? a?.celular ?? null,
     activo: f.activo,
   };
 }
@@ -94,7 +102,7 @@ function fusionar(f: FilaEmpleado, a: Actual | undefined, tieneBanco: boolean): 
 const ETIQ: Record<string, string> = {
   tipo_doc: "Tipo doc.", nombre_completo: "Nombre", nombres: "Nombres", apellidos: "Apellidos",
   banco: "Banco", tipo_cuenta: "Tipo de cuenta", num_cuenta: "Cuenta", destino: "Destino",
-  cargo: "Cargo", correo: "Correo", activo: "Activo",
+  cargo: "Cargo", correo: "Correo", celular: "Celular", activo: "Activo",
 };
 
 async function planearEmpleados(fd: FormData): Promise<{ plan: PlanEmpleados; nuevos: Map<string, Actual>; antes: Map<string, Actual> }> {
@@ -109,7 +117,7 @@ async function planearEmpleados(fd: FormData): Promise<{ plan: PlanEmpleados; nu
   }
   const actuales = await getPool().query<Actual>(
     `SELECT num_doc, tipo_doc, nombre_completo, nombres, apellidos, banco, tipo_cuenta, num_cuenta,
-            destino, cargo, correo, activo FROM nomina_beneficiarios`);
+            destino, cargo, correo, activo, celular FROM nomina_beneficiarios`);
   const antes = new Map(actuales.rows.map((r) => [r.num_doc, r]));
   const tieneBanco = lect.tiene.cuenta;
   const cambios: CambioEmpleado[] = [];
@@ -139,6 +147,7 @@ async function planearEmpleados(fd: FormData): Promise<{ plan: PlanEmpleados; nu
   return {
     plan: {
       ok: true, archivo: f.name, hoja: lect.hoja, cambios, sinCambio, problemas: lect.problemas, ausentes,
+      avisos: lect.avisos, sinCelular: finales.filter((x) => x.activo && !x.celular).length,
       sinCuenta: finales.filter((x) => x.activo && !x.num_cuenta).length,
       faltanNombresSeparados: finales.some((x) => !x.nombres || !x.apellidos),
     },
@@ -168,18 +177,18 @@ export async function procesarEmpleados(_prev: PlanEmpleados | null, fd: FormDat
       await c.query(
         `INSERT INTO nomina_beneficiarios
            (num_doc, tipo_doc, nombre_completo, nombres, apellidos, banco, tipo_cuenta, num_cuenta,
-            destino, cargo, correo, activo, cuenta_cambio_en, creado_por, actualizado_por)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$14)
+            destino, cargo, correo, activo, cuenta_cambio_en, creado_por, actualizado_por, celular)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$14,$15)
          ON CONFLICT (num_doc) DO UPDATE SET
            tipo_doc = EXCLUDED.tipo_doc, nombre_completo = EXCLUDED.nombre_completo,
            nombres = EXCLUDED.nombres, apellidos = EXCLUDED.apellidos, banco = EXCLUDED.banco,
            tipo_cuenta = EXCLUDED.tipo_cuenta, num_cuenta = EXCLUDED.num_cuenta,
            destino = EXCLUDED.destino, cargo = EXCLUDED.cargo, correo = EXCLUDED.correo,
-           activo = EXCLUDED.activo,
+           activo = EXCLUDED.activo, celular = EXCLUDED.celular,
            cuenta_cambio_en = COALESCE(EXCLUDED.cuenta_cambio_en, nomina_beneficiarios.cuenta_cambio_en),
            actualizado_por = EXCLUDED.actualizado_por, actualizado_en = now()`,
         [doc, n.tipo_doc, n.nombre_completo, n.nombres, n.apellidos, n.banco, n.tipo_cuenta, n.num_cuenta,
-         n.destino, n.cargo, n.correo, n.activo, cambioCuenta ? new Date() : null, user.email]);
+         n.destino, n.cargo, n.correo, n.activo, cambioCuenta ? new Date() : null, user.email, n.celular]);
       // En la bitácora va la cuenta enmascarada: la bitácora la lee más gente
       // que este módulo, y para rastrear un cambio bastan los últimos 4.
       const masc = (x: Actual | undefined) => x && { banco: x.banco, cuenta: ultimos4(x.num_cuenta), destino: x.destino, activo: x.activo };
@@ -405,11 +414,58 @@ export async function confirmarPagoLote(fd: FormData): Promise<Resultado & { avi
                        FROM nomina_beneficiarios b WHERE b.num_doc = p.num_doc AND p.lote_id = $1`, [id]);
       const t = await c.query<{ n: number; total: number }>(
         "SELECT count(*)::int n, coalesce(sum(neto),0)::float total FROM nomina_pagos WHERE lote_id = $1", [id]);
+      const avisos = fd.get("avisar") === "1" ? await encolarAvisos(c, id, fecha, user.email) : 0;
       await registrarEvento(c, { cufe: null, tipo: "nomina_confirma_pago", campo: `nomina_lotes:${id}`,
-        valorNuevo: { fecha, personas: t.rows[0].n, total: t.rows[0].total, comprobante: !!url },
+        valorNuevo: { fecha, personas: t.rows[0].n, total: t.rows[0].total, comprobante: !!url, avisos_wa: avisos },
         actor: user.email, actorRol: user.rol, origen: "web" });
     });
     done();
   });
   return { ...r, aviso };
+}
+
+const cop = new Intl.NumberFormat("es-CO", { style: "currency", currency: "COP", maximumFractionDigits: 0 });
+
+/** Deja en la cola el aviso de WhatsApp de cada persona del lote, con el texto
+ *  ya resuelto: la cuenta y el banco son los CONGELADOS al confirmar (lo que el
+ *  banco usó), no los del maestro de mañana. Envía la VM
+ *  (scripts/enviar_avisos_nomina_wa.py). Devuelve cuántos quedaron en cola. */
+async function encolarAvisos(c: PoolClient, loteId: number, pagadoEn: string, actor: string): Promise<number> {
+  const lote = await c.query<{ periodo: string; concepto: keyof typeof ETIQUETA_CONCEPTO }>(
+    "SELECT periodo, concepto FROM nomina_lotes WHERE id = $1", [loteId]);
+  const { periodo, concepto } = lote.rows[0];
+  const que = concepto === "quincena" ? `pago de la ${etiquetaPeriodo(periodo)}`
+    : `pago de ${ETIQUETA_CONCEPTO[concepto].toLowerCase()} (${etiquetaPeriodo(periodo)})`;
+  // Una línea por PERSONA (si cayó en dos tiendas, el banco le hizo una sola
+  // transferencia y el aviso dice el total).
+  const r = await c.query<{ num_doc: string; nombre: string; celular: string | null; banco: string | null; cuenta: string | null; neto: number }>(
+    `SELECT p.num_doc, coalesce(b.nombres, b.nombre_completo) AS nombre, b.celular,
+            max(p.pagado_banco) AS banco, max(p.pagado_cuenta) AS cuenta, sum(p.neto)::float AS neto
+       FROM nomina_pagos p JOIN nomina_beneficiarios b USING (num_doc)
+      WHERE p.lote_id = $1 GROUP BY p.num_doc, b.nombres, b.nombre_completo, b.celular`, [loteId]);
+  let n = 0;
+  for (const x of r.rows) {
+    const datos = {
+      nombre: nombrePropio(x.nombre), que, valor: cop.format(Math.round(x.neto)),
+      cuenta: `${bancoCorto(x.banco)} terminada en ${(x.cuenta ?? "").slice(-4)}`,
+      cuando: fechaLarga(fechaAbono(pagadoEn, x.banco)),
+    };
+    const ins = await c.query(
+      `INSERT INTO nomina_avisos (lote_id, num_doc, celular, datos, estado, creado_por)
+       VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT (lote_id, num_doc) DO NOTHING`,
+      [loteId, x.num_doc, x.celular, JSON.stringify(datos), x.celular ? "pendiente" : "sin_celular", actor]);
+    if (x.celular) n += ins.rowCount ?? 0;
+  }
+  return n;
+}
+
+/** «JENNY MILENA» → «Jenny Milena». El saludo en mayúsculas sostenidas se lee
+ *  como un grito (y así viene el maestro de RRHH). */
+const nombrePropio = (s: string) => s.toLowerCase().replace(/(^|[\s(])(\p{L})/gu, (_m, a, b) => a + b.toUpperCase());
+/** «BANCO DAVIVIENDA» → «Davivienda»; «BANCO DE BOGOTÁ» → «Banco de Bogotá». */
+function bancoCorto(b: string | null): string {
+  if (!b) return "tu cuenta";
+  if (b === "BANCO DAVIVIENDA") return "Davivienda";
+  if (b === "NU") return "Nu";
+  return nombrePropio(b).replace(/\bDe\b/g, "de").replace(/ S\.?a\.?s?\.?$/i, "");
 }

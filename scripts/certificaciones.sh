@@ -57,6 +57,12 @@ $PYTHON scripts/leer_valores.py --commit --encolar-faltantes >> "$LOG" 2>&1
 # el mismo rato, no al otro día.
 echo "=== $(date '+%F %T') - enviar correos ===" >> "$LOG"
 $PYTHON scripts/enviar_correos.py --commit >> "$LOG" 2>&1
+
+# Avisos de pago de nómina por WhatsApp (línea de RRHH): los encola el portal al
+# confirmar un lote. Va al final y no tumba la corrida si falla: el aviso puede
+# esperar a la próxima ronda, los correos y las certificaciones no.
+echo "=== $(date '+%F %T') - avisos de nómina (WhatsApp) ===" >> "$LOG"
+$PYTHON scripts/enviar_avisos_nomina_wa.py --commit >> "$LOG" 2>&1 || echo "avisos de nómina: salió con error (ver arriba)" >> "$LOG"
 echo "=== $(date '+%F %T') - done ===" >> "$LOG"
 
 find "$LOGDIR" -name "certificaciones_*.log" -mtime +30 -delete 2>/dev/null || true

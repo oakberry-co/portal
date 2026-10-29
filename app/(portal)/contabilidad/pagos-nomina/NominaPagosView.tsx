@@ -29,7 +29,7 @@ import { motivoPorPesoTotal } from "@/lib/documentos";
 const pesoExcel = (f: File | null) => f && motivoPorPesoTotal([{ nombre: f.name, peso: f.size, etiqueta: "Excel" }],
   "guárdalo de nuevo sin las hojas que no se usan (gráficos, imágenes, pestañas viejas) y vuelve a subirlo.");
 
-export type Persona = { lote_id: number; num_doc: string; nombre: string; destino: string; neto: number; devengado: number | null; sin_cuenta: boolean };
+export type Persona = { lote_id: number; num_doc: string; nombre: string; destino: string; neto: number; devengado: number | null; sin_cuenta: boolean; con_celular: boolean };
 export type Lote = {
   id: number; periodo: string; concepto: Concepto; mes_gasto: string; descripcion: string | null;
   estado: "por_pagar" | "validacion" | "pagado" | "anulado";
@@ -38,11 +38,15 @@ export type Lote = {
   comprobante_url: string | null; nota: string | null;
   total: number; n: number; por_destino: { destino: string; neto: number }[];
   personas: Persona[]; avisos: Aviso[]; sinCuenta: number;
+  /** Personas del lote con celular (les llega el aviso de pago). */
+  conCelular: number;
+  /** Avisos de WhatsApp del lote por estado (pendiente/enviado/fallido/sin_celular). */
+  wa: Record<string, number>;
 };
 export type Beneficiario = {
   num_doc: string; tipo_doc: string; nombre_completo: string; separados: boolean;
   banco: string | null; tipo_cuenta: string | null; ult4: string | null;
-  destino: string; cargo: string | null; activo: boolean; cuenta_nueva: boolean;
+  destino: string; cargo: string | null; activo: boolean; cuenta_nueva: boolean; con_celular: boolean;
 };
 export type CuentaPago = { nombre: string; formato: string };
 
@@ -270,6 +274,11 @@ function ModalConfirmar({ l, onClose }: { l: Lote; onClose: () => void }) {
             <CampoComprobante onOcupado={setOcupado} />
             <label>Nota (opcional)<input name="nota" placeholder="referencia del banco, observaciones…" /></label>
           </div>
+          <label className="pgn-check">
+            <input type="checkbox" name="avisar" value="1" defaultChecked={l.conCelular > 0} disabled={l.conCelular === 0} />
+            <span>Avisar por WhatsApp a cada persona (línea de RRHH): cuánto, a qué cuenta y <b>qué día</b> le debería entrar.
+              {" "}{l.conCelular} de {new Set(l.personas.map((p) => p.num_doc)).size} tienen celular{l.conCelular === 0 ? " — cárgalo en Empleados" : ""}.</span>
+          </label>
           <p className="modal-nota">Confírmalo cuando Davivienda ya haya ejecutado <b>todo</b> el archivo. Queda guardada la
             cuenta a la que se le pagó a cada persona, aunque después cambie en el maestro.</p>
           {err && <div className="pub-err">{err}</div>}
@@ -300,12 +309,17 @@ function LoteConfirmado({ l }: { l: Lote }) {
           <div className="muted mini">{dm(l.pagado_en)} · {l.n} persona(s) · {(l.pagado_por ?? "").split("@")[0]}
             {l.comprobante_url ? <> · <a href={l.comprobante_url} target="_blank" rel="noopener noreferrer">📎 soporte</a></> : ""}</div>
           {l.nota && <div className="pg-nota">📝 {l.nota}</div>}
+          {Object.keys(l.wa).length > 0 && <div className="muted mini">📱 WhatsApp: {resumenWa(l.wa)}</div>}
           <div className="pg-fact-list">{l.por_destino.map((d) => <span key={d.destino}><b>{d.destino}</b> {$(d.neto)}</span>)}</div>
         </div>
       )}
     </div>
   );
 }
+
+const ETQ_WA: Record<string, string> = { enviado: "enviados", pendiente: "en cola", fallido: "fallidos", sin_celular: "sin celular", cancelado: "cancelados" };
+const resumenWa = (wa: Record<string, number>) =>
+  Object.entries(wa).map(([k, n]) => `${n} ${ETQ_WA[k] ?? k}`).join(" · ");
 
 // ─────────────────────────── Subir el Excel de pago ───────────────────────────
 function SubirPago() {
@@ -419,6 +433,7 @@ function Empleados({ beneficiarios }: { beneficiarios: Beneficiario[] }) {
     <div className="pg-kpis">
       <div className="pg-kpi"><i>Activos</i><b>{activos.length}</b><span>{beneficiarios.length - activos.length} inactivo(s)</span></div>
       <div className={"pg-kpi" + (activos.some((b) => !b.ult4) ? " due" : " paid")}><i>Con cuenta bancaria</i><b>{activos.filter((b) => b.ult4).length}</b><span>de {activos.length}</span></div>
+      <div className="pg-kpi"><i>Con celular</i><b>{activos.filter((b) => b.con_celular).length}</b><span>reciben el aviso de pago por WhatsApp</span></div>
       <div className="pg-kpi"><i>Nombre y apellido separados</i><b>{activos.filter((b) => b.separados).length}</b><span>Davivienda los pide aparte</span></div>
       <div className="pg-kpi"><i>Administrativos</i><b>{activos.filter((b) => b.destino === "Administrativo").length}</b><span>van a su línea del P&L</span></div>
     </div>
@@ -435,7 +450,8 @@ function Empleados({ beneficiarios }: { beneficiarios: Beneficiario[] }) {
             <td className="mono">{b.tipo_doc} {b.num_doc}</td>
             <td>{b.destino}</td>
             <td>{b.ult4 ? <>{b.banco} · {b.tipo_cuenta} ••••{b.ult4}{b.cuenta_nueva && <span className="cc-badge warn" title="Cambió en los últimos 30 días">nueva</span>}</> : <span className="pg-nobank">⚠ sin cuenta</span>}</td>
-            <td>{b.activo ? "activo" : "inactivo"}{!b.separados && b.activo && <div className="muted mini">nombre sin separar</div>}</td>
+            <td>{b.activo ? "activo" : "inactivo"}{!b.separados && b.activo && <div className="muted mini">nombre sin separar</div>}
+              {b.activo && !b.con_celular && <div className="muted mini">sin celular (no recibe el aviso)</div>}</td>
           </tr>
         ))}</tbody></table></div>
     )}
@@ -498,9 +514,15 @@ function SubirEmpleados() {
               {plan.problemas.map((p, i) => <div key={i} className="pg-rev-item falta"><div>Fila {p.fila} · <b>{p.quien}</b> — {p.detalle}</div></div>)}
             </div>
           )}
-          {(plan.sinCuenta > 0 || plan.faltanNombresSeparados) && (
+          {plan.avisos.length > 0 && (
+            <div className="pg-rev-box"><b>{plan.avisos.length} fila(s) entran, pero con algo que mirar:</b>
+              {plan.avisos.map((p, i) => <div key={i} className="pg-rev-item cand"><div>Fila {p.fila} · <b>{p.quien}</b> — {p.detalle}</div></div>)}
+            </div>
+          )}
+          {(plan.sinCuenta > 0 || plan.faltanNombresSeparados || plan.sinCelular > 0) && (
             <div className="pg-rev-box">
               {plan.sinCuenta > 0 && <div>⚠ <b>{plan.sinCuenta}</b> activo(s) quedarían <b>sin cuenta bancaria</b>: no se les puede pagar hasta cargarla.</div>}
+              {plan.sinCelular > 0 && <div>📱 <b>{plan.sinCelular}</b> activo(s) sin celular: no recibirán el aviso de pago por WhatsApp.</div>}
               {plan.faltanNombresSeparados && <div>ℹ Faltan las columnas <b>Nombres</b> y <b>Apellidos</b> separadas: el archivo del banco marcará esas filas para revisar.</div>}
             </div>
           )}

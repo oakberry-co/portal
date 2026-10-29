@@ -23,6 +23,7 @@ import ExcelJS from "exceljs";
 import { pesos } from "./pesos";
 import { bancoCanonico } from "./bancos";
 import { limpiarTextoHumano, limpiarCorreo } from "./texto";
+import { celularWa } from "./nomina-abono";
 
 export type Problema = { fila: number; quien: string; detalle: string };
 
@@ -87,7 +88,11 @@ export const PUNTO_A_DESTINO: Record<string, string> = {
   unicentro: "Oakberry Unicentro", "titan plaza": "Oakberry Titan Plaza", titan: "Oakberry Titan Plaza",
   maloka: "Oakberry Maloka", "zona g": "Oakberry Zona G", "calle 140": "Oakberry Calle 140",
   "140": "Oakberry Calle 140",
-  viva: "Oakberry Viva Barranquilla", "viva barranquilla": "Oakberry Viva Barranquilla",
+  // «VIVA» en el maestro de RRHH es gente de Viva Barranquilla, que cerró: hoy
+  // trabajan en Calle 76 y su sueldo va a ese P&L (decisión de Daniel, 29-oct-2026).
+  // NO es «parecido»: es una reasignación decidida. El destino «Oakberry Viva
+  // Barranquilla» de Maestros sigue existiendo para sus facturas viejas.
+  viva: "Oakberry Baq calle 76", "viva barranquilla": "Oakberry Baq calle 76",
   "calle 76": "Oakberry Baq calle 76", "76": "Oakberry Baq calle 76", "baq 76": "Oakberry Baq calle 76",
   "barranquilla 76": "Oakberry Baq calle 76",
   eventos: "EVENTOS",
@@ -178,6 +183,7 @@ const COL_EMPLEADOS: Record<string, string[]> = {
   punto: ["punto", "tienda", "destino", "sede", "centro de costo"],
   cargo: ["cargo actual", "cargo"],
   correo: ["email", "correo", "correo electronico", "e mail"],
+  celular: ["celular", "telefono", "movil", "whatsapp", "numero de celular"],
   activo: ["activo", "estado"],
 };
 
@@ -186,14 +192,16 @@ export type FilaEmpleado = {
   nombre_completo: string; nombres: string | null; apellidos: string | null;
   banco: string | null; tipo_cuenta: TipoCuenta | null; num_cuenta: string | null;
   destino: string; cargo: string | null; correo: string | null; activo: boolean;
+  /** 57 + 10 dígitos, para el aviso de pago por WhatsApp. */
+  celular: string | null;
   /** Esta fila trajo cuenta y venía en una celda de número: el cero de la
    *  izquierda pudo perderse antes de llegar acá. */
   cuentaComoNumero: boolean;
 };
 export type LecturaEmpleados = {
-  filas: FilaEmpleado[]; problemas: Problema[]; hoja: string;
+  filas: FilaEmpleado[]; problemas: Problema[]; avisos: Problema[]; hoja: string;
   /** Columnas AUSENTES no borran lo que ya hay en el maestro (vacío ≠ ausente). */
-  tiene: { banco: boolean; tipoCuenta: boolean; cuenta: boolean; nombresSeparados: boolean };
+  tiene: { banco: boolean; tipoCuenta: boolean; cuenta: boolean; nombresSeparados: boolean; celular: boolean };
 };
 
 export async function leerEmpleados(
@@ -208,6 +216,8 @@ export async function leerEmpleados(
   }
   const filas: FilaEmpleado[] = [];
   const problemas: Problema[] = [];
+  /** Filas que SÍ entran, pero con algo que mirar (un celular ilegible). */
+  const avisos: Problema[] = [];
   const vistos = new Map<string, number>();
 
   for (const r of h.filas) {
@@ -260,19 +270,27 @@ export async function leerEmpleados(
       if (faltan.length) { mal(`Datos bancarios incompletos: ${faltan.join("; ")}.`); continue; }
     }
 
+    // Un celular que no se puede leer NO bloquea la fila (sin él solo no le
+    // llega el aviso), pero se dice: es la persona que va a llamar a preguntar.
+    const celCrudo = r.get("celular");
+    const celular = celularWa(celCrudo);
+    if (celCrudo != null && String(celCrudo).trim() && !celular) {
+      avisos.push({ fila: r.n, quien, detalle: `El celular «${String(celCrudo).trim()}» no es un celular colombiano de 10 dígitos: se carga sin celular y no recibirá el aviso de pago.` });
+    }
     const act = norm(r.get("activo"));
     filas.push({
       fila: r.n, num_doc: d.num, tipo_doc: tipo, tipoAsumido: !tipoCol && !d.tipo,
       nombre_completo: nombreCompleto, nombres, apellidos,
       banco, tipo_cuenta: tipoCuenta, num_cuenta: cuenta || null, destino,
-      cargo: txt(r.get("cargo")), correo: limpiarCorreo(txt(r.get("correo"))),
+      cargo: txt(r.get("cargo")), correo: limpiarCorreo(txt(r.get("correo"))), celular,
       activo: !["no", "inactivo", "retirado", "false", "0"].includes(act),
       cuentaComoNumero: algo && typeof cRaw === "number",
     });
   }
-  return { filas, problemas, hoja: h.hoja, tiene: {
+  return { filas, problemas, avisos, hoja: h.hoja, tiene: {
     banco: h.tiene.has("banco"), tipoCuenta: h.tiene.has("tipoCuenta"), cuenta: h.tiene.has("cuenta"),
     nombresSeparados: h.tiene.has("nombres") && h.tiene.has("apellidos"),
+    celular: h.tiene.has("celular"),
   } };
 }
 

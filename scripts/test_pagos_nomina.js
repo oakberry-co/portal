@@ -27,13 +27,14 @@ const check = (ok, t, d = "") => { console.log(`  ${ok ? "✅" : "❌"} ${t}${d 
 const tmp = fs.mkdtempSync(path.join(RAIZ, ".tmp-tests-"));
 process.on("exit", () => { try { fs.rmSync(tmp, { recursive: true, force: true }); } catch {} });
 try {
-  execFileSync("npx", ["tsc", "lib/nomina-pagos.ts", "lib/davivienda.ts", "--outDir", tmp, "--module", "commonjs",
+  execFileSync("npx", ["tsc", "lib/nomina-pagos.ts", "lib/davivienda.ts", "lib/nomina-abono.ts", "--outDir", tmp, "--module", "commonjs",
                        "--target", "es2020", "--moduleResolution", "node", "--esModuleInterop",
                        "--skipLibCheck"], { cwd: RAIZ, stdio: "pipe" });
 } catch {}
 const N = require(path.join(tmp, "nomina-pagos.js"));
 const { bancoCanonico } = require(path.join(tmp, "bancos.js"));
 const { celdasDavivienda } = require(path.join(tmp, "davivienda.js"));
+const A = require(path.join(tmp, "nomina-abono.js"));
 
 const DESTINOS = ["Oakberry Zona T", "Oakberry Calle 109", "Oakberry Colina", "Oakberry Viva Barranquilla",
   "Oakberry Baq calle 76", "Oakberry Titan Plaza", "Administrativo"].map((nombre) => ({ nombre, short_code: null }));
@@ -124,6 +125,25 @@ async function libro(filas, { titulo = false, otraHoja = false } = {}) {
                                   tipoCuenta: "ahorros", numCuenta: "03300013737", monto: 900000.5 });
   check(fila[0] === "5" && fila[5] === "CA" && fila[6] === "03300013737" && fila[7] === 900001 && fila[2] === "Luis Pena",
         "PPT→5, ahorros→CA, cuenta como texto, monto redondeado, sin ñ", JSON.stringify(fila.slice(0, 8)));
+
+  console.log("\n6) Reasignación decidida: «VIVA» → Calle 76 (Daniel, 29-oct-2026)");
+  const V = await N.leerEmpleados(await libro([["Cedula", "Nombres y Apellidos", "Punto", "Celular"],
+    [1000000011, "PRUEBA VIVA", "VIVA", "318 5867123"], [1000000012, "PRUEBA CEL MALO", "ZONA T", "12345"]]), DESTINOS);
+  const vv = Object.fromEntries(V.filas.map((f) => [f.num_doc, f]));
+  check(vv["1000000011"]?.destino === "Oakberry Baq calle 76", "«VIVA» → Oakberry Baq calle 76", vv["1000000011"]?.destino);
+  check(vv["1000000011"]?.celular === "573185867123", "«318 5867123» → 573185867123 para WhatsApp", vv["1000000011"]?.celular);
+  check(vv["1000000012"] && vv["1000000012"].celular === null && V.avisos.some((a) => /12345/.test(a.detalle)) && !V.problemas.length,
+        "celular ilegible: la fila ENTRA sin celular y se avisa (no bloquea)");
+
+  console.log("\n7) Cuándo le entra la plata (aviso de WhatsApp)");
+  check(A.fechaAbono("2026-10-29", "BANCO DAVIVIENDA") === "2026-10-29", "Davivienda → Davivienda: el mismo día hábil");
+  check(A.fechaAbono("2026-10-29", "BANCOLOMBIA") === "2026-10-30", "otro banco (ACH): el día hábil siguiente");
+  check(A.fechaAbono("2026-10-30", "NEQUI") === "2026-11-03", "viernes 30-oct a otro banco → martes 3-nov (salta sábado, domingo y el festivo del lunes 2)",
+        A.fechaAbono("2026-10-30", "NEQUI"));
+  check(A.fechaAbono("2026-10-31", "DAVIPLATA") === "2026-11-03", "pagado un sábado a DaviPlata → primer hábil (el lunes 2-nov es festivo)", A.fechaAbono("2026-10-31", "DAVIPLATA"));
+  check(A.fechaLarga("2026-10-30") === "viernes 30 de octubre", "fecha escrita, nunca «hoy/mañana»", A.fechaLarga("2026-10-30"));
+  check(A.celularWa("+57 320 805 8309") === "573208058309" && A.celularWa("3208058309") === "573208058309"
+        && A.celularWa("6012345678") === null && A.celularWa("") === null, "celular: 57 + 10 dígitos que empiezan por 3; un fijo no es celular");
 
   console.log(fallos.length ? `\n❌ ${fallos.length} fallo(s)` : "\n✅ todo bien");
   process.exit(fallos.length ? 1 : 0);

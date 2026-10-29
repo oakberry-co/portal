@@ -1889,3 +1889,35 @@ CREATE TABLE IF NOT EXISTS nomina_pagos (
 );
 CREATE INDEX IF NOT EXISTS ix_nomina_pagos_doc ON nomina_pagos (num_doc);
 -- (fin §29)
+
+-- -----------------------------------------------------------------------------
+-- 30) AVISO DE PAGO DE NÓMINA POR WHATSAPP (2026-10-29)
+--
+-- Al confirmar un lote, cada persona recibe por la línea de RRHH: cuánto se le
+-- pagó, a qué cuenta (enmascarada) y CUÁNDO debería verlo. El portal solo
+-- ENCOLA, en la misma transacción que confirma el pago; envía la VM
+-- (scripts/enviar_avisos_nomina_wa.py, desde certificaciones.sh), que es donde
+-- vive el token y la compuerta de envío — igual que correo_saliente.
+-- -----------------------------------------------------------------------------
+ALTER TABLE nomina_beneficiarios ADD COLUMN IF NOT EXISTS celular TEXT;   -- 57 + 10 dígitos
+
+CREATE TABLE IF NOT EXISTS nomina_avisos (
+  id             BIGSERIAL PRIMARY KEY,
+  lote_id        BIGINT NOT NULL REFERENCES nomina_lotes(id),
+  num_doc        TEXT NOT NULL REFERENCES nomina_beneficiarios(num_doc),
+  celular        TEXT,                              -- congelado al encolar; NULL = sin celular (no sale)
+  datos          JSONB NOT NULL,                    -- variables de la plantilla, ya escritas
+  estado         TEXT NOT NULL DEFAULT 'pendiente'
+                 CHECK (estado IN ('pendiente','enviado','fallido','sin_celular','cancelado')),
+  intentos       INT NOT NULL DEFAULT 0,
+  error          TEXT,
+  wa_message_id  TEXT,
+  creado_por     TEXT NOT NULL,
+  creado_en      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  enviado_en     TIMESTAMPTZ,
+  -- UN aviso por persona y lote: si alguien reintenta confirmar, nadie recibe
+  -- «te pagamos» dos veces.
+  UNIQUE (lote_id, num_doc)
+);
+CREATE INDEX IF NOT EXISTS ix_nomina_avisos_pend ON nomina_avisos (estado, creado_en);
+-- (fin §30)

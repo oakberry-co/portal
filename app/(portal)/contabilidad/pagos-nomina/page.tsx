@@ -26,8 +26,9 @@ async function cargar() {
      GROUP BY l.id
      ORDER BY l.periodo DESC, l.id DESC`);
   const vivos = lotes.rows.filter((l) => l.estado === "por_pagar" || l.estado === "validacion").map((l) => l.id);
-  const personas = vivos.length ? await pool.query<{ lote_id: number; num_doc: string; nombre: string; destino: string; neto: number; devengado: number | null; sin_cuenta: boolean }>(`
+  const personas = vivos.length ? await pool.query<{ lote_id: number; num_doc: string; nombre: string; destino: string; neto: number; devengado: number | null; sin_cuenta: boolean; con_celular: boolean }>(`
     SELECT p.lote_id, p.num_doc, b.nombre_completo AS nombre, p.destino, p.neto::float, p.devengado::float,
+           (b.celular IS NOT NULL) AS con_celular,
            (nullif(btrim(b.num_cuenta),'') IS NULL OR b.banco IS NULL OR b.tipo_cuenta IS NULL) AS sin_cuenta
       FROM nomina_pagos p JOIN nomina_beneficiarios b USING (num_doc)
      WHERE p.lote_id = ANY($1)
@@ -35,10 +36,13 @@ async function cargar() {
   const beneficiarios = await pool.query<Beneficiario>(`
     SELECT num_doc, tipo_doc, nombre_completo, (nombres IS NOT NULL AND apellidos IS NOT NULL) AS separados,
            banco, tipo_cuenta, CASE WHEN num_cuenta IS NULL THEN NULL ELSE right(num_cuenta, 4) END AS ult4,
-           destino, cargo, activo,
+           destino, cargo, activo, (celular IS NOT NULL) AS con_celular,
            coalesce(cuenta_cambio_en > now() - interval '30 days', false) AS cuenta_nueva
       FROM nomina_beneficiarios ORDER BY activo DESC, destino, nombre_completo`);
   const cuentas = await pool.query<CuentaPago>("SELECT nombre, formato FROM cuentas_pago WHERE activo ORDER BY id");
+  // Cómo van los avisos de WhatsApp de cada lote pagado (los manda la VM).
+  const avisos = await pool.query<{ lote_id: number; estado: string; n: number }>(
+    "SELECT lote_id, estado, count(*)::int AS n FROM nomina_avisos GROUP BY 1, 2");
 
   const out: Lote[] = [];
   for (const l of lotes.rows) {
@@ -52,6 +56,8 @@ async function cargar() {
     out.push({
       ...l, por_destino: [...porDestino].map(([destino, neto]) => ({ destino, neto })).sort((a, b) => b.neto - a.neto),
       personas: ps, avisos: banco?.avisos ?? [], sinCuenta: ps.filter((p) => p.sin_cuenta).length,
+      conCelular: new Set(ps.filter((p) => p.con_celular).map((p) => p.num_doc)).size,
+      wa: Object.fromEntries(avisos.rows.filter((a) => a.lote_id === l.id).map((a) => [a.estado, a.n])),
     } as Lote);
   }
   return { lotes: out, beneficiarios: beneficiarios.rows, cuentas: cuentas.rows };
