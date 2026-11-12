@@ -141,7 +141,7 @@ asumiéndolo.
 ```bash
 for t in nit bancos candado_aprobacion permisos documentos retenciones_excel espina_dian \
          desvio_titular nombre_pago modal_portal enlaces_basepath \
-         aislamiento_pruebas causacion semana_pagos revertir_pago bitacora retenciones_adelanto retenciones_signo retenciones_precarga avisos cruzar_nota peso_documentos plantilla_duplicada; do
+         aislamiento_pruebas causacion semana_pagos revertir_pago bitacora retenciones_adelanto retenciones_signo retenciones_precarga avisos cruzar_nota peso_documentos plantilla_duplicada rd_cuentas_cobro; do
   node scripts/test_$t.js; done
 python3 scripts/test_enriquecimiento_xml.py   # base REAL, con ROLLBACK
 python3 scripts/test_intake_a_pagos.py     # contra la base REAL, con ROLLBACK
@@ -285,6 +285,7 @@ Los centinelas de datos (no de código) viven en el otro repo:
 | `lib/retenciones.ts` | ÚNICO camino de escritura de retenciones |
 | `scripts/` | cargues, centinelas y arreglos puntuales (todos con ensayo antes de `--aplicar`) |
 | `db/schema.sql` | el esquema, por secciones numeradas con su porqué |
+| `app/cuentas-de-cobro/rd/` · `/contabilidad/rd/cuentas-de-cobro` · `lib/rd/*` | **Cuentas de cobro de la EMPRESA DE RD** (otra persona jurídica: DGII, NCF/B11, DOP/USD). Tabla APARTE `rd_cuentas_cobro` (§31): nada de RD entra a Pagos, Davivienda ni Siigo. Capacidad `rd` (solo el decisor). Cédula/RNC que no verifican se AVISAN, no se bloquean (hay cédulas viejas válidas que no pasan el Luhn). Retenciones propuestas en `lib/rd/retenciones.ts` con vigencia, **pendientes de confirmar con el contador de RD**. Razón social y RNC: env `RD_EMPRESA_NOMBRE` / `RD_EMPRESA_RNC`. Centinela `test_rd_cuentas_cobro.js`; de datos, los `rd_*` del health_check |
 
 ## Convenciones
 

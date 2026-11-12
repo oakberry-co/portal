@@ -37,6 +37,9 @@ const AREAS: Area[] = [
     { label: "Cotizaciones", href: "/contabilidad/cotizaciones", cap: "ver_intake", ico: "cotizaciones" },
     { label: "Órdenes de compra", cap: "ver_conciliacion", ico: "ordenes" },
     { label: "Pagos internacionales", cap: "pagos", ico: "internacional" },
+    // La empresa de RD paga sus propios cobros (creadores, influencers, alianzas):
+    // tabla aparte, nada se cruza con lo de ManelFoods (2026-11-12).
+    { label: "Cuentas de cobro RD", href: "/contabilidad/rd/cuentas-de-cobro", cap: "rd", ico: "internacional", sub: "República Dominicana" },
     { label: "Causaciones", href: "/contabilidad/causaciones", cap: "causar", ico: "causaciones" },
     { label: "Maestros", href: "/contabilidad/maestros", cap: "maestro_retenciones", ico: "maestros", sub: "Configuración contable" },
     { label: "Soportes", href: "/contabilidad/soportes", cap: "ver_conciliacion", ico: "soportes", sub: "Configuración contable" },

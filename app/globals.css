@@ -1868,3 +1868,30 @@ tr.desfasada td { background: #fff8e6; }
 .pgn-meta { padding: 6px 12px; }
 .pgn-emp td { vertical-align: top; }
 .pg-prov.busy { opacity: .55; pointer-events: none; }
+
+/* --- Cuentas de cobro RD (bandeja interna, 2026-11-12) ---------------------- */
+.rd-card a.cc-act { text-decoration: none; display: inline-block; }
+.rd-alerta { color: #a33a1b; font-weight: 700; font-size: 12px; margin-top: 3px; }
+.rd-ret { border-top: 1px dashed var(--border); padding-top: 10px; margin-top: 4px; font-size: 13px; }
+.rd-ret-form, .rd-pago { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: flex-end; margin-top: 6px; }
+.rd-ret-form label, .rd-pago label { display: flex; flex-direction: column; gap: 3px; font-size: 11.5px; font-weight: 700; color: var(--lav); }
+.rd-ret-form input, .rd-pago input { padding: 7px 9px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; min-width: 130px; }
+.rd-neto { font-size: 13px; padding-bottom: 7px; }
+.rd-aprobar { display: flex; flex-direction: column; gap: 6px; }
+.rd-confirmar { display: flex; flex-direction: column; gap: 6px; background: #fff8e6; border: 1px solid #f0d9a0; border-radius: 10px; padding: 9px 11px; }
+.rd-switch { display: flex; gap: 8px; align-items: center; font-size: 12.5px; cursor: pointer; }
+.rd-switch input { width: 18px; height: 18px; accent-color: var(--purple); }
+.rd-nota { padding: 7px 9px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; }
+.rd-inline { display: inline-flex; gap: 6px; align-items: center; }
+.rd-b11 { padding: 7px 9px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; width: 150px; }
+.rd-bloqueo { font-size: 12px; color: #8a6100; margin: 0; max-width: 560px; }
+.rd-barra { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 10px; align-items: center; margin: 0 0 12px; font-size: 13px; }
+.rd-export select { padding: 5px 8px; border: 1px solid var(--border); border-radius: 8px; width: auto; display: inline-block; }
+.rd-card .cc-badge { white-space: nowrap; }
+.rd-export a.cc-act { text-decoration: none; }
+@media (max-width: 560px) {
+  .rd-ret-form, .rd-pago { flex-direction: column; align-items: stretch; }
+  .rd-ret-form input, .rd-pago input, .rd-pago .cc-act, .rd-ret-form .cc-act { width: 100%; min-width: 0; }
+  .rd-inline { flex-wrap: wrap; }
+  .pg-tabs { flex-wrap: wrap; }
+}

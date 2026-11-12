@@ -44,12 +44,16 @@ export type Cap =
   // cada persona). Solo el decisor (Daniel, 29-oct-2026): ver quién gana cuánto
   // no es trabajo diario del equipo, y cambiar la cuenta de un empleado es el
   // fraude de nómina más común.
-  | "pagos_nomina";
+  | "pagos_nomina"
+  // Cuentas de cobro de la EMPRESA DE RD (otra persona jurídica, DGII, DOP/USD).
+  // Una sola capacidad para ver y operar, y solo el decisor: arranca con Daniel
+  // y se abre cuando haya quien la opere del lado dominicano (2026-11-12).
+  | "rd";
 
 const TODAS: Cap[] = [
   "ver_conciliacion", "clasificar", "retenciones", "tipo_pago",
   "ver_pagos", "pagos", "export_historial", "causar", "maestros", "maestro_retenciones",
-  "ver_intake", "intake", "dashboard", "asistente", "usuarios", "revertir_pago", "cruzar_nota", "nomina", "finanzas", "mercadeo", "operaciones", "lanzar_campanas", "pagos_nomina",
+  "ver_intake", "intake", "dashboard", "asistente", "usuarios", "revertir_pago", "cruzar_nota", "nomina", "finanzas", "mercadeo", "operaciones", "lanzar_campanas", "pagos_nomina", "rd",
 ];
 
 // VER ≠ OPERAR. La bandeja del intake se parte en dos capacidades porque quien
@@ -67,7 +71,7 @@ const IMPLICA: Partial<Record<Cap, Cap[]>> = {
 // devuelve una factura a la cola de Pagos— no las hace quien opera a diario.
 // Desde el 26-oct-2026 el equipo ve SOLO Contabilidad y Finanzas: Recursos humanos
 // (nomina), Operaciones y Mercadeo son del decisor.
-const SOLO_DECISOR: Cap[] = ["usuarios", "revertir_pago", "nomina", "mercadeo", "operaciones", "lanzar_campanas", "pagos_nomina"];
+const SOLO_DECISOR: Cap[] = ["usuarios", "revertir_pago", "nomina", "mercadeo", "operaciones", "lanzar_campanas", "pagos_nomina", "rd"];
 
 // Rol → qué puede hacer.
 const MATRIZ: Record<Rol, Cap[]> = {

@@ -1921,3 +1921,80 @@ CREATE TABLE IF NOT EXISTS nomina_avisos (
 );
 CREATE INDEX IF NOT EXISTS ix_nomina_avisos_pend ON nomina_avisos (estado, creado_en);
 -- (fin §30)
+
+-- -----------------------------------------------------------------------------
+-- 31) REPÚBLICA DOMINICANA — CUENTAS DE COBRO DE LA EMPRESA DE RD (2026-11-12)
+--
+-- Quien PAGA es la empresa de RD (decisión de Daniel, 12-nov-2026), no
+-- ManelFoods: otra persona jurídica, otra moneda (DOP/USD), otra autoridad
+-- (DGII, formato 606) y otros comprobantes (NCF; B11 cuando la persona física no
+-- factura). Por eso es una TABLA APARTE y no una columna `pais` en
+-- cuentas_cobro: hay ~30 consultas de Colombia sobre cuentas_cobro (Pagos, el
+-- archivo de Davivienda, la causación a Siigo, los avisos) y bastaba que UNA
+-- olvidara el filtro para que un influencer de Santo Domingo saliera en el
+-- archivo del banco colombiano. Aparte, ese error no se puede cometer.
+--
+-- El valor se guarda SIN ITBIS (`valor`) y el ITBIS aparte (`itbis_facturado`):
+-- así se arma el 606 sin adivinar. Lo transferido = valor + itbis − isr − itbis
+-- retenido (lib/rd/retenciones.ts § netoAPagar, la ÚNICA fórmula).
+-- -----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS rd_cuentas_cobro (
+  id               BIGSERIAL PRIMARY KEY,
+  -- Quién cobra
+  tipo_persona     TEXT NOT NULL CHECK (tipo_persona IN ('fisica','juridica')),
+  nombre           TEXT NOT NULL,
+  tipo_id          TEXT NOT NULL CHECK (tipo_id IN ('cedula','rnc','pasaporte')),
+  num_id           TEXT NOT NULL,                 -- canónico: solo dígitos (cédula 11, RNC 9)
+  id_verifica      BOOLEAN NOT NULL,              -- ¿el dígito verificador cuadró? (FALSE = lo confirmó la persona)
+  correo           TEXT NOT NULL,
+  telefono         TEXT NOT NULL,                 -- '1809…' (11 dígitos, como lo pide wa.me)
+  instagram        TEXT,
+  -- El cobro
+  concepto         TEXT NOT NULL,                 -- id de CONCEPTOS_RD (lib/rd/catalogo.ts)
+  concepto_otro    TEXT,                          -- solo si concepto = 'otro'
+  descripcion      TEXT NOT NULL,
+  periodo          DATE NOT NULL,                 -- primer día del mes del servicio
+  enlaces          TEXT[] NOT NULL DEFAULT '{}',  -- evidencia del entregable (post, reel, carpeta)
+  moneda           TEXT NOT NULL CHECK (moneda IN ('DOP','USD')),
+  valor            NUMERIC(14,2) NOT NULL CHECK (valor > 0),
+  itbis_facturado  NUMERIC(14,2) NOT NULL DEFAULT 0 CHECK (itbis_facturado >= 0),
+  ncf_proveedor    TEXT,                          -- el NCF de SU factura; NULL = no factura (la empresa emite B11)
+  fecha_ncf        DATE,                          -- fecha de SU factura: es la «fecha comprobante» del 606
+  -- A dónde se le paga (lo escribe la persona; se coteja contra el comprobante)
+  banco            TEXT NOT NULL,
+  tipo_cuenta      TEXT NOT NULL CHECK (tipo_cuenta IN ('ahorros','corriente')),
+  num_cuenta       TEXT NOT NULL,                 -- TEXTO: los ceros a la izquierda son parte de la cuenta
+  titular_cuenta   TEXT NOT NULL,
+  documentos       JSONB NOT NULL DEFAULT '[]',   -- [{nombre, path, tipo, clase, estado}]
+  -- Revisión
+  estado           TEXT NOT NULL DEFAULT 'recibida'
+                   CHECK (estado IN ('recibida','aprobada','pagada','rechazada')),
+  nota_revision    TEXT,
+  confirmacion     TEXT,                          -- qué confirmó el aprobador (cambio de cuenta / titular ajeno)
+  -- Retenciones: la propuesta sale de la regla vigente; lo que vale es lo CONFIRMADO
+  isr_retenido     NUMERIC(14,2),
+  itbis_retenido   NUMERIC(14,2),
+  retencion_ok     BOOLEAN NOT NULL DEFAULT FALSE,
+  valor_a_pagar    NUMERIC(14,2),
+  ncf_emitido      TEXT,                          -- el B11 que emite la empresa (si la persona no factura)
+  revisado_por     TEXT, revisado_en TIMESTAMPTZ, aprobado_en TIMESTAMPTZ,
+  -- Pago (lo ejecuta la empresa de RD desde su banco; acá queda el registro)
+  pagado_en        DATE,
+  pagado_por       TEXT,
+  referencia_pago  TEXT,
+  comprobante_url  TEXT,
+  creado_en        TIMESTAMPTZ NOT NULL DEFAULT now(),
+  -- Pagada sin fecha o sin referencia = un "pagado" que no se puede rastrear
+  -- (la lección de VIB125646: «pagada» sin comprobante no es plata que salió).
+  CONSTRAINT rd_cc_pagada_con_rastro CHECK (estado <> 'pagada' OR (pagado_en IS NOT NULL AND referencia_pago IS NOT NULL)),
+  CONSTRAINT rd_cc_ncf_con_fecha CHECK (ncf_proveedor IS NULL OR fecha_ncf IS NOT NULL),
+  CONSTRAINT rd_cc_aprobada_con_neto CHECK (estado NOT IN ('aprobada','pagada') OR (retencion_ok AND valor_a_pagar > 0))
+);
+CREATE INDEX IF NOT EXISTS ix_rd_cc_estado ON rd_cuentas_cobro (estado, creado_en DESC);
+CREATE INDEX IF NOT EXISTS ix_rd_cc_id ON rd_cuentas_cobro (num_id);
+-- El MISMO cobro dos veces (doble clic, o reenvío desde otro teléfono) es la
+-- forma más simple de pagar doble. Dos servicios distintos del mismo mes, mismo
+-- concepto y mismo valor van en UNA cuenta de cobro: el formulario lo dice.
+CREATE UNIQUE INDEX IF NOT EXISTS ux_rd_cc_mismo_cobro
+  ON rd_cuentas_cobro (num_id, periodo, concepto, moneda, valor) WHERE estado <> 'rechazada';
+-- (fin §31)
