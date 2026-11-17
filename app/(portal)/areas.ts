@@ -61,6 +61,10 @@ const AREAS: Area[] = [
   // Mercadeo: CRM + análisis Loopy + campañas (reflejo diario de BigQuery).
   { id: "mercadeo", label: "Mercadeo", ico: "mercadeo", items: [
     { label: "Resumen", href: "/mercadeo", cap: "mercadeo", ico: "inicio" },
+    // Gasto y canales (17-nov-2026): el presupuesto en vivo (reports/ppto_mercadeo_vivo.py) y Rappi
+    // (Sheets de Rappi → raw_rappi_sheet). Mismo reflejo diario en mk_snapshot.
+    { label: "Presupuesto en vivo", href: "/mercadeo/presupuesto", cap: "mercadeo", ico: "pnl", sub: "Gasto y canales" },
+    { label: "Rappi", href: "/mercadeo/rappi", cap: "mercadeo", ico: "ordenes", sub: "Gasto y canales" },
     { label: "Campañas", href: "/mercadeo/campanas", cap: "mercadeo", ico: "campanas", sub: "CRM" },
     { label: "Catálogo de palancas", href: "/mercadeo/catalogo", cap: "mercadeo", ico: "palanca", sub: "CRM" },
     { label: "Audiencias", href: "/mercadeo/audiencias", cap: "mercadeo", ico: "audiencia", sub: "CRM" },

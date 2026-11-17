@@ -168,3 +168,18 @@
 .mk .cf-prop-cifra .boton { padding: 5px 14px; font-size: 13px; }
 .mk .cf-pais { font-size: 18px; margin: 22px 0 12px; color: var(--mk-morado); }
 .mk section:first-of-type > .cf-pais { margin-top: 4px; }
+
+/* Presupuesto en vivo (17-nov-2026): barra de avance gastado vs presupuesto del año. Morado = oficial
+   (Siigo), ámbar rayado = estimado (aún no en Siigo), raya negra = dónde iba el presupuesto hoy. */
+.mk .mk-ppto { background: #fff; border: 1px solid var(--mk-line); border-radius: 16px; padding: 18px; margin: 18px 0; }
+.mk .mk-ppto-cifra { font-size: 15px; color: var(--mk-ink2); margin: 0 0 14px; }
+.mk .mk-ppto-cifra b { color: var(--mk-ink); font-size: 22px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.mk .mk-ppto-barra { position: relative; height: 22px; border-radius: 999px; background: var(--mk-lila); }
+.mk .mk-ppto-barra > i { position: absolute; top: 0; bottom: 0; left: 0; }
+.mk .mk-ppto-barra > i.of { background: var(--mk-s1); border-radius: 999px 0 0 999px; }
+.mk .mk-ppto-barra > i.es { background: repeating-linear-gradient(45deg, var(--mk-s2) 0 6px, #E9B566 6px 12px); }
+.mk .mk-ppto-barra > .hoy { position: absolute; top: -6px; bottom: -6px; width: 3px; margin-left: -1px; border-radius: 2px; background: var(--mk-ink); }
+.mk .mk-ppto-eje { margin: 12px 0 0; }
+.mk .aviso.amarillo { background: var(--mk-warn-soft); color: #6B4508; border-color: #F0DDB5; }
+.mk .mk-sub { color: var(--mk-mute); font-size: 12.5px; margin: 8px 0 0; }
+@media (max-width: 480px) { .mk .mk-ppto { padding: 14px; } .mk .mk-ppto-cifra b { font-size: 19px; } }
