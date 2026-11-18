@@ -358,26 +358,29 @@ function pintar(root, SEC, D, BASE, TIP) {
   V.presupuesto = () => {
     const P = D.ppto;
     if (!P) { root.innerHTML = sinDatos("Presupuesto de mercadeo en vivo", "Todavía no hay datos del presupuesto en vivo. Se recalcula cada semana, el martes en la tarde."); return; }
-    const T = P.totales, est = T.est_facturas + T.est_pauta, G = tab(P.grilla), E = tab(P.estimados);
+    const T = P.totales, est = T.est_facturas + (T.est_cobros || 0) + T.est_pauta, G = tab(P.grilla), E = tab(P.estimados);
     const sello = new Date(P.generado).toLocaleString("es-CO", { timeZone: "America/Bogota", day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
     const ancho = (x) => Math.max(0, Math.min(100, 100 * x / (T.ppto_anual || 1))).toFixed(2) + "%";
     // Por grupo (Comunidad y Eventos ya vienen juntos desde el cálculo; es_mkt también).
     const grupos = {};
     G.forEach((f) => { const g = grupos[f.grupo] = grupos[f.grupo] || { mkt: f.es_mkt, pa: 0, ph: 0, of: 0, es: 0, ci: 0 };
-      g.pa += f.ppto; g.ph += f.ppto_a_hoy; g.of += f.oficial; g.es += f.est_facturas + f.est_pauta; g.ci += f.cierre; });
+      g.pa += f.ppto; g.ph += f.ppto_a_hoy; g.of += f.oficial; g.es += f.est_facturas + (f.est_cobros || 0) + f.est_pauta; g.ci += f.cierre; });
     const fila = (n, g, cls = "") => { const gas = g.of + g.es, r = g.ph ? gas / g.ph : null;
       return `<tr class="${cls}"><td>${esc(n)}</td><td>${mm(g.pa)}</td><td>${mm(g.ph)}</td><td>${mm(g.of)}</td><td>${mm(g.es)}</td><td><b>${mm(gas)}</b></td><td class="${r != null && r > 1 ? "neg" : ""}">${r == null ? "—" : pct(gas, g.ph, 0)}</td><td>${mm(g.ci)}</td></tr>`; };
     const mkt = Object.entries(grupos).filter(([, g]) => g.mkt).sort((a, b) => b[1].pa - a[1].pa);
     const tot = mkt.reduce((t, [, g]) => { ["pa", "ph", "of", "es", "ci"].forEach((k) => t[k] += g[k]); return t; }, { pa: 0, ph: 0, of: 0, es: 0, ci: 0 });
     const fuera = Object.entries(grupos).filter(([, g]) => !g.mkt);
     // Por mes
-    const meses = Array.from({ length: 12 }, (_, i) => i + 1), sm = (m, k) => G.filter((f) => f.es_mkt && f.mes === m).reduce((s, f) => s + f[k], 0);
+    const meses = Array.from({ length: 12 }, (_, i) => i + 1), sm = (m, k) => G.filter((f) => f.es_mkt && f.mes === m).reduce((s, f) => s + (f[k] || 0), 0);
     const mHoy = +P.fecha.slice(5, 7), MES = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
-    const rowsMes = meses.map((m) => `<tr><td>${MES[m - 1]}${m === mHoy ? " (en curso)" : ""}</td><td>${mm(sm(m, "ppto"))}</td><td>${mm(sm(m, "oficial"))}</td><td>${mm(sm(m, "est_facturas"))}</td><td>${mm(sm(m, "est_pauta"))}</td><td><b>${m <= mHoy ? mm(sm(m, "vivo")) : "—"}</b></td><td>${m >= mHoy ? mm(sm(m, "proyeccion")) : "—"}</td></tr>`);
-    const estimados = E.filter((r) => !String(r.capa).startsWith("Por clasificar")).sort((a, b) => b.valor_ppto - a.valor_ppto);
+    const rowsMes = meses.map((m) => `<tr><td>${MES[m - 1]}${m === mHoy ? " (en curso)" : ""}</td><td>${mm(sm(m, "ppto"))}</td><td>${mm(sm(m, "oficial"))}</td><td>${mm(sm(m, "est_facturas"))}</td><td>${mm(sm(m, "est_cobros"))}</td><td>${mm(sm(m, "est_pauta"))}</td><td><b>${m <= mHoy ? mm(sm(m, "vivo")) : "—"}</b></td><td>${m >= mHoy ? mm(sm(m, "proyeccion")) : "—"}</td></tr>`);
+    // Lo que NO suma viaja en la misma tabla con su capa: facturas sin Mapeo y cuentas de cobro sin revisar.
+    const noSuma = (r) => /^(Por clasificar|Cuenta de cobro por revisar)/.test(String(r.capa));
+    const estimados = E.filter((r) => !noSuma(r)).sort((a, b) => b.valor_ppto - a.valor_ppto);
     const porClasificar = E.filter((r) => String(r.capa).startsWith("Por clasificar"));
+    const porRevisar = E.filter((r) => String(r.capa).startsWith("Cuenta de cobro por revisar"));
     root.innerHTML = `
-      <div class="titulo"><h1>Presupuesto de mercadeo en vivo</h1><p>Cuánto llevamos gastado hoy contra el presupuesto del año. Lo oficial sale de Siigo; lo que Siigo todavía no tiene se estima con las facturas que llegan de la DIAN y la pauta de Meta. Calculado el ${esc(sello)} · se recalcula ${esc(P.frecuencia || "cada semana")}.</p></div>
+      <div class="titulo"><h1>Presupuesto de mercadeo en vivo</h1><p>Cuánto llevamos gastado hoy contra el presupuesto del año. Lo oficial sale de Siigo; lo que Siigo todavía no tiene se estima con las facturas que llegan de la DIAN, las cuentas de cobro aprobadas en el portal y la pauta de Meta. Calculado el ${esc(sello)} · se recalcula ${esc(P.frecuencia || "cada semana")}.</p></div>
       <div class="mk-ppto">
         <p class="mk-ppto-cifra">Llevamos <b>${mm(T.gastado)}</b> de ${mm(T.ppto_anual)} del año. Al ${fechaLarga(P.fecha)} el presupuesto iba en ${mm(T.ppto_a_hoy)}: vamos en <b>${pct(T.gastado, T.ppto_a_hoy, 0)}</b>.</p>
         <div class="mk-ppto-barra" role="img" aria-label="Gastado ${mm(T.gastado)} de ${mm(T.ppto_anual)}; el presupuesto a hoy iba en ${mm(T.ppto_a_hoy)}">
@@ -386,14 +389,15 @@ function pintar(root, SEC, D, BASE, TIP) {
         <div class="leyenda mk-ppto-eje"><span style="--c:var(--mk-s1)"><i></i>Oficial ${mm(T.oficial)}</span><span style="--c:var(--mk-s2)"><i></i>Estimado ${mm(est)}</span><span style="--c:var(--mk-ink)"><i></i>Presupuesto a hoy ${mm(T.ppto_a_hoy)}</span><span>Año ${mm(T.ppto_anual)}</span></div>
       </div>
       ${avisos(P.alertas)}
-      <div class="kpis">${kpi("pnl", mm(T.gastado), "Gastado a hoy", `${mm(T.oficial)} oficial + ${mm(est)} estimado`)}${kpi("tablero", mm(T.ppto_a_hoy), "Presupuesto a hoy", `vamos en ${pct(T.gastado, T.ppto_a_hoy, 0)}`)}${kpi("soportes", mm(est), "Estimado (aún no en Siigo)", `${mm(T.est_facturas)} facturas DIAN · ${mm(T.est_pauta)} pauta Meta`)}${kpi("gasto", mm(T.cierre), "Cierre del año en vivo", `${pct(T.cierre, T.ppto_anual, 0)} del presupuesto del año`)}</div>
+      <div class="kpis">${kpi("pnl", mm(T.gastado), "Gastado a hoy", `${mm(T.oficial)} oficial + ${mm(est)} estimado`)}${kpi("tablero", mm(T.ppto_a_hoy), "Presupuesto a hoy", `vamos en ${pct(T.gastado, T.ppto_a_hoy, 0)}`)}${kpi("soportes", mm(est), "Estimado (aún no en Siigo)", `${mm(T.est_facturas)} facturas · ${mm(T.est_cobros || 0)} cuentas de cobro · ${mm(T.est_pauta)} Meta`)}${kpi("gasto", mm(T.cierre), "Cierre del año en vivo", `${pct(T.cierre, T.ppto_anual, 0)} del presupuesto del año`)}</div>
       <div class="tarjeta"><header><h2>Presupuesto y gastado por mes</h2><p>Millones de COP sin IVA · solo mercadeo</p></header><div class="cuerpo" id="gPpto"></div></div>
       <div class="tarjeta"><header><h2>Por grupo</h2><p>«Presupuesto a hoy» cuenta el mes en curso hasta hoy</p></header><div class="cuerpo">${tabla(["Grupo", "Ppto año", "Ppto a hoy", "Oficial", "Estimado", "Gastado", "% del ppto a hoy", "Cierre en vivo"],
         [...mkt.map(([n, g]) => fila(n, g)), fila("TOTAL MERCADEO", tot, "total"), ...fuera.map(([n, g]) => fila(n + " (no suma)", g))])}</div></div>
-      <div class="tarjeta"><header><h2>Por mes</h2><p>«Oficial» ya incluye toda la pauta que Siigo registró. «Meta aún no en Siigo» es lo consumido en Meta desde septiembre que Siigo todavía no tiene: va entero en el mes en curso.</p></header><div class="cuerpo">${tabla(["Mes", "Ppto", "Oficial", "Facturas aún no en Siigo", "Meta aún no en Siigo", "Gastado", "Proyección"], rowsMes)}</div></div>
+      <div class="tarjeta"><header><h2>Por mes</h2><p>«Oficial» ya incluye toda la pauta y las cuentas de cobro que Siigo registró. «Cuentas de cobro aún no en Siigo» son las de influencers, UGC y promotoras aprobadas en el portal que el contador todavía no registra. «Meta aún no en Siigo» es lo consumido en Meta desde septiembre que Siigo todavía no tiene: va entero en el mes en curso.</p></header><div class="cuerpo">${tabla(["Mes", "Ppto", "Oficial", "Facturas aún no en Siigo", "Cuentas de cobro aún no en Siigo", "Meta aún no en Siigo", "Gastado", "Proyección"], rowsMes)}</div></div>
       <div class="tarjeta"><header><h2>Lo estimado, renglón por renglón</h2><p>Sale de aquí cuando Siigo lo registra: nada se cuenta dos veces</p></header><div class="cuerpo">${estimados.length ? tabla(["Proveedor", "Al ppto", "Rubro", "Qué es", "Fecha", "Número", "Por qué cuenta"],
         estimados.map((r) => `<tr><td>${esc(r.proveedor)}</td><td><b>${mm(r.valor_ppto)}</b></td><td class="izq">${esc(r.rubro)}</td><td class="izq">${esc(r.capa)}</td><td>${esc(r.fecha)}</td><td>${esc(r.numero)}</td><td class="izq">${esc(r.motivo || "")}</td></tr>`), [2, 3, 6]) : `<div class="vacio">Nada estimado: Siigo está al día.</div>`}</div></div>
       ${porClasificar.length ? `<div class="tarjeta"><header><h2>Con destino Mercadeo pero sin clasificar</h2><p>NO suman hasta que el proveedor se clasifique en la pestaña Mapeo del Sheet de control</p></header><div class="cuerpo">${tabla(["Proveedor", "Fecha", "Número", "Valor sin IVA"], porClasificar.map((r) => `<tr><td>${esc(r.proveedor)}</td><td>${esc(r.fecha)}</td><td>${esc(r.numero)}</td><td>${mm(r.base)}</td></tr>`))}</div></div>` : ""}
+      ${porRevisar.length ? `<div class="tarjeta"><header><h2>Cuentas de cobro esperando revisión</h2><p>Llegaron por el portal y nadie las ha aprobado: NO suman todavía (muchas se rechazan por venir repetidas o con errores)</p></header><div class="cuerpo">${tabla(["Quién cobra", "Valor sin IVA", "Qué cobra", "Fecha", "Número"], porRevisar.map((r) => `<tr><td>${esc(r.proveedor)}</td><td><b>${mm(r.base)}</b></td><td class="izq">${esc(r.motivo || "")}</td><td>${esc(r.fecha)}</td><td>${esc(r.numero)}</td></tr>`), [2])}</div></div>` : ""}
       <div class="nota">Siigo al ${esc(P.siigo_al || "—")} · facturas DIAN al ${esc((P.facturas_sync || "—").replace("T", " ").replace("Z", " UTC"))} · Meta al ${esc(P.meta_hasta || "—")}. No incluye todavía Google, TikTok ni LinkedIn (se pagan con la tarjeta Clara, sin conexión) ni el 12,5 % de Rappi Ads.${P.sheet_url ? ` <a href="${esc(P.sheet_url)}" target="_blank" rel="noopener">Ver el detalle en el Sheet de control</a>.` : ""}</div>`;
     barras(q("#gPpto"), MES.slice(0, mHoy), [{ n: "Presupuesto", c: CTRL, v: meses.slice(0, mHoy).map((m) => sm(m, "ppto")) }, { n: "Gastado", c: S1, v: meses.slice(0, mHoy).map((m) => sm(m, "vivo")) }],
       { apilado: false, titulo: "Presupuesto y gastado por mes", fmtEje: (g) => (g / 1e6).toFixed(0) + " M", fmtTip: mm });
