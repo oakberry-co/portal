@@ -357,7 +357,7 @@ function pintar(root, SEC, D, BASE, TIP) {
 
   V.presupuesto = () => {
     const P = D.ppto;
-    if (!P) { root.innerHTML = sinDatos("Presupuesto de mercadeo en vivo", "Todavía no hay datos del presupuesto en vivo. Se recalcula a las 8:30 am y a las 5:30 pm."); return; }
+    if (!P) { root.innerHTML = sinDatos("Presupuesto de mercadeo en vivo", "Todavía no hay datos del presupuesto en vivo. Se recalcula cada semana, el martes en la tarde."); return; }
     const T = P.totales, est = T.est_facturas + T.est_pauta, G = tab(P.grilla), E = tab(P.estimados);
     const sello = new Date(P.generado).toLocaleString("es-CO", { timeZone: "America/Bogota", day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
     const ancho = (x) => Math.max(0, Math.min(100, 100 * x / (T.ppto_anual || 1))).toFixed(2) + "%";
@@ -377,7 +377,7 @@ function pintar(root, SEC, D, BASE, TIP) {
     const estimados = E.filter((r) => !String(r.capa).startsWith("Por clasificar")).sort((a, b) => b.valor_ppto - a.valor_ppto);
     const porClasificar = E.filter((r) => String(r.capa).startsWith("Por clasificar"));
     root.innerHTML = `
-      <div class="titulo"><h1>Presupuesto de mercadeo en vivo</h1><p>Cuánto llevamos gastado hoy contra el presupuesto del año. Lo oficial sale de Siigo; lo que Siigo todavía no tiene se estima con las facturas que llegan de la DIAN y la pauta de Meta. Calculado el ${esc(sello)} · se recalcula a las 8:30 am y a las 5:30 pm.</p></div>
+      <div class="titulo"><h1>Presupuesto de mercadeo en vivo</h1><p>Cuánto llevamos gastado hoy contra el presupuesto del año. Lo oficial sale de Siigo; lo que Siigo todavía no tiene se estima con las facturas que llegan de la DIAN y la pauta de Meta. Calculado el ${esc(sello)} · se recalcula ${esc(P.frecuencia || "cada semana")}.</p></div>
       <div class="mk-ppto">
         <p class="mk-ppto-cifra">Llevamos <b>${mm(T.gastado)}</b> de ${mm(T.ppto_anual)} del año. Al ${fechaLarga(P.fecha)} el presupuesto iba en ${mm(T.ppto_a_hoy)}: vamos en <b>${pct(T.gastado, T.ppto_a_hoy, 0)}</b>.</p>
         <div class="mk-ppto-barra" role="img" aria-label="Gastado ${mm(T.gastado)} de ${mm(T.ppto_anual)}; el presupuesto a hoy iba en ${mm(T.ppto_a_hoy)}">
@@ -390,7 +390,7 @@ function pintar(root, SEC, D, BASE, TIP) {
       <div class="tarjeta"><header><h2>Presupuesto y gastado por mes</h2><p>Millones de COP sin IVA · solo mercadeo</p></header><div class="cuerpo" id="gPpto"></div></div>
       <div class="tarjeta"><header><h2>Por grupo</h2><p>«Presupuesto a hoy» cuenta el mes en curso hasta hoy</p></header><div class="cuerpo">${tabla(["Grupo", "Ppto año", "Ppto a hoy", "Oficial", "Estimado", "Gastado", "% del ppto a hoy", "Cierre en vivo"],
         [...mkt.map(([n, g]) => fila(n, g)), fila("TOTAL MERCADEO", tot, "total"), ...fuera.map(([n, g]) => fila(n + " (no suma)", g))])}</div></div>
-      <div class="tarjeta"><header><h2>Por mes</h2></header><div class="cuerpo">${tabla(["Mes", "Ppto", "Oficial", "Facturas DIAN", "Pauta Meta", "Gastado", "Proyección"], rowsMes)}</div></div>
+      <div class="tarjeta"><header><h2>Por mes</h2><p>«Oficial» ya incluye toda la pauta que Siigo registró. «Meta aún no en Siigo» es lo consumido en Meta desde septiembre que Siigo todavía no tiene: va entero en el mes en curso.</p></header><div class="cuerpo">${tabla(["Mes", "Ppto", "Oficial", "Facturas aún no en Siigo", "Meta aún no en Siigo", "Gastado", "Proyección"], rowsMes)}</div></div>
       <div class="tarjeta"><header><h2>Lo estimado, renglón por renglón</h2><p>Sale de aquí cuando Siigo lo registra: nada se cuenta dos veces</p></header><div class="cuerpo">${estimados.length ? tabla(["Proveedor", "Al ppto", "Rubro", "Qué es", "Fecha", "Número", "Por qué cuenta"],
         estimados.map((r) => `<tr><td>${esc(r.proveedor)}</td><td><b>${mm(r.valor_ppto)}</b></td><td class="izq">${esc(r.rubro)}</td><td class="izq">${esc(r.capa)}</td><td>${esc(r.fecha)}</td><td>${esc(r.numero)}</td><td class="izq">${esc(r.motivo || "")}</td></tr>`), [2, 3, 6]) : `<div class="vacio">Nada estimado: Siigo está al día.</div>`}</div></div>
       ${porClasificar.length ? `<div class="tarjeta"><header><h2>Con destino Mercadeo pero sin clasificar</h2><p>NO suman hasta que el proveedor se clasifique en la pestaña Mapeo del Sheet de control</p></header><div class="cuerpo">${tabla(["Proveedor", "Fecha", "Número", "Valor sin IVA"], porClasificar.map((r) => `<tr><td>${esc(r.proveedor)}</td><td>${esc(r.fecha)}</td><td>${esc(r.numero)}</td><td>${mm(r.base)}</td></tr>`))}</div></div>` : ""}
@@ -401,7 +401,7 @@ function pintar(root, SEC, D, BASE, TIP) {
 
   V.rappi = () => {
     const R = D.rappi;
-    if (!R) { root.innerHTML = sinDatos("Rappi", "Todavía no hay datos de Rappi. Los Sheets de Rappi se cargan cada mañana."); return; }
+    if (!R) { root.innerHTML = sinDatos("Rappi", "Todavía no hay datos de Rappi. Los Sheets de Rappi se cargan cada semana, el martes en la tarde."); return; }
     const Mn = tab(R.mensual), Sm = tab(R.semanal), Vi = tab(R.virales), Vt = tab(R.virales_tiendas), Pl = tab(R.planning);
     const s = (arr, k) => arr.reduce((a, x) => a + (x[k] || 0), 0);
     const meses = [...new Set(Mn.map((x) => x.mes))].sort(), ult = meses[meses.length - 1], M = Mn.filter((x) => x.mes === ult);
@@ -412,7 +412,7 @@ function pintar(root, SEC, D, BASE, TIP) {
     Vt.forEach((x) => { const t = porTienda[x.tienda] = porTienda[x.tienda] || { ciudad: x.ciudad, o: 0, e: 0, dv: 0, n: 0 }; t.o += x.ordenes; t.e += x.ordenes_esperadas; t.dv += x.delta_venta; t.n++; });
     const pctx = (x) => x == null || isNaN(x) ? "—" : (x >= 0 ? "+" : "") + (100 * x).toFixed(1).replace(".", ",") + " %";
     root.innerHTML = `
-      <div class="titulo"><h1>Rappi</h1><p>Venta, tráfico, pauta y virales de Rappi, con las cifras que Rappi comparte (sus Sheets). La venta oficial de la marca sigue siendo la de Toteat.</p></div>
+      <div class="titulo"><h1>Rappi</h1><p>Venta, tráfico, pauta y virales de Rappi, con las cifras que Rappi comparte (sus Sheets). La venta oficial de la marca sigue siendo la de Toteat.${R.frecuencia ? ` <span class="mk-frecuencia">Se actualiza ${esc(R.frecuencia)}.</span>` : ""}</p></div>
       <div class="kpis">${kpi("ordenes", mm(s(M, "venta")), `Venta en Rappi · ${mesLargo(ult)}`, `${fmt(s(M, "ordenes"))} órdenes · ${M.length} tiendas`)}${kpi("pnl", mm(s(M, "ads")), `RappiAds pagado · ${mesLargo(ult)}`, `${pct(s(M, "ads"), s(M, "venta"))} de la venta`)}${kpi("audiencia", pct(s(M, "ordenes"), s(M, "trafico")), "Conversión (órdenes ÷ tráfico)", `${fmt(s(M, "trafico"))} visitas a las tiendas`)}${kpi("canjes", Vi.length ? fmt(s(Vi, "nuevos")) : "—", "Clientes nuevos con virales", Vi.length ? `${Vi.length} virales · venta extra ${pct(s(Vi, "venta_incremental"), s(Vi, "descuento"), 0)} del descuento` : "")}</div>
       <div class="tarjeta"><header><h2>Órdenes por semana</h2><p>Oakberry y Oakberry Turbo · últimas 26 semanas</p></header><div class="cuerpo" id="gRappiSem"></div></div>
       <div class="tarjeta"><header><h2>Virales (Turbo)</h2><p>Análisis de Rappi, corte ${esc(R.corte_virales || "—")} · esperado = los 28 días previos sin otros virales</p></header><div class="cuerpo">

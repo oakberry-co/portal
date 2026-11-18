@@ -183,3 +183,5 @@
 .mk .aviso.amarillo { background: var(--mk-warn-soft); color: #6B4508; border-color: #F0DDB5; }
 .mk .mk-sub { color: var(--mk-mute); font-size: 12.5px; margin: 8px 0 0; }
 @media (max-width: 480px) { .mk .mk-ppto { padding: 14px; } .mk .mk-ppto-cifra b { font-size: 19px; } }
+/* 18-nov-2026: la frecuencia viaja en la foto (ppto.frecuencia / rappi.frecuencia); el portal no la fija. */
+.mk .mk-frecuencia { color: var(--mk-mute); }
