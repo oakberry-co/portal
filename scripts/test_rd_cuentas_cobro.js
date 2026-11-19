@@ -124,6 +124,29 @@ check(/ux_rd_cc_mismo_cobro/.test(sec), "la base impide el mismo cobro dos veces
 check(!/rd_cuentas_cobro/.test(fs.readFileSync(path.join(RAIZ, "app/(portal)/contabilidad/pagos/export/route.ts"), "utf8")),
       "el archivo del banco colombiano NO lee la tabla de RD");
 
+console.log("\n7) Una sola pantalla por país, dos tablas (19-nov-2026)");
+const leer = (r) => fs.readFileSync(path.join(RAIZ, r), "utf8");
+const lee = (r) => /(FROM|JOIN|INTO|UPDATE)\s+rd_cuentas_cobro/i.test(leer(r));
+const pub = leer("app/cuentas-de-cobro/page.tsx");
+check(/FormCuentaCobroRD/.test(pub) && /FormCuentaCobro\b/.test(pub) && /SelectorPais/.test(pub),
+      "el formulario público trae los dos países con el selector");
+check(/paisDe\(/.test(pub), "el país sale de la URL (?pais=rd), Colombia por defecto");
+check(/redirect\("\/cuentas-de-cobro\?pais=rd"\)/.test(leer("app/cuentas-de-cobro/rd/page.tsx")),
+      "el enlace viejo /cuentas-de-cobro/rd redirige al selector");
+check(/redirect\("\/contabilidad\/cuentas-de-cobro\?pais=rd"\)/.test(leer("app/(portal)/contabilidad/rd/cuentas-de-cobro/page.tsx")),
+      "la bandeja vieja de RD redirige a Cuentas de cobro › RD");
+for (const r of ["app/(portal)/contabilidad/cuentas-de-cobro/page.tsx", "app/(portal)/contabilidad/pagos/page.tsx"]) {
+  const t = leer(r);
+  check(/puede\(rol, "rd"\)/.test(t) && /SelectorPais/.test(t), `${r.split("/").slice(-2, -1)[0]}: selector solo con la capacidad rd`);
+  check(!lee(r), `${r.split("/").slice(-2, -1)[0]}: su SQL no toca la tabla de RD (va por cargar.ts)`);
+}
+check(!lee("app/(portal)/contabilidad/pagos/PagosView.tsx") && !lee("app/(portal)/contabilidad/pagos/actions.ts"),
+      "el tablero y las acciones de Pagos de Colombia no tocan la tabla de RD");
+check(!/rd\/cuentas-de-cobro"/.test(leer("app/(portal)/areas.ts")), "el menú ya no tiene una entrada aparte para RD");
+const acc = leer("app/(portal)/contabilidad/rd/cuentas-de-cobro/actions.ts");
+check(/\/contabilidad\/cuentas-de-cobro/.test(acc) && /\/contabilidad\/pagos/.test(acc) && !/revalidatePath\(RUTA\)/.test(acc),
+      "las acciones de RD refrescan Cuentas de cobro y Pagos (la tarjeta se mueve entre las dos)");
+
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log(fallos.length ? `\n❌ ${fallos.length} fallo(s)` : "\n✅ todo bien");
 process.exit(fallos.length ? 1 : 0);

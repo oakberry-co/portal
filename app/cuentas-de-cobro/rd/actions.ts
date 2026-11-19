@@ -4,7 +4,8 @@
 // ruta cuelga de /cuentas-de-cobro, que está fuera del middleware). Sube los
 // documentos a Drive por el relay de la VM —carpeta propia de RD— y registra el
 // envío en `rd_cuentas_cobro` como 'recibida'. Lo revisa el decisor en
-// /contabilidad/rd/cuentas-de-cobro.
+// Contabilidad › Cuentas de cobro con el selector en «República Dominicana»
+// (/contabilidad/cuentas-de-cobro?pais=rd), y se paga en Pagos › RD.
 //
 // TODO se valida acá aunque el navegador ya lo haya hecho: el `required` y el
 // `accept` del HTML se saltan desde la consola en dos líneas (ya entró en

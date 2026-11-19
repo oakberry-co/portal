@@ -1,6 +1,7 @@
 "use client";
 
-// LA BANDEJA DE RD, una tarjeta por cobro.
+// LA BANDEJA DE RD, una tarjeta por cobro. Se ve detrás del selector de país
+// de Cuentas de cobro (modo "revision") y de Pagos (modo "pagos").
 //
 // Cada tarjeta dice ANTES del clic qué falta para aprobar (el mismo módulo puro
 // que corre el servidor: lib/rd/aprobacion.ts) y, después de devolver o pagar,
@@ -36,12 +37,26 @@ export type CobroRD = {
   propuesta: Propuesta | null;
 };
 
-const TABS = [
-  { key: "recibida", label: "Por revisar" },
-  { key: "aprobada", label: "Por pagar" },
-  { key: "pagada", label: "Pagadas" },
-  { key: "rechazada", label: "Devueltas" },
-] as const;
+// DOS MODOS, el mismo recorrido que Colombia (19-nov-2026): RD no tiene
+// pantalla propia, vive detrás del selector de país.
+//  · "revision" → Contabilidad › Cuentas de cobro: retenciones, aprobar, devolver.
+//  · "pagos"    → Contabilidad › Pagos: registrar la transferencia, avisar,
+//                 anotar el B11, deshacer un pago, y el Excel del 606.
+// La tarjeta es la misma en las dos; cambian las acciones que trae.
+export type ModoRD = "revision" | "pagos";
+
+const TABS: Record<ModoRD, { key: string; label: string }[]> = {
+  revision: [
+    { key: "recibida", label: "Por revisar" },
+    { key: "aprobada", label: "Aprobadas" },
+    { key: "pagada", label: "Pagadas" },
+    { key: "rechazada", label: "Devueltas" },
+  ],
+  pagos: [
+    { key: "aprobada", label: "Por pagar" },
+    { key: "pagada", label: "Pagadas" },
+  ],
+};
 
 const fecha = (s: string | null) => s
   ? new Date(s.length === 10 ? s + "T12:00:00Z" : s).toLocaleDateString("es-DO", { day: "2-digit", month: "short", year: "numeric", timeZone: ZONA_RD })
@@ -221,14 +236,20 @@ function Deshacer({ x }: { x: CobroRD }) {
   );
 }
 
-function Tarjeta({ x, origen }: { x: CobroRD; origen: string }) {
+/** Enlace a la otra pantalla del recorrido (revisión ↔ pagos), con RD ya elegido. */
+function IrA({ modo, texto }: { modo: ModoRD; texto: string }) {
+  const href = modo === "pagos" ? "/contabilidad/pagos?pais=rd" : "/contabilidad/cuentas-de-cobro?pais=rd";
+  return <a className="rd-ir" href={ruta(href)}>{texto} →</a>;
+}
+
+function Tarjeta({ x, origen, modo }: { x: CobroRD; origen: string; modo: ModoRD }) {
   const c = conceptoDe(x.concepto);
   const h = { pagadas: x.pagadas };
   const faltan = docsFaltanRD(x, h);
   const cambio = cambioDeCuenta(x, h);
   const ajeno = titularAjeno(x);
   const msgDevuelta = `Hola ${x.nombre.split(" ")[0]}, te escribimos de Oakberry RD por tu cuenta de cobro ${refRD(x.id)}. `
-    + `No la pudimos aprobar: ${x.nota_revision ?? ""}. Puedes enviarla de nuevo aquí: ${origen}${ruta("/cuentas-de-cobro/rd")}`;
+    + `No la pudimos aprobar: ${x.nota_revision ?? ""}. Puedes enviarla de nuevo aquí: ${origen}${ruta("/cuentas-de-cobro?pais=rd")}`;
   const msgPagada = `Hola ${x.nombre.split(" ")[0]}, te escribimos de Oakberry RD: el ${fecha(x.pagado_en)} te transferimos `
     + `${plata(x.valor_a_pagar, x.moneda)} a tu cuenta ${x.banco} terminada en ${x.num_cuenta.slice(-4)} `
     + `por tu cuenta de cobro ${refRD(x.id)} (referencia ${x.referencia_pago}). ¡Gracias!`;
@@ -280,12 +301,16 @@ function Tarjeta({ x, origen }: { x: CobroRD; origen: string }) {
           {!cambio && x.pagadas.length > 0 && <div className="muted mini">✓ Misma cuenta a la que ya se le pagó</div>}
         </div>
         <div className="cc-wide">
-          <b>Documentos</b>{faltan.length > 0 && <span className="rd-alerta"> · falta {faltan.join(", ")}</span>}<br />
-          {x.documentos.length === 0 && <em className="muted">ninguno</em>}
-          {x.documentos.map((d, i) => d.path
-            ? <a key={i} className="cc-badge ok" href={d.path} target="_blank" rel="noreferrer">{etiquetaDocRD(d.clase)}</a>
-            : <span key={i} className="cc-badge" title={d.nombre}>{etiquetaDocRD(d.clase)} (no llegó a Drive)</span>)}
-          {x.comprobante_url && <a className="cc-badge ok" href={x.comprobante_url} target="_blank" rel="noreferrer">Comprobante de pago</a>}
+          <b>Documentos</b>{faltan.length > 0 && <span className="rd-alerta"> · falta {faltan.join(", ")}</span>}
+          {/* En una fila que se parte: los badges son nowrap y, pegados sin espacio,
+              formaban un solo bloque de ~490 px que desbordaba el celular. */}
+          <div className="rd-docs">
+            {x.documentos.length === 0 && <em className="muted">ninguno</em>}
+            {x.documentos.map((d, i) => d.path
+              ? <a key={i} className="cc-badge ok" href={d.path} target="_blank" rel="noreferrer">{etiquetaDocRD(d.clase)}</a>
+              : <span key={i} className="cc-badge" title={d.nombre}>{etiquetaDocRD(d.clase)} (no llegó a Drive)</span>)}
+            {x.comprobante_url && <a className="cc-badge ok" href={x.comprobante_url} target="_blank" rel="noreferrer">Comprobante de pago</a>}
+          </div>
         </div>
       </div>
 
@@ -296,17 +321,19 @@ function Tarjeta({ x, origen }: { x: CobroRD; origen: string }) {
 
       {x.estado === "aprobada" && (<>
         <p className="muted mini">Aprobada {fecha(x.aprobado_en)} por {x.revisado_por}{x.confirmacion && <> · confirmó: «{x.confirmacion}»</>}</p>
-        <Pagar x={x} />
+        {modo === "pagos" ? <Pagar x={x} /> : <IrA modo="pagos" texto="Se paga en Pagos › República Dominicana" />}
         <div className="cc-acts"><Reabrir x={x} texto="↩ Devolver a revisión" /></div>
       </>)}
 
       {x.estado === "pagada" && (<>
         <p className="muted mini">Pagada {fecha(x.pagado_en)} · ref. {x.referencia_pago} · registró {x.pagado_por}</p>
-        <div className="cc-acts">
-          <a className="cc-act" href={wa(x.telefono, msgPagada)} target="_blank" rel="noreferrer">💬 Avisar el pago</a>
-          {!x.ncf_proveedor && !x.ncf_emitido && <B11 x={x} />}
-          <Deshacer x={x} />
-        </div>
+        {modo === "pagos" ? (
+          <div className="cc-acts">
+            <a className="cc-act" href={wa(x.telefono, msgPagada)} target="_blank" rel="noreferrer">💬 Avisar el pago</a>
+            {!x.ncf_proveedor && !x.ncf_emitido && <B11 x={x} />}
+            <Deshacer x={x} />
+          </div>
+        ) : <IrA modo="pagos" texto="Ver el pago en Pagos › República Dominicana" />}
       </>)}
 
       {x.estado === "rechazada" && (<>
@@ -320,15 +347,18 @@ function Tarjeta({ x, origen }: { x: CobroRD; origen: string }) {
   );
 }
 
-export function BandejaRD({ items, mesActual, origen }: { items: CobroRD[]; mesActual: string; origen: string }) {
-  const [tab, setTab] = useState<string>("recibida");
+export function BandejaRD({ items, mesActual, origen, modo }: {
+  items: CobroRD[]; mesActual: string; origen: string; modo: ModoRD;
+}) {
+  const tabs = TABS[modo];
+  const [tab, setTab] = useState<string>(tabs[0].key);
   const [mes, setMes] = useState(mesActual);
   const lista = useMemo(() => items.filter((x) => x.estado === tab), [items, tab]);
   const meses = Array.from(new Set([...mesesElegibles(), ...items.map((x) => x.periodo.slice(0, 7))])).sort().reverse();
   return (
     <>
       <div className="pg-tabs">
-        {TABS.map((t) => {
+        {tabs.map((t) => {
           const n = items.filter((x) => x.estado === t.key).length;
           return (
             <button key={t.key} type="button" className={tab === t.key ? "on" : ""} onClick={() => setTab(t.key)}>
@@ -338,18 +368,20 @@ export function BandejaRD({ items, mesActual, origen }: { items: CobroRD[]; mesA
         })}
       </div>
       <div className="rd-barra">
-        <span>Total {TABS.find((t) => t.key === tab)?.label.toLowerCase()}: <b>{totales(lista)}</b></span>
-        <span className="rd-export">
-          Borrador 606 + por pagar:{" "}
-          <select value={mes} onChange={(e) => setMes(e.target.value)}>
-            {meses.map((m) => <option key={m} value={m}>{mesLegible(m)}</option>)}
-          </select>{" "}
-          <a className="cc-act ghost" href={ruta(`/contabilidad/rd/cuentas-de-cobro/export?mes=${mes}`)}>⬇ Excel</a>
-        </span>
+        <span>Total {tabs.find((t) => t.key === tab)?.label.toLowerCase()}: <b>{totales(lista)}</b></span>
+        {modo === "pagos" && (
+          <span className="rd-export">
+            Borrador 606 + por pagar:{" "}
+            <select value={mes} onChange={(e) => setMes(e.target.value)}>
+              {meses.map((m) => <option key={m} value={m}>{mesLegible(m)}</option>)}
+            </select>{" "}
+            <a className="cc-act ghost" href={ruta(`/contabilidad/rd/cuentas-de-cobro/export?mes=${mes}`)}>⬇ Excel</a>
+          </span>
+        )}
       </div>
       {lista.length === 0
-        ? <p className="pg-empty">Nada en «{TABS.find((t) => t.key === tab)?.label}».</p>
-        : <div className="cc-list">{lista.map((x) => <Tarjeta key={x.id} x={x} origen={origen} />)}</div>}
+        ? <p className="pg-empty">Nada en «{tabs.find((t) => t.key === tab)?.label}».</p>
+        : <div className="cc-list">{lista.map((x) => <Tarjeta key={x.id} x={x} origen={origen} modo={modo} />)}</div>}
     </>
   );
 }

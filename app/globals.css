@@ -1869,6 +1869,28 @@ tr.desfasada td { background: #fff8e6; }
 .pgn-emp td { vertical-align: top; }
 .pg-prov.busy { opacity: .55; pointer-events: none; }
 
+/* --- Selector de país: Colombia / República Dominicana (19-nov-2026) ---------
+   El mismo control en el formulario público, Cuentas de cobro y Pagos. Son
+   enlaces (el país va en la URL), no botones. */
+.pais-sel { display: inline-flex; gap: 4px; padding: 4px; margin: 6px 0 14px; max-width: 100%;
+  background: var(--cream-2); border: 1px solid var(--border-lav); border-radius: 999px; }
+.pais-sel a { display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 7px 14px;
+  border-radius: 999px; font-size: 13px; font-weight: 700; color: var(--purple-deep) !important;
+  text-decoration: none; white-space: nowrap; }
+.pais-sel a:hover { background: var(--lav-soft); }
+.pais-sel a.on { background: var(--purple); color: #fff !important; }
+.pais-sel a i { font-style: normal; font-size: 10.5px; background: rgba(0,0,0,.08); padding: 0 6px; border-radius: 999px; }
+.pais-sel a.on i { background: rgba(255,255,255,.25); }
+.pais-sel .pais-corto { display: none; }
+.pais-pub { display: flex; margin: 4px auto 18px; }
+.pais-pub a { flex: 1 1 0; padding: 9px 10px; }
+@media (max-width: 460px) {
+  .pais-sel .pais-largo { display: none; }
+  .pais-sel .pais-corto { display: inline; }
+  .pais-sel a { padding: 7px 10px; font-size: 12.5px; }
+}
+.rd-ir { display: inline-block; font-size: 12.5px; font-weight: 700; margin: 2px 0 6px; }
+
 /* --- Cuentas de cobro RD (bandeja interna, 2026-11-12) ---------------------- */
 .rd-card a.cc-act { text-decoration: none; display: inline-block; }
 .rd-alerta { color: #a33a1b; font-weight: 700; font-size: 12px; margin-top: 3px; }
@@ -1888,10 +1910,17 @@ tr.desfasada td { background: #fff8e6; }
 .rd-barra { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 10px; align-items: center; margin: 0 0 12px; font-size: 13px; }
 .rd-export select { padding: 5px 8px; border: 1px solid var(--border); border-radius: 8px; width: auto; display: inline-block; }
 .rd-card .cc-badge { white-space: nowrap; }
+/* Nada en la tarjeta puede ensanchar la página en el celular: la columna no
+   baja de su ancho por el contenido (minmax 0) y un enlace largo de entregable
+   o un correo se parte donde haga falta. */
+.rd-card .cc-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.rd-card .cc-grid > div { overflow-wrap: anywhere; }
+.rd-docs { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 3px; }
 .rd-export a.cc-act { text-decoration: none; }
 @media (max-width: 560px) {
   .rd-ret-form, .rd-pago { flex-direction: column; align-items: stretch; }
   .rd-ret-form input, .rd-pago input, .rd-pago .cc-act, .rd-ret-form .cc-act { width: 100%; min-width: 0; }
   .rd-inline { flex-wrap: wrap; }
   .pg-tabs { flex-wrap: wrap; }
+  .rd-card .cc-grid { grid-template-columns: minmax(0, 1fr); }
 }

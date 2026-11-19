@@ -22,7 +22,11 @@ import { montoRD, centavos, refRD, ZONA_RD } from "@/lib/rd/catalogo";
 import { netoAPagar, problemaRetencion } from "@/lib/rd/retenciones";
 import { bloqueoAprobacionRD, cambioDeCuenta, titularAjeno, type CobroParaAprobar, type HistoriaCuenta } from "@/lib/rd/aprobacion";
 
-const RUTA = "/contabilidad/rd/cuentas-de-cobro";
+// RD vive en las MISMAS pantallas que Colombia, detrás del selector de país
+// (19-nov-2026): se revisa en Cuentas de cobro y se paga en Pagos. Un cambio de
+// estado mueve la tarjeta de una a la otra, así que se refrescan las dos.
+const RUTAS = ["/contabilidad/cuentas-de-cobro", "/contabilidad/pagos"];
+function refrescar() { for (const r of RUTAS) revalidatePath(r); }
 
 type Fila = CobroParaAprobar & {
   id: number; num_id: string; estado: string; valor: number; itbis_facturado: number;
@@ -100,7 +104,7 @@ export async function confirmarRetencionesRD(_p: Resultado | null, fd: FormData)
         valorNuevo: { id, isr, itbis: itbisRet, neto }, actor: user.email, actorRol: user.rol, origen: "web",
       });
     });
-    revalidatePath(RUTA);
+    refrescar();
   });
 }
 
@@ -159,7 +163,7 @@ export async function revisarRD(_p: Resultado | null, fd: FormData): Promise<Res
         actor: user.email, actorRol: user.rol, origen: "web",
       });
     });
-    revalidatePath(RUTA);
+    refrescar();
   });
 }
 
@@ -208,7 +212,7 @@ export async function registrarPagoRD(_p: Resultado | null, fd: FormData): Promi
         actor: user.email, actorRol: user.rol, origen: "web",
       });
     });
-    revalidatePath(RUTA);
+    refrescar();
     if (aviso) throw new Error(aviso);
   });
 }
@@ -234,7 +238,7 @@ export async function deshacerPagoRD(_p: Resultado | null, fd: FormData): Promis
         valorNuevo: { id, estado: "aprobada", motivo }, actor: user.email, actorRol: user.rol, origen: "web",
       });
     });
-    revalidatePath(RUTA);
+    refrescar();
   });
 }
 
@@ -256,6 +260,6 @@ export async function guardarNcfEmitidoRD(_p: Resultado | null, fd: FormData): P
         actor: user.email, actorRol: user.rol, origen: "web",
       });
     });
-    revalidatePath(RUTA);
+    refrescar();
   });
 }

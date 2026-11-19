@@ -110,7 +110,7 @@ export function FormCuentaCobroRD() {
         <h2>¡Recibido!</h2>
         <p>Tu cuenta de cobro <b>{estado.ref}</b> llegó a Oakberry RD. La revisamos y te escribimos por WhatsApp. Gracias 💜</p>
         {estado.aviso && <p className="pub-aviso">⚠️ {estado.aviso}</p>}
-        <a className="pub-btn ghost" href={ruta("/cuentas-de-cobro/rd")}>Enviar otra</a>
+        <a className="pub-btn ghost" href={ruta("/cuentas-de-cobro?pais=rd")}>Enviar otra</a>
       </div>
     );
   }

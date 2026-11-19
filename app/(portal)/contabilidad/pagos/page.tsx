@@ -6,6 +6,11 @@ import { refDe } from "@/lib/ref-documento";
 import { NC_APLICADA, SALDO_NETO, NO_ES_NOTA } from "@/lib/notas-credito";
 import { DIA_PAGO_DEFAULT } from "@/lib/semana-pago";
 import { PagosView, type FilaPago, type FilaIntake, type PagoHecho, type CuentaPago, type Adelanto } from "./PagosView";
+import { empresaRD } from "@/lib/rd/empresa";
+import { mesRD } from "@/lib/rd/catalogo";
+import { SelectorPais, paisDe } from "../../../SelectorPais";
+import { BandejaRD } from "../rd/cuentas-de-cobro/BandejaRD";
+import { AYUDA_SIN_TABLA, cargarCobrosRD, contarRD, origenPeticion } from "../rd/cuentas-de-cobro/cargar";
 
 export const dynamic = "force-dynamic";
 
@@ -182,18 +187,56 @@ async function cargar(): Promise<{ pendientes: FilaPago[]; validacion: FilaPago[
            historial: historial.rows, cuentas: cuentas.rows, diaPago, adelantos: adelantos.rows };
 }
 
-export default async function PagosPage() {
+export default async function PagosPage({ searchParams }: { searchParams: Promise<{ pais?: string }> }) {
+  const { rol } = await getCurrentUser();
+  // EL SELECTOR DE PAÍS (19-nov-2026), solo para quien tiene `rd` (el decisor).
+  // RD se paga ACÁ, pero por su propio carril: lo lee cargarCobrosRD() de
+  // la tabla de RD y lo pinta la bandeja de RD en modo "pagos". El tablero de
+  // Colombia —y su archivo de Davivienda— no se entera: este archivo no nombra
+  // la tabla de RD (lo vigila test_rd_cuentas_cobro.js).
+  const verRD = puede(rol, "rd");
+  const pais = verRD ? paisDe((await searchParams).pais) : "co";
+  const rdPorPagar = verRD ? await contarRD("aprobada") : undefined;
+
+  if (pais === "rd") {
+    const selector = <SelectorPais base="/contabilidad/pagos" pais="rd" conteo={{ rd: rdPorPagar }} />;
+    try {
+      const [items, origen] = await Promise.all([cargarCobrosRD(), origenPeticion()]);
+      return (
+        <div className="container container-wide">
+          <h1>💸 Pagos</h1>
+          {selector}
+          <p className="sub">
+            Lo aprobado de <b>República Dominicana</b>. Lo paga {empresaRD().nombre} desde su banco en RD: no hay
+            archivo de banco. Cuando salga cada transferencia, regístrala con su fecha y referencia (y el comprobante),
+            y avísale a la persona por WhatsApp. El Excel trae el borrador del 606 del mes y lo que falta pagar.
+          </p>
+          <BandejaRD items={items} mesActual={mesRD()} origen={origen} modo="pagos" />
+        </div>
+      );
+    } catch (e) {
+      return (
+        <div className="container container-wide">
+          <h1>💸 Pagos</h1>
+          {selector}
+          <p className="hint">No se pudo leer la base: {(e as Error).message}</p>
+          <p className="hint">{AYUDA_SIN_TABLA}</p>
+        </div>
+      );
+    }
+  }
+
   let data: Awaited<ReturnType<typeof cargar>>;
   try {
     data = await cargar();
   } catch (e) {
     return <div className="container"><h1>💸 Pagos</h1><p className="hint">No se pudo leer la base: {(e as Error).message}</p></div>;
   }
-  const { rol } = await getCurrentUser();
   const puedePagos = puede(rol, "pagos");  // contador (causador) = false → solo Historial
   return (
     <div className="container container-wide">
       <h1>💸 Pagos</h1>
+      {verRD && <SelectorPais base="/contabilidad/pagos" pais="co" conteo={{ rd: rdPorPagar }} />}
       <p className="sub">
         {puedePagos ? (
           <>Tablero de pago: <b>Pendientes</b> (asigna la cuenta por factura) →

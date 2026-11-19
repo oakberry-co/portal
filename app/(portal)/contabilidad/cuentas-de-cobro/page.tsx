@@ -4,9 +4,20 @@ import { getCurrentUser } from "@/lib/auth";
 import { puede } from "@/lib/permisos";
 import { sqlCertificacion } from "@/lib/certificaciones";
 import { sqlLecturaValor } from "@/lib/valor-documento";
+import { empresaRD } from "@/lib/rd/empresa";
+import { mesRD } from "@/lib/rd/catalogo";
+import { SelectorPais, paisDe } from "../../../SelectorPais";
+import { BandejaRD } from "../rd/cuentas-de-cobro/BandejaRD";
+import { AYUDA_SIN_TABLA, cargarCobrosRD, contarRD, origenPeticion } from "../rd/cuentas-de-cobro/cargar";
 import { CuentasCobroView, type CuentaCobro } from "./CuentasCobroView";
 
 export const dynamic = "force-dynamic";
+
+// COLOMBIA Y REPÚBLICA DOMINICANA EN LA MISMA PANTALLA (19-nov-2026), con el
+// selector de país arriba — solo para quien tiene la capacidad `rd` (el
+// decisor); los demás ven Colombia como siempre, sin selector. Cada país lee
+// SU tabla: Colombia `cuentas_cobro` (abajo), RD la suya (en
+// ../rd/cuentas-de-cobro/cargar.ts). Nada de RD pasa por este SQL.
 
 // La bandeja trae, por envío, TODO lo que decide si se puede aprobar: los
 // documentos, el veredicto del lector de certificaciones y la cuenta que hoy
@@ -64,9 +75,52 @@ async function cargar(): Promise<{ items: CuentaCobro[]; conceptos: string[]; de
   return { items: r.rows, conceptos: co.rows.map((x: { nombre: string }) => x.nombre), destinos: de.rows.map((x: { nombre: string }) => x.nombre) };
 }
 
-export default async function CuentasCobroInboxPage() {
+/** Por revisar en Colombia: el número del selector cuando se está mirando RD. */
+async function contarCO(): Promise<number | undefined> {
+  try {
+    const { rows } = await getPool().query<{ n: number }>(
+      "SELECT count(*)::int AS n FROM cuentas_cobro WHERE estado = 'recibida'");
+    return rows[0]?.n;
+  } catch {
+    return undefined;
+  }
+}
+
+export default async function CuentasCobroInboxPage({ searchParams }: { searchParams: Promise<{ pais?: string }> }) {
   const { rol } = await getCurrentUser();
   if (!puede(rol, "ver_intake")) redirect("/contabilidad/conciliacion");
+  const verRD = puede(rol, "rd");
+  const pais = verRD ? paisDe((await searchParams).pais) : "co";
+  const rdPorRevisar = verRD ? await contarRD("recibida") : undefined;
+
+  if (pais === "rd") {
+    const selector = <SelectorPais base="/contabilidad/cuentas-de-cobro" pais="rd" conteo={{ co: await contarCO(), rd: rdPorRevisar }} />;
+    try {
+      const [items, origen] = await Promise.all([cargarCobrosRD(), origenPeticion()]);
+      return (
+        <div className="container">
+          <h1>🧾 Cuentas de cobro</h1>
+          {selector}
+          <p className="sub">
+            Envíos del formulario público <b>manelfoods.co/cuentas-de-cobro</b> con «República Dominicana». Los paga
+            la <b>empresa de RD</b> ({empresaRD().nombre}), no ManelFoods: van por su propio carril y nunca entran al
+            archivo de Davivienda ni a Siigo. Confirma retenciones y aprueba: al aprobar pasa a <b>Pagos › República Dominicana</b>.
+          </p>
+          <BandejaRD items={items} mesActual={mesRD()} origen={origen} modo="revision" />
+        </div>
+      );
+    } catch (e) {
+      return (
+        <div className="container">
+          <h1>🧾 Cuentas de cobro</h1>
+          {selector}
+          <p className="hint">No se pudo leer la base: {(e as Error).message}</p>
+          <p className="hint">{AYUDA_SIN_TABLA}</p>
+        </div>
+      );
+    }
+  }
+
   // VER no es OPERAR: el contador entra a revisar y a poner retenciones,
   // pero aprobar —que es lo que manda la plata al banco— no es suyo.
   const operar = puede(rol, "intake");
@@ -76,9 +130,11 @@ export default async function CuentasCobroInboxPage() {
   } catch (e) {
     return <div className="container"><h1>🧾 Cuentas de cobro</h1><p className="hint">No se pudo leer la base: {(e as Error).message}</p></div>;
   }
+  const coPorRevisar = data.items.filter((i) => i.estado === "recibida").length;
   return (
     <div className="container">
       <h1>🧾 Cuentas de cobro</h1>
+      {verRD && <SelectorPais base="/contabilidad/cuentas-de-cobro" pais="co" conteo={{ co: coPorRevisar, rd: rdPorRevisar }} />}
       <p className="sub">
         Envíos del formulario público <b>manelfoods.co/cuentas-de-cobro</b>. Revisa los documentos y aprueba:
         al aprobar pasa a <b>Pagos › Validación semana en curso</b> (bloque <i>sin factura DIAN</i>), a 30 días de su llegada.
